@@ -192,9 +192,9 @@ static void FreeArrayUnicode(wchar_t **lpawszUnicodeString)
 static DWORD OldKeyToKey(DWORD dOldKey)
 {
 	if (dOldKey & 0x100) {
-		dOldKey = (dOldKey ^ 0x100) | EXTENDED_KEY_BASE;
+		dOldKey = (dOldKey ^ 0x100) + EXTENDED_KEY_BASE;
 	} else if (dOldKey & 0x200) {
-		dOldKey = (dOldKey ^ 0x200) | INTERNAL_KEY_BASE;
+		dOldKey = (dOldKey ^ 0x200) + INTERNAL_KEY_BASE;
 	} else {
 		DWORD CleanKey = dOldKey & ~KEY_CTRLMASK;
 
@@ -212,10 +212,10 @@ static DWORD OldKeyToKey(DWORD dOldKey)
 
 DWORD KeyToOldKey(DWORD dKey)
 {
-	if (dKey & EXTENDED_KEY_BASE) {
-		dKey = (dKey ^ EXTENDED_KEY_BASE) | 0x100;
-	} else if (dKey & INTERNAL_KEY_BASE) {
-		dKey = (dKey ^ INTERNAL_KEY_BASE) | 0x200;
+	if (IS_KEY_EXTENDED(dKey)) {
+		dKey = (dKey - EXTENDED_KEY_BASE) | 0x100;
+	} else if (IS_KEY_INTERNAL(dKey)) {
+		dKey = (dKey - INTERNAL_KEY_BASE) | 0x200;
 	} else {
 		DWORD CleanKey = dKey & ~KEY_CTRLMASK;
 
@@ -805,13 +805,13 @@ int WINAPI ProcessNameA(const char *Param1, char *Param2, DWORD Flags)
 	return ret;
 }
 
-int WINAPI KeyNameToKeyA(const char *Name)
+unsigned int WINAPI KeyNameToKeyA(const char *Name)
 {
 	FARString strN(Name);
 	return KeyToOldKey(KeyNameToKey(strN));
 }
 
-BOOL WINAPI FarKeyToNameA(int Key, char *KeyText, int Size)
+BOOL WINAPI FarKeyToNameA(FarKey Key, char *KeyText, int Size)
 {
 	FARString strKT;
 	int ret = KeyToText(OldKeyToKey(Key), strKT);
@@ -822,7 +822,7 @@ BOOL WINAPI FarKeyToNameA(int Key, char *KeyText, int Size)
 	return ret;
 }
 
-int WINAPI InputRecordToKeyA(const INPUT_RECORD *r)
+unsigned int WINAPI InputRecordToKeyA(const INPUT_RECORD *r)
 {
 	return KeyToOldKey(InputRecordToKey(r));
 }
@@ -3066,7 +3066,7 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 
 	switch (Command) {
 		case oldfar::ACTL_GETFARVERSION: {
-			DWORD FarVer = (DWORD)FarAdvControl(ModuleNumber, ACTL_GETFARVERSION, nullptr);
+			DWORD FarVer = (DWORD)FarAdvControl(ModuleNumber, ACTL_GETFARVERSION, nullptr, nullptr);
 
 			if (Param)
 				*(DWORD *)Param = FarVer;
@@ -3077,11 +3077,11 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 			return FALSE;
 
 		case oldfar::ACTL_GETSYSWORDDIV: {
-			INT_PTR Length = FarAdvControl(ModuleNumber, ACTL_GETSYSWORDDIV, nullptr);
+			INT_PTR Length = FarAdvControl(ModuleNumber, ACTL_GETSYSWORDDIV, nullptr, nullptr);
 
 			if (Param) {
 				wchar_t *SysWordDiv = (wchar_t *)malloc((Length + 1) * sizeof(wchar_t));
-				FarAdvControl(ModuleNumber, ACTL_GETSYSWORDDIV, SysWordDiv);
+				FarAdvControl(ModuleNumber, ACTL_GETSYSWORDDIV, SysWordDiv, nullptr);
 				PWZ_to_PZ(SysWordDiv, (char *)Param, oldfar::NM);
 				free(SysWordDiv);
 			}
@@ -3089,13 +3089,16 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 			return Length;
 		}
 		case oldfar::ACTL_WAITKEY:
-			return FarAdvControl(ModuleNumber, ACTL_WAITKEY, Param);
-		case oldfar::ACTL_GETCOLOR:
-			return FarAdvControl(ModuleNumber, ACTL_GETCOLOR, Param);
+			return FarAdvControl(ModuleNumber, ACTL_WAITKEY, Param, nullptr);
+		case oldfar::ACTL_GETCOLOR: {
+			uint64_t color;
+				FarAdvControl(ModuleNumber, ACTL_GETCOLOR, Param, &color);
+			return (INT_PTR)(color & 0xFFFF);
+		}
 		case oldfar::ACTL_GETARRAYCOLOR:
-			return FarAdvControl(ModuleNumber, ACTL_GETARRAYCOLOR, Param);
+			return FarAdvControl(ModuleNumber, ACTL_GETARRAYCOLOR, Param, nullptr);
 		case oldfar::ACTL_EJECTMEDIA:
-			return FarAdvControl(ModuleNumber, ACTL_EJECTMEDIA, Param);
+			return FarAdvControl(ModuleNumber, ACTL_EJECTMEDIA, Param, nullptr);
 		case oldfar::ACTL_KEYMACRO: {
 			if (!Param)
 				return FALSE;
@@ -3138,7 +3141,7 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 					break;
 			}
 
-			INT_PTR res = FarAdvControl(ModuleNumber, ACTL_KEYMACRO, &km);
+			INT_PTR res = FarAdvControl(ModuleNumber, ACTL_KEYMACRO, &km, nullptr);
 
 			switch (km.Command) {
 				case MCMD_CHECKMACRO: {
@@ -3207,7 +3210,7 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 			}
 			ks.Sequence = Sequence;
 
-			LONG_PTR ret = FarAdvControl(ModuleNumber, ACTL_POSTKEYSEQUENCE, &ks);
+			LONG_PTR ret = FarAdvControl(ModuleNumber, ACTL_POSTKEYSEQUENCE, &ks, nullptr);
 			free(Sequence);
 			return ret;
 		}
@@ -3220,7 +3223,7 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 			oldfar::WindowInfo *wiA = (oldfar::WindowInfo *)Param;
 			WindowInfo wi{};
 			wi.Pos = wiA->Pos;
-			INT_PTR ret = FarAdvControl(ModuleNumber, cmd, &wi);
+			INT_PTR ret = FarAdvControl(ModuleNumber, cmd, &wi, nullptr);
 
 			if (ret) {
 				switch (wi.Type) {
@@ -3257,7 +3260,7 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 					}
 
 					if (wi.TypeName && wi.Name) {
-						FarAdvControl(ModuleNumber, ACTL_GETWINDOWINFO, &wi);
+						FarAdvControl(ModuleNumber, ACTL_GETWINDOWINFO, &wi, nullptr);
 						PWZ_to_PZ(wi.TypeName, wiA->TypeName, sizeof(wiA->TypeName));
 						PWZ_to_PZ(wi.Name, wiA->Name, sizeof(wiA->Name));
 					}
@@ -3278,15 +3281,15 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 			return ret;
 		}
 		case oldfar::ACTL_GETWINDOWCOUNT:
-			return FarAdvControl(ModuleNumber, ACTL_GETWINDOWCOUNT, 0);
+			return FarAdvControl(ModuleNumber, ACTL_GETWINDOWCOUNT, nullptr, nullptr);
 		case oldfar::ACTL_SETCURRENTWINDOW:
-			return FarAdvControl(ModuleNumber, ACTL_SETCURRENTWINDOW, Param);
+			return FarAdvControl(ModuleNumber, ACTL_SETCURRENTWINDOW, Param, nullptr);
 		case oldfar::ACTL_COMMIT:
-			return FarAdvControl(ModuleNumber, ACTL_COMMIT, 0);
+			return FarAdvControl(ModuleNumber, ACTL_COMMIT, nullptr, nullptr);
 		case oldfar::ACTL_GETFARHWND:
-			return FarAdvControl(ModuleNumber, ACTL_GETFARHWND, 0);
+			return FarAdvControl(ModuleNumber, ACTL_GETFARHWND, nullptr, nullptr);
 		case oldfar::ACTL_GETSYSTEMSETTINGS: {
-			INT_PTR ss = FarAdvControl(ModuleNumber, ACTL_GETSYSTEMSETTINGS, 0);
+			INT_PTR ss = FarAdvControl(ModuleNumber, ACTL_GETSYSTEMSETTINGS, nullptr, nullptr);
 			INT_PTR ret = 0;
 
 			if (ss & oldfar::FSS_DELETETORECYCLEBIN)
@@ -3316,7 +3319,7 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 			return ret;
 		}
 		case oldfar::ACTL_GETPANELSETTINGS: {
-			INT_PTR ps = FarAdvControl(ModuleNumber, ACTL_GETPANELSETTINGS, 0);
+			INT_PTR ps = FarAdvControl(ModuleNumber, ACTL_GETPANELSETTINGS, nullptr,  nullptr);
 			INT_PTR ret = 0;
 
 			if (ps & oldfar::FPS_SHOWHIDDENANDSYSTEMFILES)
@@ -3358,7 +3361,7 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 			return ret;
 		}
 		case oldfar::ACTL_GETINTERFACESETTINGS: {
-			INT_PTR is = FarAdvControl(ModuleNumber, ACTL_GETINTERFACESETTINGS, 0);
+			INT_PTR is = FarAdvControl(ModuleNumber, ACTL_GETINTERFACESETTINGS, nullptr, nullptr);
 			INT_PTR ret = 0;
 
 			if (is & oldfar::FIS_CLOCKINPANELS)
@@ -3388,7 +3391,7 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 			return ret;
 		}
 		case oldfar::ACTL_GETCONFIRMATIONS: {
-			INT_PTR cs = FarAdvControl(ModuleNumber, ACTL_GETCONFIRMATIONS, 0);
+			INT_PTR cs = FarAdvControl(ModuleNumber, ACTL_GETCONFIRMATIONS, nullptr, nullptr);
 			INT_PTR ret = 0;
 
 			if (cs & oldfar::FCS_COPYOVERWRITE)
@@ -3424,7 +3427,7 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 			return ret;
 		}
 		case oldfar::ACTL_GETDESCSETTINGS: {
-			INT_PTR ds = FarAdvControl(ModuleNumber, ACTL_GETDESCSETTINGS, 0);
+			INT_PTR ds = FarAdvControl(ModuleNumber, ACTL_GETDESCSETTINGS, nullptr, nullptr);
 			INT_PTR ret = 0;
 
 			if (ds & oldfar::FDS_UPDATEALWAYS)
@@ -3442,23 +3445,25 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 			return ret;
 		}
 		case oldfar::ACTL_SETARRAYCOLOR: {
-			if (!Param)
-				return FALSE;
+			return FALSE;
 
-			oldfar::FarSetColors *scA = (oldfar::FarSetColors *)Param;
-			FarSetColors sc = {0, scA->StartIndex, scA->ColorCount, scA->Colors};
+//			if (!Param)
+//				return FALSE;
 
-			if (scA->Flags & oldfar::FCLR_REDRAW)
-				sc.Flags|= FCLR_REDRAW;
+//			oldfar::FarSetColors *scA = (oldfar::FarSetColors *)Param;
+//			FarSetColors sc = {0, scA->StartIndex, scA->ColorCount, scA->Colors};
 
-			return FarAdvControl(ModuleNumber, ACTL_SETARRAYCOLOR, &sc);
+//			if (scA->Flags & oldfar::FCLR_REDRAW)
+//				sc.Flags|= FCLR_REDRAW;
+
+//			return FarAdvControl(ModuleNumber, ACTL_SETARRAYCOLOR, &sc);
 		}
 		case oldfar::ACTL_GETWCHARMODE:
 			return TRUE;
 		case oldfar::ACTL_GETPLUGINMAXREADDATA:
-			return FarAdvControl(ModuleNumber, ACTL_GETPLUGINMAXREADDATA, 0);
+			return FarAdvControl(ModuleNumber, ACTL_GETPLUGINMAXREADDATA, nullptr, nullptr);
 		case oldfar::ACTL_GETDIALOGSETTINGS: {
-			INT_PTR ds = FarAdvControl(ModuleNumber, ACTL_GETDIALOGSETTINGS, 0);
+			INT_PTR ds = FarAdvControl(ModuleNumber, ACTL_GETDIALOGSETTINGS, nullptr, nullptr);
 			INT_PTR ret = 0;
 
 			if (ds & oldfar::FDIS_HISTORYINDIALOGEDITCONTROLS)
@@ -3480,7 +3485,7 @@ INT_PTR WINAPI FarAdvControlA(INT_PTR ModuleNumber, int Command, void *Param)
 		case oldfar::ACTL_GETPOLICIES:
 			return FALSE;
 		case oldfar::ACTL_REDRAWALL:
-			return FarAdvControl(ModuleNumber, ACTL_REDRAWALL, 0);
+			return FarAdvControl(ModuleNumber, ACTL_REDRAWALL, nullptr, nullptr);
 	}
 
 	return FALSE;

@@ -73,7 +73,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "InterThreadCall.hpp"
 #include "SafeMMap.hpp"
 #include "ConfigRW.hpp"
-#include "ConfigSaveLoad.hpp"
+#include "ConfigOptSaveLoad.hpp"
 #include "help.hpp"
 
 #ifdef DIRECT_RT
@@ -82,8 +82,10 @@ int DirectRT = 0;
 
 static void print_help(const char *self)
 {
-	printf("FAR2L - oldschool file manager, with built-in terminal and other usefullness'es\n"
-			"Usage: %s [switches] [-cd apath [-cd ppath]]\n\n"
+	bool is_far2ledit = strstr(self, "far2ledit") != NULL;
+	printf("FAR2L - two-panel file manager, with built-in terminal and other usefulness'es\n"
+			"Usage: %s [switches] [-cd apath [-cd ppath]]\n"
+			"   or: far2ledit [switches] [filename]\n\n"
 			"where\n"
 			"  apath - path to a folder (or a file or an archive or command with prefix)\n"
 			"          for the active panel\n"
@@ -104,14 +106,18 @@ static void print_help(const char *self)
 			"      Allows to specify separate settings identity or FS location.\n"
 			" -v <filename>\n"
 			"      View the specified file.\n"
-			" -v - command line\n"
+			" -v - <command line>\n"
 			"      Executes given command line and opens viewer with its output.\n"
 			" -e[<line>[:<pos>]] [filename]\n"
 			"      Edit the specified file with optional cursor position specification or empty new file.\n"
-			" -e[<line>[:<pos>]] - command line\n"
+			" -e[<line>[:<pos>]] - <command line>\n"
 			"      Executes given command line and opens editor with its output.\n"
+			" -set:<parameter>=<value>\n"
+			"      Override the configuration parameter, see far:config for details.\n"
+			"      Example: far2l -set:Language.Main=English -set:Screen.Clock=0 -set:XLat.Flags=0xff -set:System.FindFolders=false\n"
+			"Switches -cd, -v and -e are not applicable if far2ledit.\n"
 			"\n",
-			self);
+			is_far2ledit ? "far2l" : self);
 	WinPortHelp();
 	// Console.Write(HelpMsg, ARRAYSIZE(HelpMsg)-1);
 }
@@ -132,32 +138,6 @@ static FARString ReconstructCommandLine(int argc, char **argv)
 	return cmd;
 }
 
-static FARString ExecuteCommandAndGrabItsOutput(FARString cmd)
-{
-
-	FARString strTempName;
-
-	if (!FarMkTempEx(strTempName))
-		return FARString();
-
-	std::string exec_cmd =
-			"echo Waiting command to complete...; "
-			"echo You can use Ctrl+C to stop it, or Ctrl+Alt+C - to hardly terminate.; ";
-	if (cmd.GetLength() != 0) {
-		exec_cmd+= cmd.GetMB();
-	} else {
-		exec_cmd+= "far2l -h";
-	}
-
-	exec_cmd+= " >";
-	exec_cmd+= strTempName.GetMB();
-	exec_cmd+= " 2>&1";
-
-	farExecuteA(exec_cmd.c_str(), EF_NOCMDPRINT);
-
-	return strTempName;
-}
-
 static int MainProcess(FARString strEditViewArg, FARString strDestName1, FARString strDestName2,
 		int StartLine, int StartChar)
 {
@@ -167,9 +147,9 @@ static int MainProcess(FARString strEditViewArg, FARString strDestName1, FARStri
 		clock_t cl_start = clock();
 		ChangePriority ChPriority(ChangePriority::NORMAL);
 		ControlObject CtrlObj;
-		WORD InitAttributes = 0;
+		uint64_t InitAttributes = 0;
 		Console.GetTextAttributes(InitAttributes);
-		SetColor(COL_COMMANDLINEUSERSCREEN, true);
+		SetFarColor(COL_COMMANDLINEUSERSCREEN, true);
 
 		if (Opt.OnlyEditorViewerUsed != Options::NOT_ONLY_EDITOR_VIEWER) {
 			Panel *DummyPanel = new Panel;
@@ -181,7 +161,7 @@ static int MainProcess(FARString strEditViewArg, FARString strDestName1, FARStri
 
 			if (Opt.OnlyEditorViewerUsed == Options::ONLY_EDITOR_ON_CMDOUT
 					|| Opt.OnlyEditorViewerUsed == Options::ONLY_VIEWER_ON_CMDOUT) {
-				strEditViewArg = ExecuteCommandAndGrabItsOutput(strEditViewArg);
+				strEditViewArg = ExecuteCommandAndGrabItsOutput(strEditViewArg, "far2l -h");
 			}
 
 			if (Opt.OnlyEditorViewerUsed == Options::ONLY_EDITOR
@@ -320,7 +300,7 @@ static int MainProcess(FARString strEditViewArg, FARString strDestName1, FARStri
 		}
 
 		// очистим за собой!
-		SetScreen(0, 0, ScrX, ScrY, L' ', COL_COMMANDLINEUSERSCREEN);
+		SetScreen(0, 0, ScrX, ScrY, L' ', FarColorToReal(COL_COMMANDLINEUSERSCREEN));
 		Console.SetTextAttributes(InitAttributes);
 		ScrBuf.ResetShadow();
 		ScrBuf.Flush();
@@ -332,7 +312,7 @@ static int MainProcess(FARString strEditViewArg, FARString strDestName1, FARStri
 
 static void SetupFarPath(const char *arg0)
 {
-	InMyTemp();		// pre-cache in env temp pathes
+	InMyTemp();		// pre-cache in env temp paths
 	InitCurrentDirectory();
 
 	char buf[PATH_MAX + 1];
@@ -393,9 +373,7 @@ int FarAppMain(int argc, char **argv)
 	Opt.LoadPlug.PluginsPersonal = TRUE;
 	Opt.LoadPlug.PluginsCacheOnly = FALSE;
 
-	char pid_str[32];
-	snprintf(pid_str, sizeof(pid_str) - 1, "%lu", (unsigned long)getpid());
-	setenv("FARPID", pid_str, 1);
+	setenv("FARPID", ToDec(getpid()).c_str(), 1);
 
 	g_strFarPath = g_strFarModuleName;
 
@@ -420,7 +398,8 @@ int FarAppMain(int argc, char **argv)
 	}
 
 	// run by symlink in editor mode
-	if (strstr(argv[0], "far2ledit") != NULL) {
+	bool is_far2ledit = strstr(argv[0], "far2ledit") != NULL;
+	if (is_far2ledit) {
 		Opt.OnlyEditorViewerUsed = Options::ONLY_EDITOR;
 		if (argc > 1) {
 			strEditViewArg = argv[argc - 1];	// use last argument
@@ -437,8 +416,13 @@ int FarAppMain(int argc, char **argv)
 			arg_w.erase(0, 1);
 		}
 		bool switchHandled = false;
-		if ((arg_w[0] == L'/' || arg_w[0] == L'-') && arg_w[1]) {
+		if ((/*arg_w[0] == L'/' ||*/ arg_w[0] == L'-') && arg_w[1]) {
 			switchHandled = true;
+			if (!StrCmpNI(arg_w.c_str() + 1, L"SET:", 4))
+			{
+				Opt.CmdLineStrings.emplace_back(arg_w.c_str() + 5);
+				continue;
+			}
 			switch (Upper(arg_w[1])) {
 				case L'A':
 
@@ -462,6 +446,9 @@ int FarAppMain(int argc, char **argv)
 
 					break;
 				case L'E':
+
+					if (is_far2ledit)
+						break;
 
 					if (iswdigit(arg_w[2])) {
 						StartLine = _wtoi((const wchar_t *)&arg_w[2]);
@@ -490,6 +477,9 @@ int FarAppMain(int argc, char **argv)
 
 					break;
 				case L'V':
+
+					if (is_far2ledit)
+						break;
 
 					if (I + 1 < argc) {
 						strEditViewArg = argv[I + 1];
@@ -533,6 +523,8 @@ int FarAppMain(int argc, char **argv)
 						Opt.LoadPlug.PluginsPersonal = FALSE;
 
 					} else if (Upper(arg_w[2]) == L'D' && !arg_w[3]) {
+						if (is_far2ledit)
+							break;
 						if (I + 1 < argc) {
 							I++;
 							arg_w = MB2Wide(argv[I]);
@@ -594,8 +586,10 @@ int FarAppMain(int argc, char **argv)
 		Opt.LoadPlug.PluginsPersonal = FALSE;
 	}
 
-	LoadConfig();
+	ConfigOptLoad();
 	InitConsole();
+	WINPORT(SetConsoleCursorBlinkTime)(NULL, Opt.CursorBlinkTime);
+
 	static_assert(!IsPtr(Msg::NewFileName._id),
 			"Too many language messages. Need to refactor code to eliminate use of IsPtr.");
 
@@ -727,14 +721,14 @@ int _cdecl main(int argc, char *argv[])
 			return sudo_main_askpass();
 		if (strcmp(name, "far2l_sudoapp") == 0)
 			return sudo_main_dispatcher(argc - 1, argv + 1);
-		if (argc >= 4) {
+		if (argc >= 5) {
 			if (strcmp(argv[1], "--libexec") == 0) {
 				return libexec(argv[2], argv[3], argv[4], argc - 5, argv + 5);
 			}
 		}
 		if (argc > 1
 				&& (strncasecmp(argv[1], "--h", 3) == 0 || strncasecmp(argv[1], "-h", 2) == 0
-						|| strcasecmp(argv[1], "/h") == 0 || strcasecmp(argv[1], "/?") == 0)) {
+						/*|| strcasecmp(argv[1], "/h") == 0*/ || strcasecmp(argv[1], "-?") == 0)) {
 
 			print_help(name);
 			return 0;
@@ -751,6 +745,11 @@ int _cdecl main(int argc, char *argv[])
 	umask(g_umask);
 
 	setlocale(LC_ALL, "");	// otherwise non-latin keys missing with XIM input method
+
+	const char *lcc = getenv("LC_COLLATE");
+	if (lcc && *lcc) {
+		setlocale(LC_COLLATE, lcc);
+	}
 
 	SetupFarPath(argv[0]);
 

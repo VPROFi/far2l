@@ -40,6 +40,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "keyboard.hpp"
 #include "lang.hpp"
 #include "colors.hpp"
+#include "palette.hpp"
 #include "keys.hpp"
 #include "help.hpp"
 #include "dialog.hpp"
@@ -94,7 +95,6 @@ static int CalcByteDistance(UINT CodePage, const wchar_t *begin, const wchar_t *
 
 	} else if (CodePage == CP_UTF8) {
 		distance = UtfCalcSpace<wchar_t, uint8_t>(begin, end - begin, false);
-
 	} else {	// one-byte code page?
 		distance = end - begin;
 	}
@@ -248,6 +248,10 @@ Viewer::~Viewer()
 	if (!OpenFailed && bVE_READ_Sent) {
 		CtrlObject->Plugins.CurViewer = this;	// HostFileViewer;
 		CtrlObject->Plugins.ProcessViewerEvent(VE_CLOSE, &ViewerID);
+	}
+
+	if (CtrlObject->Plugins.CurViewer == this) {
+		CtrlObject->Plugins.CurViewer = nullptr;
 	}
 }
 
@@ -492,9 +496,9 @@ void Viewer::ShowPage(int nMode)
 
 	if (!ViewFile.Opened()) {
 		if (!FHP->GetPathName().IsEmpty() && ((nMode == SHOW_RELOAD) || (nMode == SHOW_HEX))) {
-			SetScreen(X1, Y1, X2, Y2, L' ', COL_VIEWERTEXT);
+			SetScreen(X1, Y1, X2, Y2, L' ', FarColorToReal(COL_VIEWERTEXT));
 			GotoXY(X1, Y1);
-			SetColor(COL_WARNDIALOGTEXT);
+			SetFarColor(COL_WARNDIALOGTEXT);
 			FS << fmt::Cells() << fmt::Truncate(XX2 - X1 + 1) << Msg::ViewerCannotOpenFile;
 			ShowStatus();
 		}
@@ -526,17 +530,16 @@ void Viewer::ShowPage(int nMode)
 
 				ReadString(Strings[I], -1, MAX_VIEWLINE);
 			}
-
 			break;
-		case SHOW_UP:
 
+		case SHOW_UP:
 			Strings.ScrollUp();
 			Strings[0].nFilePos = FilePos;
 			SecondPos = Strings[1].nFilePos;
 			ReadString(Strings[0], (int)(SecondPos - FilePos), MAX_VIEWLINE);
 			break;
-		case SHOW_DOWN:
 
+		case SHOW_DOWN:
 			vseek(Strings[Y2 - Y1].nFilePos, SEEK_SET);
 			Strings.ScrollDown();
 			FilePos = Strings[0].nFilePos;
@@ -552,7 +555,7 @@ void Viewer::ShowPage(int nMode)
 		if (VM.Processed)
 			printer.reset(new AnsiEsc::Printer(B_BLACK | F_WHITE));
 		else
-			printer.reset(new PlainViewerPrinter(COL_VIEWERTEXT));
+			printer.reset(new PlainViewerPrinter(FarColorToReal(COL_VIEWERTEXT)));
 		if (IsUnicodeOrUtfCodePage(VM.CodePage))
 			printer->EnableBOMSkip();
 
@@ -597,13 +600,13 @@ void Viewer::ShowPage(int nMode)
 
 			if (StrLen > LeftPos + Width && ViOpt.ShowArrows) {
 				GotoXY(XX2, Y);
-				SetColor(COL_VIEWERARROWS);
+				SetFarColor(COL_VIEWERARROWS);
 				BoxText(0xbb);
 			}
 
 			if (LeftPos > 0 && ViOpt.ShowArrows && !Strings[I].IsEmpty()) {
 				GotoXY(X1, Y);
-				SetColor(COL_VIEWERARROWS);
+				SetFarColor(COL_VIEWERARROWS);
 				BoxText(0xab);
 			}
 		}
@@ -633,7 +636,7 @@ void Viewer::ShowHex()
 		bSelStartFound = false;
 		bSelEndFound = false;
 		//		SelSize=0;
-		SetColor(COL_VIEWERTEXT);
+		SetFarColor(COL_VIEWERTEXT);
 		GotoXY(X1, Y);
 
 		if (EndFile) {
@@ -807,7 +810,7 @@ void Viewer::ShowHex()
 		}
 
 		if (bSelStartFound && bSelEndFound) {
-			SetColor(COL_VIEWERSELECTEDTEXT);
+			SetFarColor(COL_VIEWERSELECTEDTEXT);
 			GotoXY((int)((int64_t)X1 + SelStart - HexLeftPos), Y);
 			FS << fmt::Cells() << fmt::Truncate(SelEnd - SelStart + 1)
 				<< OutStr + static_cast<size_t>(SelStart);
@@ -825,9 +828,9 @@ void Viewer::DrawScrollbar()
 {
 	if (ViOpt.ShowScrollbar) {
 		if (m_bQuickView)
-			SetColor(COL_PANELSCROLLBAR);
+			SetFarColor(COL_PANELSCROLLBAR);
 		else
-			SetColor(COL_VIEWERSCROLLBAR);
+			SetFarColor(COL_VIEWERSCROLLBAR);
 
 		if (!VM.Hex) {
 			ScrollBar(X2 + (m_bQuickView ? 1 : 0), Y1, Y2 - Y1 + 1,
@@ -987,11 +990,22 @@ void Viewer::ReadString(ViewerString &rString, int MaxSize, int StrSize)
 				bSelStartFound = true;
 			}
 
-			if (!(MaxSize--))
+			if (MaxSize == 0)
 				break;
 
 			if (!vgetc(Ch))
 				break;
+
+			if (MaxSize > 0) {
+				if (VM.CodePage == CP_UTF8) {
+					MaxSize-= UtfCalcSpace<wchar_t, char>(&Ch, 1, false);
+					if (MaxSize < 0) {
+						MaxSize = 0;
+					}
+				} else {
+					MaxSize--;
+				}
+			}
 
 			if (Ch == CRSym)
 				break;
@@ -1069,7 +1083,7 @@ void Viewer::ReadString(ViewerString &rString, int MaxSize, int StrSize)
 		rString.bSelection = true;
 }
 
-int64_t Viewer::VMProcess(int OpCode, void *vParam, int64_t iParam)
+int64_t Viewer::VMProcess(MacroOpcode OpCode, void *vParam, int64_t iParam)
 {
 	switch (OpCode) {
 		case MCODE_C_EMPTY:
@@ -1102,7 +1116,7 @@ int64_t Viewer::VMProcess(int OpCode, void *vParam, int64_t iParam)
 	$ 28.01.2001
 	- Путем проверки ViewFile на nullptr избавляемся от падения
 */
-int Viewer::ProcessKey(int Key)
+int Viewer::ProcessKey(FarKey Key)
 {
 	// Pressing Alt together with PageDown/PageUp allows to smoothly
 	// boost scrolling speed, releasing Alt while keeping PageDown/PageUp
@@ -1831,7 +1845,7 @@ int Viewer::ProcessKey(int Key)
 			return TRUE;
 		default:
 
-			if (Key >= L' ' && Key < 0x10000) {
+			if (Key >= L' ' && WCHAR_IS_VALID(Key)) {
 				Search(0, Key);
 				return TRUE;
 			}
@@ -2081,10 +2095,11 @@ void Viewer::Up()
 			//	khffgkjkfdg dfkghd jgfhklf |
 			//	sdflksj lfjghf fglh lf     |
 			//	dfdffgljh ldgfhj           |
-
+			bool LeadingSpaces = WrapBufSize > 0 && IsSpace(Buf[0]);
 			for (I = 0; I < WrapBufSize;) {
 				if (!IsSpace(Buf[I])) {
-					for (int CurLineStart = I, LastFitEnd = I + 1;; ++I) {
+					int CurLineStart = LeadingSpaces ? 0 : I; // Keep spaces at beginning of wrapped line: #2246
+					for (int LastFitEnd = CurLineStart + 1;; ++I) {
 						if (I == WrapBufSize) {
 							int distance =
 									CalcCodeUnitsDistance(VM.CodePage, &Buf[CurLineStart], &Buf[WrapBufSize]);
@@ -2100,6 +2115,7 @@ void Viewer::Up()
 							LastFitEnd = I + 1;
 						}
 					}
+					LeadingSpaces = false;
 
 				} else {
 					++I;
@@ -2540,13 +2556,6 @@ void Viewer::Search(int Next, int FirstChar)
 				if (CurTime - StartTime > RedrawTimeout) {
 					StartTime = CurTime;
 
-					if (CheckForEscSilent()) {
-						if (ConfirmAbortOp()) {
-							Redraw();
-							return;
-						}
-					}
-
 					INT64 Total = ReverseSearch ? StartPos : FileSize - StartPos;
 					INT64 Current = _abs64(CurPos - StartPos);
 					int Percent = Total > 0 ? static_cast<int>(Current * 100 / Total) : -1;
@@ -2561,6 +2570,13 @@ void Viewer::Search(int Next, int FirstChar)
 						}
 					}
 					ViewerSearchMsg(strMsgStr, Percent);
+
+					if (CheckForEscSilent()) {
+						if (ConfirmAbortOp()) {
+							Redraw();
+							return;
+						}
+					}
 				}
 
 				/*

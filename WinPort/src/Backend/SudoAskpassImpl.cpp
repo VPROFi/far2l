@@ -10,8 +10,29 @@
 class SudoAskpassScreen
 {
 	ConsoleInputPriority _cip;
+	struct FinalScreenUpdater
+	{
+		// deliver WINDOW_BUFFER_SIZE_EVENT after screen restored
+		// to ensure proper repaints of far2l's controls
+		INPUT_RECORD ir{};
+
+		FinalScreenUpdater()
+		{
+			unsigned int w{80}, h{25};
+			g_winport_con_out->GetSize(w, h);
+			ir.EventType = WINDOW_BUFFER_SIZE_EVENT;
+			ir.Event.WindowBufferSizeEvent.dwSize.X = w;
+			ir.Event.WindowBufferSizeEvent.dwSize.Y = h;
+		}
+
+		~FinalScreenUpdater()
+		{
+			ir.Event.WindowBufferSizeEvent.bDamaged = TRUE;
+			g_winport_con_in->Enqueue(&ir, 1);
+		}
+	} _fsu;
+
 	SavedScreen _ss;
-	INPUT_RECORD _ir_resized;
 	unsigned int _width = 0, _height = 0;
 	std::string _title, _text, _key_hint;
 	std::wstring _input;
@@ -21,7 +42,7 @@ class SudoAskpassScreen
 		RES_CANCEL
 	} _result = RES_PENDING;
 	bool _password_expected = false;
-	bool _need_repaint = false;
+	bool _need_repaint = true;
 
 	// 0 - password is empty, 1 - non-empty but yet not hashed, otherwise - hash value
 	uint64_t _panno_hash = 0;
@@ -70,7 +91,7 @@ class SudoAskpassScreen
 			switch (ir.EventType) {
 				case WINDOW_BUFFER_SIZE_EVENT:
 					_ss.Restore();
-					_ir_resized = ir;
+					_fsu.ir = ir;
 					_need_repaint = true;
 					break;
 
@@ -117,18 +138,31 @@ class SudoAskpassScreen
 				ci.Attributes = (x == _rect.Left || x == _rect.Right || y == _rect.Top || y == _rect.Bottom)
 					? AttrFrame : AttrInner;
 				COORD pos{x, y};
-				g_winport_con_out->Write(ci, pos);
+				// force repant if frame is damaged (likely by app's interface painted from other thread)
+				if (!_need_repaint && (y == _rect.Top || x == _rect.Left || x == _rect.Right)) {
+					CHAR_INFO ci_orig{};
+					g_winport_con_out->Read(ci_orig, pos);
+					if (ci_orig.Char.UnicodeChar != ci.Char.UnicodeChar || ci_orig.Attributes != ci.Attributes) {
+						_need_repaint = true;
+					}
+				}
+				if (_need_repaint) {
+					g_winport_con_out->Write(ci, pos);
+				}
 			}
 		}
 
-		g_winport_con_out->SetAttributes(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-		WriteCentered(_title, _rect.Top + 1);
-		WriteCentered(_key_hint, _rect.Top + 3);
+		if (_need_repaint) {
+			g_winport_con_out->SetAttributes(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+			WriteCentered(_title, _rect.Top + 1);
+			WriteCentered(_key_hint, _rect.Top + 3);
 
-		g_winport_con_out->SetAttributes(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-		WriteCentered(_text, _rect.Top + 2);
-		if (_password_expected) {
-			PaintPasswordPanno();
+			g_winport_con_out->SetAttributes(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
+			WriteCentered(_text, _rect.Top + 2);
+			if (_password_expected) {
+				PaintPasswordPanno();
+			}
+			_need_repaint = false;
 		}
 	}
 
@@ -209,7 +243,7 @@ public:
 		_key_hint("Confirm by <Enter> Cancel by <Esc>"),
 		_password_expected(password_expected)
 	{
-		_ir_resized.EventType = NOOP_EVENT;
+		_input.reserve(64);// to help secure cleanup in d-tor
 		Repaint();
 	}
 
@@ -218,8 +252,6 @@ public:
 		for (wchar_t &c : _input) {
 			*static_cast<volatile wchar_t *>(&c) = 0;
 		}
-		if (_ir_resized.EventType != NOOP_EVENT)
-				g_winport_con_in->Enqueue(&_ir_resized, 1);
 	}
 
 	bool Loop()
@@ -228,19 +260,17 @@ public:
 			if (g_winport_con_in->WaitForNonEmptyWithTimeout(700, _cip)) {
 				DispatchInput();
 
-			} else if (_password_expected) {
-				const uint64_t hash = TypedPasswordHash();
-				if (_panno_hash != hash) {
-					_panno_hash = hash;
-					_need_repaint = true;
+			} else {
+				if (_password_expected) {
+					const uint64_t hash = TypedPasswordHash();
+					if (_panno_hash != hash) {
+						_panno_hash = hash;
+					}
 				}
-			}
 
-			if (_result != RES_PENDING)
-				return _result == RES_OK;
+				if (_result != RES_PENDING)
+					return _result == RES_OK;
 
-			if (_need_repaint) {
-				_need_repaint = false;
 				Repaint();
 			}
 		}

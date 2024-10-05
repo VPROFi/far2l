@@ -145,66 +145,68 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 @CmdLine
 $ # FAR: a FAR parancssori kapcsolói#
+  Actual list see via #far2l -h# or #far2l --help#.
+
   A FAR a következő parancssori kapcsolókkal indítható:
 
-  #/a#    ^<wrap>Letiltja a 0-31-ig terjedő és a 255-ös ASCII kódú
+  #-a#    ^<wrap>Letiltja a 0-31-ig terjedő és a 255-ös ASCII kódú
 karakterek megjelenítését. Hasznos lehet, ha a FAR-t telnet alól használjuk.
 
-  #/ag#   Letiltja a pszeudografikus karakterek megjelenítését.
+  #-ag#   Letiltja a pszeudografikus karakterek megjelenítését.
         ^<wrap>
-  #/e[<sor>[:<pozíció>]] <fájlnév>#  A megadott fájlt szerkesztésre
-nyitja meg. A /e után megadható, hogy melyik sor hányadik karakterhelyére
+  #-e[<sor>[:<pozíció>]] <fájlnév>#  A megadott fájlt szerkesztésre
+nyitja meg. A -e után megadható, hogy melyik sor hányadik karakterhelyére
 álljon a kurzor.
 
-          Például: far /e70:2 readme.
+          Például: far -e70:2 readme.
 
-  #/i#    ^<wrap>Kicsi, 16x16-os ikont állít be a FAR konzolhoz. Néhány
+  #-i#    ^<wrap>Kicsi, 16x16-os ikont állít be a FAR konzolhoz. Néhány
 konfigurációnál a kapcsoló használata instabil működést eredményezhet.
           ^<wrap>
-  #/p[<path>]#  A "fő" plugineket a <path>-ben megadott elérési út
+  #-p[<path>]#  A "fő" plugineket a <path>-ben megadott elérési út
           ^<wrap>mappáiban keresi. Több keresési útvonal is megadható,
 ";"-vel elválasztva.
 
-          Példa: far /p%SystemRoot%\\Profiles\\%USERNAME%\\FAR
+          Példa: far -p%SystemRoot%\\Profiles\\%USERNAME%\\FAR
 
-  #/co#   ^<wrap>A FAR pluginjei csak a gyorsítótárból töltődhetnek be.
+  #-co#   ^<wrap>A FAR pluginjei csak a gyorsítótárból töltődhetnek be.
 Bár így a betöltésük gyorsabb, az új vagy megváltozott plugineket a FAR nem
 érzékeli. CSAK állandó pluginek esetén használjuk! Pluginek hozzáadása,
 cseréje vagy törlése után a FAR-t a kapcsoló nélkül kell elindítani. Ha a
 gyorsítótár üres, nem töltődik be plugin.
 
-          Megjegyzések a /p és /co kapcsolókhoz:
+          Megjegyzések a -p és -co kapcsolókhoz:
 
-        - ^<wrap>ha a /p után nincs érték, a FAR pluginek nélkül
+        - ^<wrap>ha a -p után nincs érték, a FAR pluginek nélkül
 fog elindulni;
-        - ha /p-nek adtunk <path> értéket, csak a megadott útvonalról
+        - ha -p-nek adtunk <path> értéket, csak a megadott útvonalról
 töltődnek be pluginek;
-        - ha csak a /co kapcsolóval indítjuk és a plugin gyorsítótár
+        - ha csak a -co kapcsolóval indítjuk és a plugin gyorsítótár
 nem üres, a gyorsítótárból töltődnek be a pluginek;
-        - a /co kapcsolót a FAR figyelmen kívül hagyja, ha /p is áll
+        - a -co kapcsolót a FAR figyelmen kívül hagyja, ha -p is áll
 mellette;
-        - ha sem a /p, sem a /co kapcsoló nem szerepel a parancssorban,
+        - ha sem a -p, sem a -co kapcsoló nem szerepel a parancssorban,
 akkor a pluginek csak az alapértelmezett plugin mappából, valamint a
 ~saját pluginek elérési útvonala~@SystemSettings@ által meghatározott
 mappákból töltődnek be.
 
-  #/m#    ^<wrap>A FAR induláskor nem tölti be a registryből a makróit.
+  #-m#    ^<wrap>A FAR induláskor nem tölti be a registryből a makróit.
 
-  #/ma#   ^<wrap>A "Futtatás a FAR indítása után" opciójú makrók nem
+  #-ma#   ^<wrap>A "Futtatás a FAR indítása után" opciójú makrók nem
 indulnak el a FAR-ral.
           ^<wrap>
-  #/u <felhasználónév>#  Lehetővé teszi, hogy a felhasználóknak saját
+  #-u <felhasználónév>#  Lehetővé teszi, hogy a felhasználóknak saját
 FAR beállításaik legyenek.
 
-          Például: far /u guest
+          Például: far -u guest
 
         ^<wrap>A FAR Manager a "FARUSER" ~környezeti változónak~@FAREnv@
 a <felhasználónév> értéket adja.
         ^<wrap>
-  #/v <fájlnév>#  Megnézi a megadott fájlt. Ha a <fájlnév> #-#, akkor az
+  #-v <fájlnév>#  Megnézi a megadott fájlt. Ha a <fájlnév> #-#, akkor az
 stdin adatát olvassa ki.
 
-        ^<wrap>Például a "dir|far /v -" a dir parancs kimenetét fogja
+        ^<wrap>Például a "dir|far -v -" a dir parancs kimenetét fogja
 kiolvasni.
 
         ^<wrap>Ha a bemenő adatfolyam üres, amikor a fájlnév "-" (ha
@@ -212,12 +214,17 @@ az előző példánál maradva a "dir" parancsot elhagyjuk), akkor a FAR a
 végtelenségig fog várakozni a bemenő adatfolyam végére. Ezt a hibát a FAR
 egy későbbi verziójában a szerzők valószínűleg ki fogják javítani.
 
-  #/w#
+  #-w#
   Stretch to console window instead of console buffer.
 
-  #/x#    ^<wrap>Letiltja a kivételek kezelését. Ezt a lehetőséget
+  #-x#    ^<wrap>Letiltja a kivételek kezelését. Ezt a lehetőséget
 a szerzők a pluginek fejlesztői részére tervezték, ezért nem ajánlott normál
 használat közben alkalmazni.
+
+  #-set:<parameter>=<value>#
+  Override the configuration parameter, see ~far:config~@FarConfig@ for details.
+  Example: far2l -set:Language.Main=English -set:Screen.Clock=0 -set:XLat.Flags=0x10001 -set:System.FindFolders=false
+
 
     A parancssorban megadható legfeljebb két olyan elérési út, ami mappára,
 fájlra vagy tömörített fájlra mutat. Az első elérési út az aktív, a második a
@@ -244,6 +251,8 @@ $ #Billentyűparancsok#
  ~Menu control commands~@MenuCmd@
 
  ~Egyebek~@MiscCmd@
+
+ ~Special commands~@SpecCmd@
 
 @MenuCmd
 $ #Menu control commands#
@@ -319,6 +328,7 @@ $ #Panelvezérlő parancsok#
 
   A rejtett és rendszerfájlokat megmutatja/elrejti            #Ctrl-H#
   Hosszú és rövid fájlnév nézet között vált                   #Ctrl-N#
+  Toggle hide/show/align file name ~highlighting markers~@Highlight@   #Ctrl-Alt-M#
 
   Elrejti/megmutatja a bal panelt                            #Ctrl-F1#
   Elrejti/megmutatja a jobb panelt                           #Ctrl-F2#
@@ -511,6 +521,7 @@ be vannak kapcsolva.
 beszúrása" parancs a fájlok helyi nevét illeszti be, elérési útjukkal és
 ~szimbolikus linkjeikkel~@HardSymLink@ együtt.
 
+    See also ~Special commands~@SpecCmd@.
 
 @FuncCmd
 $ #Panelvezérlő parancsok - rendszerparancsok#
@@ -785,6 +796,75 @@ $ #Panelvezérlő parancsok - egyebek#
     és húzzuk, vagy mozgathatók a #Ctrl-F5# lenyomása után a
     #kurzornyilakkal# is.
 
+    #Sticky controls# if your environment doesn't allow you to use some hotkeys
+due to TTY backend limitations or same hotkey used by other app you can following
+trick to achieve 'sticky' control keys behaviour. That means control key kept
+virtually pressed until next non-control key press:
+    #Ctrl+SPACE# gives sticky CONTROL key
+    #Alt+SPACE# gives sticky ALT key
+    #RCtrl+SPACE# gives sticky RCONTROL key
+    #RAlt+SPACE# gives sticky RALT key
+    Another way to achieve working hotkeys may be changing settings
+of desktop environment or external applications (in order to release needed hotkey combinations)
+or using exclusive handle hotkeys option
+in the ~Input Settings~@InputSettings@ (only in GUI backend mode).
+
+
+@SpecCmd
+$ #Special commands#
+ Special FAR pseudo-command usually starting with a prefix and a colon are processed
+in the far2l ~internal command line~@CmdLineCmd@ and
+in ~associated commands~@FileAssoc@, ~user menu~@UserMenu@ and the ~apply command~@ApplyCmd@.
+
+   #far:about#  - Far information, list and information about plugins.
+
+   #far:config# - ~Configuration editor~@FarConfig@.
+
+   #view:file# or #far:view:file# or #far:view file# - open in viewer existing #file#.
+   #view:<command# or #far:view:<command# or #far:view < command# - open in viewer result of #command# output in temporary file.
+
+   #edit:file# or #far:edit:file# or #far:edit file# - open in editor #file# (if #file# not exist will be open empty).
+   #edit:# or #far:edit:# or #far:edit# - open in editor new empty file.
+   #edit:<command# or #far:edit:<command# or #far:edit < command# - open in editor result of #command# output in temporary file.
+
+   #exit#       - reset shell in build-in ~Terminal~@Terminal@.
+
+   #exit far#   - close far2l.
+
+ Plugins can define their own command prefixes, see for each available plugin list of Command Prefixes via #far:about#.
+
+@FarConfig
+$ #Configuration editor#
+ Starts with the ~pseudo-command~@SpecCmd@ #far:config# in the far2l internal command line.
+
+ Allows to view and edit all Far Manager’s options.
+
+ Most options can be changed from the ~Options menu~@OptMenu@,
+however some options are available only here or in configuration ini-files.
+
+ The options are displayed in a list with four fields per item:
+  #-# The name in the SectionName.ParamName format (for example, Editor.TabSize)
+  #-# The type (boolean, integer, dword, string, binary or unknown)
+  #-# Whether the option is saved when Far configuration is saved (s) or not (-)
+  #-# The value (for integer or dword types the hexadecimal representation additionally displayed).
+ If current value of an option is other than the default, the option is marked with the ‘*’ character to the left of the name
+(‘?’ character marked items without default value).
+
+ Besides the list navigation keys, the following key combinations are supported:
+
+ #Enter# or #F4#       Edit the value.
+
+ #Del#               Reset the item to its default value.
+
+ #Ctrl-H#            Toggle display of all or only changed items.
+
+ #Ctrl-A#            Toggle column name arranging by left or by dot.
+
+ #Ctrl-Alt-F#        Toggle quick filtering mode.
+
+ #Esc# or #F10#        Close.
+
+    See also: common ~menu~@MenuCmd@ keyboard commands.
 
 @MsWheel
 $ #Egér: görgő támogatása#
@@ -1649,9 +1729,11 @@ $ #Parancs előzmények#
     a lista legördítve marad                            vagy #Ctrl-Ins#
 
   Toggle history view:                                         #Ctrl-T#
-             * with date lines + time column
+             * with date lines + time-path column
              * with date lines (as in far3)
              * plain history (as in far2)
+
+  Change path width in time-path column          #Ctrl-Left,Ctrl-Right#
 
   Show additional information                                      #F3#
 
@@ -1671,6 +1753,10 @@ $ #Parancs előzmények#
 
     A zárolt előzményelemek nem törlődnek az előzménylista módosulása
   vagy törlése esetén sem.
+
+    Remove duplicates method can be chosen in the ~Rendszer beállítások~@SystemSettings@.
+
+    For automatic exclusion from history, see ~dialog AutoComplete & History~@AutoCompleteSettings@.
 
     See also: common ~menu~@MenuCmd@ keyboard commands.
               common ~history~@HistoryCmd@ keyboard commands.
@@ -1809,6 +1895,8 @@ az azonos nevű fájloké.
 is csupán nevük, méretük és dátumuk alapján, így tartalmi eltéréseik nem hatnak
 a művelet eredményére.
 
+    See option #Case sensitive when compare or select# in ~Panel beállítások~@PanelSettings@.
+
 
 @UserMenu
 $ #Felhasználói menü#
@@ -1819,6 +1907,8 @@ felhasználói menüből hajthatunk végre. A menü tartalmazhat almenüket is. 
 használhatók. Jegyezzük meg, hogy a #!?<név>?<alapérték>!# szimbólum
 segítségével olyan párbeszédablakot készíthetünk, amelynek beviteli mezőiben
 közvetlenül a végrehajtás előtt paraméterezhetjük a parancsokat.
+
+    You may reorder menu items by pressing #Ctrl-Up# and #Ctrl-Down#.
 
     A ~Parancsok menü~@CmdMenu@ #Felhasználói menü szerkesztése# menüpontjában
 szerkeszthetjük vagy létrehozhatjuk fő és helyi felhasználói menüinket.
@@ -1853,18 +1943,20 @@ a nevét (ami majd a menüben jelenik meg) és a végrehajtandó parancs sorát.
     Almenü szerkesztésénél csak a gyorsbillentyűt és a nevet kell megadni.
 
     A helyi felhasználói menü az adott mappában egy #FarMenu.Ini# nevű fájlba
-mentődik. A főmenüt a FAR alaphelyzetben a regisztrációs adatbázisba menti, de
-fájlba is menthető. Ha helyi menüt készítettünk a FAR mappájában, a FAR ezt
-fogja használni a registrybe mentett főmenü helyett.
+mentődik.
+    A FAR a főmenüt a profilkönyvtárba menti az #~~/.config/far2l/settings/user_menu.ini# fájlba
+(a formátum eltér a FarMenu.ini-től).
+Ha helyi menüt készítettünk a FAR mappájában, a FAR ezt
+fogja használni a profil főmenü helyett.
 
     A #Shift-F10# azonnal bezárja a felhasználói menü ablakát, akár főmenü,
 akár almenü volt megnyitva benne.
 
 
     See also:
- 
-    The list of ~macro keys~@KeyMacroUserMenuList@, available in the user menu.
-    Common ~menu~@MenuCmd@ keyboard commands.
+      ~Special commands~@SpecCmd@.
+      The list of ~macro keys~@KeyMacroUserMenuList@, available in the user menu.
+      Common ~menu~@MenuCmd@ keyboard commands.
 
 @FileAssoc
 $ #Fájltársítások#
@@ -1891,7 +1983,9 @@ társításokat menüből választhatjuk ki.
 #fájltípusainak használata# opció be van kapcsolva, a FAR megpróbálja a
 Windows társításait alkalmazni.
 
-    See also: common ~menu~@MenuCmd@ keyboard commands.
+    See also:
+      ~Special commands~@SpecCmd@.
+      common ~menu~@MenuCmd@ keyboard commands.
 
 @FileAssocModify
 $ #Fájltársítások: szerkesztés#
@@ -2104,8 +2198,8 @@ megfelelően (néhány CD-ROM meghajtó hibás drivere miatt ez előfordulhat).
   #útvonala#                mappáinak elérési útvonalait, ahol a
                           ^<wrap>FAR-nak a "fő" plugineken túl modulokat
 kell keresnie. Több útvonalat beírhatunk, ";"-vel elválasztva, környezeti
-változók is használhatók. A saját pluginek nem töltődnek be, ha a FAR a /p
-vagy /co ~parancssori~@CmdLine@ kapcsolóval indul.
+változók is használhatók. A saját pluginek nem töltődnek be, ha a FAR a -p
+vagy -co ~parancssori~@CmdLine@ kapcsolóval indul.
 
   #Beállítások automatikus# Ha az opció be van kapcsolva, kilépéskor
   #mentése#                 a FAR önműködően menti a beállításait, a
@@ -2120,6 +2214,9 @@ $ #Beállítások: panel beállítások#
 
   #Fájlok kiemelése#        A ~fájlkiemelések~@Highlight@ engedélyezése.
 
+  #Fájlnevek megjelölésének megjelenítése# and #Fájlneveket igazítani a megjelölések szerint#
+works only if #Fájlok kiemelése# enabled and may be switched by #Ctrl-Alt-M#.
+
   #Automatikus#             Ha engedélyezett, a ~fastruktúra panelen~@TreePanel@
   #mappaváltás#             a kurzor mozgatására a másik panel is
                           ^<wrap>mappát vált. Ha nincs engedélyezve,
@@ -2129,6 +2226,9 @@ a fastruktúrán a mappaváltáshoz #Entert# kell ütni.
   #kijelölhetők#            fájlokat, hanem a mappákat is kijelöli.
                           ^<wrap>Kikapcsolt opciónál csak a fájlok kapnak
 jelölést.
+
+  #Case sensitive when#     Influence on ~Mappák összehasonlítása~@CompFolders@
+  #compare or select#       and ~Fájlok kijelölése~@SelectFiles@.
 
   #Mappák is rendezhetők#   A kiterjesztés szerinti rendezés nem csak
   #kiterjesztés szerint#    fájlokra, hanem mappákra is lehetséges.
@@ -2802,8 +2902,16 @@ párbeszédablakát.
     A #Shift-F1# pluginen lenyomva meghívja a plugin helyzetérzékeny
 súgóját (ha a súgófájl létezik).
 
+    If you don't see mounted flash drive in the Location menu (#Alt-F1/F2#)
+then check #Exceptions list# in Location Menu Options (#F9#).
+E.g., the #/run/*# pattern is included there by default.
+If you have udisks2 configured to mount removable drives under #/run/media/$USER/#
+you need to delete #/run/*# substring from exceptions list.
+After that add more accurate patterns such as #/run/user/*#
+in order to hide garbage mountpoints from the Location menu.
+
     See also:
-    Common ~menu~@MenuCmd@ keyboard commands.
+      Common ~menu~@MenuCmd@ keyboard commands.
 
 @DisconnectDrive
 $ #Hálózati meghajtó leválasztása#
@@ -2830,7 +2938,7 @@ párbeszédablakában a "Fájlok kiemelése" opcióval engedélyezhetjük vagy
 tilthatjuk le.
 
     Bármelyik csoport kiemelésének jellemzőit ~szerkeszthetjük~@HighlightEdit@
-a ~Beállítások~@OptMenu@ menü "Fájlkiemelések, rendezési csoportok"
+a ~Beállítások~@OptMenu@ menü "~Fájlkiemelések, rendezési csoportok~@HighlightList@"
 menüpontjában.
 
 
@@ -2838,6 +2946,8 @@ menüpontjában.
 $ #Fájlkiemelések, rendezési csoportok: vezérlőbillentyűk#
     A ~Fájlkiemelések, rendezési csoportok~@Highlight@ menüben különféle
 műveleteket hajthatunk végre a csoportok listáján, a következő billentyűkkel:
+
+  #Space#          - (De)Activate current group
 
   #Ins#            - Új kiemelési csoport létrehozása
 
@@ -2856,6 +2966,10 @@ csoportokat
 
     A FAR a csoportkiemeléseket felülről lefelé haladva vizsgálja. Ha érzékeli,
 hogy a fájl valamelyik csoport tagja, további hovatartozását nem vizsgálja.
+
+    Display of markers is controlled globally via a checkbox
+in the ~Panel settings~@PanelSettings@ dialog
+or may be switched by #Ctrl-Alt-M# in panels.
 
     See also: common ~menu~@MenuCmd@ keyboard commands.
 
@@ -2897,6 +3011,10 @@ legalább egy maszknak (kikapcsolt maszkelemzésnél a fájlnév nem számít);
      - megvan minden szükséges attribútuma;
 
      - nincs egyetlen kizárt attribútuma sem.
+
+    Display of markers is controlled globally via a checkbox
+in the ~Panel settings~@PanelSettings@ dialog
+or may be switched by #Ctrl-Alt-M# in panels.
 
     A Tömörített, Titkosított, Nem indexelt, Ritkított és Átmeneti
 attribútumok, valamint a szimbolikus linkek csak NTFS fájlrendszerben
@@ -3489,6 +3607,9 @@ kijelölést levesz.
     Ha nincsenek kjelölt fájlok, a műveletek csak a kurzor alatti fájlra
 hatnak.
 
+    See options #A mappák is kijelölhetők#
+and #Case sensitive when compare or select# in ~Panel beállítások~@PanelSettings@.
+
 
 @CopyFiles
 $ #Másolás, mozgatás, átnevezés és linkek létrehozása#
@@ -3568,6 +3689,9 @@ fájlok írják felül a célhelyen létezőket;
     #Csak olvasható fájloknál is kérdez# - ha a célhelyen "csak
 olvasható" attribútumú fájllal találkozik, a
 felülírás előtt újabb megerősítést kér.
+    If the corresponding item in ~Confirmations~@ConfirmDlg@ is unchecked,
+then "Already existing files" are disabled
+and the #Overwrite# action is silently applied.
 
     A ~Rendszer beállítások~@SystemSettings@ menü "Másoláshoz a rendszerrutin
 használata" opciójával a FAR a Windows operációs rendszer CopyFileEx nevű
@@ -3711,6 +3835,9 @@ linkeket. Mivel a szimbolikus link a mappa csomópontok fejlettebb
 változata, ezért az ilyen linkek fájlokra és nem-helyi mappákra is
 mutathatnak, valamint relatív elérési útvonalak is használhatók.
 
+    #Default suggestion# in field #Link type# may be changed in ~System settings~@SystemSettings@ to
+    - Hardlink for files, Symlink for directories
+    - Symlink always
 
 @ErrCopyItSelf
 $ #Hiba: nem másolható vagy mozgatható önmagára#
@@ -3798,6 +3925,7 @@ megegyező nevű RAR tömörített fájlokba mozgatja a kijelölt fájlokat. Az
 "explorer /select,!.!" parancs megnyitja a Windows Intézőt és ráállítja a
 kurzort az aktuális fájlra vagy mappára.
 
+    See also ~Special commands~@SpecCmd@
     Lásd még ~Operációs rendszer parancsok~@OSCommands@.
 
 
@@ -3878,7 +4006,7 @@ az utódfolyamatok részére:
 
     #FARLANG#          A kezelőfelület aktuális nyelve.
 
-    #FARUSER#          ^<wrap>A ~parancssorban~@CmdLine@ a /u kapcsolóval
+    #FARUSER#          ^<wrap>A ~parancssorban~@CmdLine@ a -u kapcsolóval
 megadott felhasználói név.
 
 
@@ -4149,6 +4277,8 @@ erre a célra kifejlesztett segédprogramokkal és pluginekkel adhatunk a
 
     A makrónyelv leírása megtalálható a kísérő dokumentációban.
 
+    Online dokumentáció:
+    ~https://api.farmanager.com/ru/macro/~@https://api.farmanager.com/ru/macro/@
 
 @KeyMacroEditList
 $ #Makrók: a szerkesztő makrói#

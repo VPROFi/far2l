@@ -1,5 +1,5 @@
 ## Coding style
-See: CODESTYLE.md
+See: [CODESTYLE.md](CODESTYLE.md)
 
 ## Lyric
 I implemented/borrowed from WINE some commonly used WinAPI functions. They are all declared in WinPort/WinPort.h and corresponding defines can be found in WinPort/WinCompat.h (both are included by WinPort/windows.h). Note that this stuff may not be 1-to-1 to corresponding Win32 functionality also doesn't provide full-UNIX functionality, but it simplifies porting and can be considered as temporary scaffold.
@@ -58,7 +58,7 @@ This two functions not added but changed to use console cells count as string li
 
 ### Added following commands into FILE_CONTROL_COMMANDS:
 * `FCTL_GETPANELPLUGINHANDLE`
-Can be used to interract with plugin that renders other panel.
+Can be used to interact with plugin that renders other panel.
 `hPlugin` can be set to `PANEL_ACTIVE` or `PANEL_PASSIVE`.
 `Param1` ignored.
 `Param2` points to value of type `HANDLE`, call sets that value to handle of plugin that renders specified panel or `INVALID_HANDLE_VALUE`.
@@ -66,6 +66,9 @@ Can be used to interract with plugin that renders other panel.
 ### Added following plugin-exported functions:
 * `int MayExitFARW();`
 far2l asks plugin if it can exit now. If plugin has some background tasks pending it may block exiting of far2l, however it highly recommended to give user choice using UI prompt.
+
+* `int GetLinkTargetW(HANDLE hPlugin, struct PluginPanelItem *PanelItem, wchar_t *Target, size_t TargetSize, int OpMode);`
+far2l uses this to resolve symlink destination when user selects plugin's item that has FILE_ATTRIBUTE_REPARSE_POINT. Target is displayed in status field as for local symlinks.
 
 ### Added following dialog messages:
 * `DM_SETREADONLY` - changes readonly-ness of selected dialog edit control item

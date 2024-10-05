@@ -59,6 +59,7 @@ public:
 public:
 	FilePanels();
 	virtual ~FilePanels();
+	void UpdateCmdLineVisibility(bool repos = false);
 
 public:
 	void Init();
@@ -73,11 +74,11 @@ public:
 
 	void SetupKeyBar();
 
-	virtual int ProcessKey(int Key);
+	virtual int ProcessKey(FarKey Key);
 	virtual int ProcessMouse(MOUSE_EVENT_RECORD *MouseEvent);
-	virtual int64_t VMProcess(int OpCode, void *vParam = nullptr, int64_t iParam = 0);
+	virtual int64_t VMProcess(MacroOpcode OpCode, void *vParam = nullptr, int64_t iParam = 0);
 
-	int SetAnhoterPanelFocus();
+	int SetAnotherPanelFocus();
 	int SwapPanels();
 	int ChangePanelViewMode(Panel *Current, int Mode, BOOL RefreshFrame);
 

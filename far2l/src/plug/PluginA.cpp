@@ -84,6 +84,8 @@ static const char szCache_ProcessEditorEvent[] = "ProcessEditorEvent";
 static const char szCache_ProcessViewerEvent[] = "ProcessViewerEvent";
 static const char szCache_ProcessDialogEvent[] = "ProcessDialogEvent";
 static const char szCache_Configure[] = "Configure";
+static const char szCache_GetFiles[] = "GetFiles";
+static const char szCache_ProcessHostFile[] = "ProcessHostFile";
 
 static const char NFMP_OpenPlugin[] = "OpenPlugin";
 static const char NFMP_OpenFilePlugin[] = "OpenFilePlugin";
@@ -163,6 +165,8 @@ bool PluginA::LoadFromCache()
 	pProcessViewerEvent = (PLUGINPROCESSVIEWEREVENT)(INT_PTR)kfh.GetUInt(szCache_ProcessViewerEvent, 0);
 	pProcessDialogEvent = (PLUGINPROCESSDIALOGEVENT)(INT_PTR)kfh.GetUInt(szCache_ProcessDialogEvent, 0);
 	pConfigure = (PLUGINCONFIGURE)(INT_PTR)kfh.GetUInt(szCache_Configure, 0);
+	pGetFiles = (PLUGINGETFILES)(INT_PTR)kfh.GetUInt(szCache_GetFiles, 0);
+	pProcessHostFile = (PLUGINPROCESSHOSTFILE)(INT_PTR)kfh.GetUInt(szCache_ProcessHostFile, 0);
 	WorkFlags.Set(PIWF_CACHED);		// too much "cached" flags
 
 	if (kfh.GetInt(szCache_Preopen) != 0)
@@ -232,6 +236,8 @@ bool PluginA::SaveToCache()
 	kfh.SetUInt(GetSettingsName(), szCache_ProcessViewerEvent, pProcessViewerEvent != nullptr);
 	kfh.SetUInt(GetSettingsName(), szCache_ProcessDialogEvent, pProcessDialogEvent != nullptr);
 	kfh.SetUInt(GetSettingsName(), szCache_Configure, pConfigure != nullptr);
+	kfh.SetUInt(GetSettingsName(), szCache_GetFiles, pGetFiles!=nullptr);
+	kfh.SetUInt(GetSettingsName(), szCache_ProcessHostFile, pProcessHostFile!=nullptr);
 	return true;
 }
 
@@ -304,9 +310,9 @@ static int farDispatchInterThreadCallsA()
 static void WINAPI farBackgroundTaskA(const char *Info, BOOL Started)
 {
 	if (Started)
-		CtrlObject->Plugins.BackroundTaskStarted(MB2Wide(Info).c_str());
+		CtrlObject->Plugins.BackgroundTaskStarted(MB2Wide(Info).c_str());
 	else
-		CtrlObject->Plugins.BackroundTaskFinished(MB2Wide(Info).c_str());
+		CtrlObject->Plugins.BackgroundTaskFinished(MB2Wide(Info).c_str());
 }
 
 static size_t WINAPI farStrCellsCountA(const char *Str, size_t CharsCount)
@@ -683,7 +689,7 @@ int PluginA::ProcessEditorEvent(int Event, PVOID Param)
 		es.id = EXCEPT_PROCESSEDITOREVENT;
 		es.nDefaultResult = 0;
 		EXECUTE_FUNCTION_EX(pProcessEditorEvent(Event, Param), es);
-		(void)es;	// supress 'set but not used' warning
+		(void)es;	// suppress 'set but not used' warning
 	}
 
 	return 0;	// oops!
@@ -696,7 +702,7 @@ int PluginA::ProcessViewerEvent(int Event, void *Param)
 		es.id = EXCEPT_PROCESSVIEWEREVENT;
 		es.nDefaultResult = 0;
 		EXECUTE_FUNCTION_EX(pProcessViewerEvent(Event, Param), es);
-		(void)es;	// supress 'set but not used' warning
+		(void)es;	// suppress 'set but not used' warning
 	}
 
 	return 0;	// oops, again!
@@ -751,8 +757,13 @@ void PluginA::FreeVirtualFindData(HANDLE hPlugin, PluginPanelItem *PanelItem, in
 		es.id = EXCEPT_FREEVIRTUALFINDDATA;
 		EXECUTE_FUNCTION(pFreeVirtualFindData(hPlugin, pVFDPanelItemA, ItemsNumber), es);
 		pVFDPanelItemA = nullptr;
-		(void)es;	// supress 'set but not used' warning
+		(void)es;	// suppress 'set but not used' warning
 	}
+}
+
+bool PluginA::GetLinkTarget(HANDLE hPlugin, PluginPanelItem *PanelItem, FARString &result, int OpMode)
+{
+	return false;
 }
 
 int PluginA::GetFiles(HANDLE hPlugin, PluginPanelItem *PanelItem, int ItemsNumber, int Move,
@@ -927,7 +938,7 @@ void PluginA::FreeFindData(HANDLE hPlugin, PluginPanelItem *PanelItem, int Items
 		es.id = EXCEPT_FREEFINDDATA;
 		EXECUTE_FUNCTION(pFreeFindData(hPlugin, pFDPanelItemA, ItemsNumber), es);
 		pFDPanelItemA = nullptr;
-		(void)es;	// supress 'set but not used' warning
+		(void)es;	// suppress 'set but not used' warning
 	}
 }
 
@@ -952,7 +963,7 @@ void PluginA::ClosePlugin(HANDLE hPlugin)
 		ExecuteStruct es;
 		es.id = EXCEPT_CLOSEPLUGIN;
 		EXECUTE_FUNCTION(pClosePlugin(hPlugin), es);
-		(void)es;	// supress 'set but not used' warning
+		(void)es;	// suppress 'set but not used' warning
 	}
 
 	FreeOpenPluginInfo();
@@ -1075,7 +1086,7 @@ void PluginA::GetOpenPluginInfo(HANDLE hPlugin, OpenPluginInfo *pInfo)
 		oldfar::OpenPluginInfo InfoA{};
 		EXECUTE_FUNCTION(pGetOpenPluginInfo(hPlugin, &InfoA), es);
 		ConvertOpenPluginInfo(InfoA, pInfo);
-		(void)es;	// supress 'set but not used' warning
+		(void)es;	// suppress 'set but not used' warning
 	}
 }
 
@@ -1203,7 +1214,7 @@ void PluginA::ExitFAR()
 		ExecuteStruct es;
 		es.id = EXCEPT_EXITFAR;
 		EXECUTE_FUNCTION(pExitFAR(), es);
-		(void)es;	// supress 'set but not used' warning
+		(void)es;	// suppress 'set but not used' warning
 	}
 }
 

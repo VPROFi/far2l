@@ -57,9 +57,15 @@ DWORD ConvertYearToFull(DWORD ShortYear)
 
 int GetDateFormat()
 {
-	int Result = 1;
+	// 0 = month-day-year
+	// 1 = day-month-year
+	// 2 = year-month-day
+	// other = 2
+
+	//int Result = 1;
 	//	GetLocaleInfo(LOCALE_USER_DEFAULT,LOCALE_IDATE|LOCALE_RETURN_NUMBER,reinterpret_cast<LPWSTR>(&Result),sizeof(Result)/sizeof(WCHAR));
-	return Result;
+	//return Result;
+	return (Opt.DateFormat >= 0 && Opt.DateFormat <= 2) ? Opt.DateFormat : GetDateFormatDefault();
 }
 
 wchar_t GetDateSeparator()
@@ -67,7 +73,8 @@ wchar_t GetDateSeparator()
 	//	wchar_t Info[100];
 	//	GetLocaleInfo(LOCALE_USER_DEFAULT,LOCALE_SDATE,Info,ARRAYSIZE(Info));
 	//	return *Info;
-	return L'/';
+	//return L'/';
+	return Opt.strDateSeparator.IsEmpty() ? GetDateSeparatorDefault() : Opt.strDateSeparator.At(0);
 }
 
 wchar_t GetTimeSeparator()
@@ -75,7 +82,8 @@ wchar_t GetTimeSeparator()
 	//	wchar_t Info[100];
 	//	GetLocaleInfo(LOCALE_USER_DEFAULT,LOCALE_STIME,Info,ARRAYSIZE(Info));
 	//	return *Info;
-	return L':';
+	//return L':';
+	return Opt.strTimeSeparator.IsEmpty() ? GetTimeSeparatorDefault() : Opt.strTimeSeparator.At(0);
 }
 
 void PrepareStrFTime()
@@ -527,20 +535,17 @@ size_t MkStrFTime(FARString &strDest, const wchar_t *Fmt)
 	return StrFTime(strDest, Fmt, time_now);
 }
 
-int64_t FileTimeDifference(const FILETIME *a, const FILETIME *b)
-{
-	LARGE_INTEGER A =
-						{
-								{a->dwLowDateTime, (LONG)a->dwHighDateTime}
-    },
-				B = {{b->dwLowDateTime, (LONG)b->dwHighDateTime}};
-	return A.QuadPart - B.QuadPart;
-}
-
 uint64_t FileTimeToUI64(const FILETIME *ft)
 {
-	ULARGE_INTEGER A = { {ft->dwLowDateTime, ft->dwHighDateTime} };
-	return A.QuadPart;
+	ULARGE_INTEGER uli;
+	uli.LowPart = ft->dwLowDateTime;
+	uli.HighPart = ft->dwHighDateTime;
+	return uli.QuadPart;
+}
+
+int64_t FileTimeDifference(const FILETIME *a, const FILETIME *b)
+{
+	return (int64_t)FileTimeToUI64(a) - (int64_t)FileTimeToUI64(b);
 }
 
 void GetFileDateAndTime(const wchar_t *Src, LPWORD Dst, size_t Count, int Separator)
@@ -639,12 +644,19 @@ void StrToDateTime(const wchar_t *CDate, const wchar_t *CTime, FILETIME &ft, int
 	}
 }
 
+static bool Init = false; // for ConvertDate()
+
+void ConvertDate_ResetInit()
+{
+	Init = false;
+}
+
 void ConvertDate(const FILETIME &ft, FARString &strDateText, FARString &strTimeText, int TimeLength,
 		int Brief, int TextMonth, int FullYear, int DynInit)
 {
 	static int WDateFormat;
 	static wchar_t WDateSeparator, WTimeSeparator, WDecimalSeparator;
-	static bool Init = false;
+	//static bool Init = false;
 	static SYSTEMTIME lt;
 	int DateFormat;
 	wchar_t DateSeparator, TimeSeparator, DecimalSeparator;
@@ -761,13 +773,12 @@ void ConvertDate(const FILETIME &ft, FARString &strDateText, FARString &strTimeT
 
 void ConvertRelativeDate(const FILETIME &ft, FARString &strDaysText, FARString &strTimeText)
 {
-	ULARGE_INTEGER time = { {ft.dwLowDateTime, ft.dwHighDateTime}};
-
-	UINT64 ms = (time.QuadPart/= 10000) % 1000;
-	UINT64 s = (time.QuadPart/= 1000) % 60;
-	UINT64 m = (time.QuadPart/= 60) % 60;
-	UINT64 h = (time.QuadPart/= 60) % 24;
-	UINT64 d = time.QuadPart/= 24;
+	uint64_t t64 = FileTimeToUI64(&ft);
+	UINT64 ms = (t64/= 10000) % 1000;
+	UINT64 s = (t64/= 1000) % 60;
+	UINT64 m = (t64/= 60) % 60;
+	UINT64 h = (t64/= 60) % 24;
+	UINT64 d = t64/= 24;
 
 	FormatString DaysText;
 	DaysText << d;

@@ -59,6 +59,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "pathmix.hpp"
 #include "cmdline.hpp"
 #include "UsedChars.hpp"
+#include "help.hpp"
 
 VMenu::VMenu(const wchar_t *Title,		// заголовок меню
 		MenuDataEx *Data,				// пункты меню
@@ -122,6 +123,9 @@ VMenu::VMenu(const wchar_t *Title,		// заголовок меню
 
 	if (!CheckFlags(VMENU_LISTBOX))
 		FrameManager->ModalizeFrame(this);
+
+	if (ParentDialog)
+		SetBottomTitle(L"Ctrl-Alt-F"); // by default info about keys for toggle filtering feature
 }
 
 VMenu::~VMenu()
@@ -225,7 +229,7 @@ void VMenu::UpdateItemFlags(int Pos, DWORD NewFlags)
 }
 
 // переместить курсор c учётом пунктов которые не могу получать фокус
-int VMenu::SetSelectPos(int Pos, int Direct)
+int VMenu::SetSelectPos(int Pos, int Direct, bool stop_on_edge)
 {
 	CriticalSectionLock Lock(CS);
 
@@ -234,7 +238,7 @@ int VMenu::SetSelectPos(int Pos, int Direct)
 
 	for (int Pass = 0, I = 0;; I++) {
 		if (Pos < 0) {
-			if (CheckFlags(VMENU_WRAPMODE)) {
+			if (CheckFlags(VMENU_WRAPMODE) && !stop_on_edge) {
 				Pos = ItemCount - 1;
 			} else {
 				Pos = 0;
@@ -243,7 +247,7 @@ int VMenu::SetSelectPos(int Pos, int Direct)
 		}
 
 		if (Pos >= ItemCount) {
-			if (CheckFlags(VMENU_WRAPMODE)) {
+			if (CheckFlags(VMENU_WRAPMODE) && !stop_on_edge) {
 				Pos = 0;
 			} else {
 				Pos = ItemCount - 1;
@@ -566,7 +570,7 @@ void VMenu::DeleteItems()
 	SetFlags(VMENU_UPDATEREQUIRED);
 }
 
-int VMenu::GetCheck(int Position)
+uint32_t VMenu::GetCheck(int Position)
 {
 	CriticalSectionLock Lock(CS);
 
@@ -581,12 +585,12 @@ int VMenu::GetCheck(int Position)
 	if (!(Item[ItemPos]->Flags & LIF_CHECKED))
 		return 0;
 
-	int Checked = Item[ItemPos]->Flags & 0xFFFF;
+	const uint32_t Check = Item[ItemPos]->Flags & 0xFFFF;
 
-	return Checked ? Checked : 1;
+	return Check ? Check : 1;
 }
 
-void VMenu::SetCheck(int Check, int Position)
+void VMenu::SetCheck(uint32_t Check, int Position)
 {
 	CriticalSectionLock Lock(CS);
 
@@ -668,12 +672,12 @@ void VMenu::FilterStringUpdated(bool bLonger)
 		SetSelectPos(0, 1);
 }
 
-bool VMenu::IsFilterEditKey(int Key)
+bool VMenu::IsFilterEditKey(FarKey Key)
 {
-	return (Key >= (int)KEY_SPACE && Key < 0xffff) || Key == KEY_BS;
+	return (Key >= (int)KEY_SPACE && WCHAR_IS_VALID(Key)) || Key == KEY_BS;
 }
 
-bool VMenu::ShouldSendKeyToFilter(int Key)
+bool VMenu::ShouldSendKeyToFilter(FarKey Key)
 {
 	if (Key == KEY_CTRLALTF)
 		return true;
@@ -689,9 +693,9 @@ bool VMenu::ShouldSendKeyToFilter(int Key)
 	return false;
 }
 
-int VMenu::ReadInput(INPUT_RECORD *GetReadRec)
+FarKey VMenu::ReadInput(INPUT_RECORD *GetReadRec)
 {
-	int ReadKey;
+	FarKey ReadKey;
 
 	for (;;) {
 		ReadKey = Modal::ReadInput(GetReadRec);
@@ -707,7 +711,7 @@ int VMenu::ReadInput(INPUT_RECORD *GetReadRec)
 	return ReadKey;
 }
 
-int64_t VMenu::VMProcess(int OpCode, void *vParam, int64_t iParam)
+int64_t VMenu::VMProcess(MacroOpcode OpCode, void *vParam, int64_t iParam)
 {
 	switch (OpCode) {
 		case MCODE_C_EMPTY:
@@ -863,7 +867,7 @@ int64_t VMenu::VMProcess(int OpCode, void *vParam, int64_t iParam)
 
 bool VMenu::AddToFilter(const wchar_t *str)
 {
-	int Key;
+	FarKey Key;
 
 	if (bFilterEnabled && !bFilterLocked) {
 		while ((Key = *str)) {
@@ -881,7 +885,7 @@ bool VMenu::AddToFilter(const wchar_t *str)
 	return false;
 }
 
-int VMenu::ProcessKey(int Key)
+int VMenu::ProcessKey(FarKey Key)
 {
 	CriticalSectionLock Lock(CS);
 
@@ -939,7 +943,7 @@ int VMenu::ProcessKey(int Key)
 		case KEY_NUMENTER:
 		case KEY_ENTER: {
 			if (!ParentDialog || CheckFlags(VMENU_COMBOBOX)) {
-				if (ItemCanBeEntered(Item[SelectPos]->Flags)) {
+				if (SelectPos < 0 || ItemCanBeEntered(Item[SelectPos]->Flags)) {
 					EndLoop = TRUE;
 					Modal::ExitCode = SelectPos;
 				}
@@ -949,6 +953,7 @@ int VMenu::ProcessKey(int Key)
 		}
 		case KEY_ESC:
 		case KEY_F10: {
+			EnableFilter(false);
 			if (!ParentDialog || CheckFlags(VMENU_COMBOBOX)) {
 				EndLoop = TRUE;
 				Modal::ExitCode = -1;
@@ -1057,32 +1062,35 @@ int VMenu::ProcessKey(int Key)
 
 			break;
 		}
+
 		case KEY_MSWHEEL_UP:	// $ 27.04.2001 VVM - Обработка KEY_MSWHEEL_XXXX
+			SetSelectPos(SelectPos - 1, -1, true);
+			ShowMenu(true, false);
+			break;
+
+		case KEY_MSWHEEL_DOWN:	// $ 27.04.2001 VVM + Обработка KEY_MSWHEEL_XXXX
+			SetSelectPos(SelectPos + 1, 1, true);
+			ShowMenu(true, false);
+			break;
+
 		case KEY_LEFT:
 		case KEY_NUMPAD4:
 		case KEY_UP:
 		case KEY_NUMPAD8: {
-			SetSelectPos(SelectPos - 1, -1);
+			SetSelectPos(SelectPos - 1, -1, IsRepeatedKey() && !Opt.VMenu.MenuLoopScroll);
 			ShowMenu(true, false);
 			break;
 		}
-		case KEY_MSWHEEL_DOWN:	// $ 27.04.2001 VVM + Обработка KEY_MSWHEEL_XXXX
 		case KEY_RIGHT:
 		case KEY_NUMPAD6:
 		case KEY_DOWN:
 		case KEY_NUMPAD2: {
-			SetSelectPos(SelectPos + 1, 1);
+			SetSelectPos(SelectPos + 1, 1, IsRepeatedKey() && !Opt.VMenu.MenuLoopScroll);
 			ShowMenu(true, false);
 			break;
 		}
 		case KEY_CTRLALTF: {
-			bFilterEnabled = !bFilterEnabled;
-			bFilterLocked = false;
-			strFilter.Clear();
-
-			if (!bFilterEnabled)
-				RestoreFilteredItems();
-
+			EnableFilter(!bFilterEnabled);
 			DisplayObject();
 			break;
 		}
@@ -1149,7 +1157,7 @@ int VMenu::ProcessKey(int Key)
 			if (!CheckKeyHiOrAcc(Key, 0, 0)) {
 				if (Key == KEY_SHIFTF1 || Key == KEY_F1) {
 					if (ParentDialog)
-						;	// ParentDialog->ProcessKey(Key);
+						Help::Present(L"MenuCmd",L"",FHELP_NOSHOWERROR);	// ParentDialog->ProcessKey(Key);
 					else
 						ShowHelp();
 
@@ -1579,8 +1587,8 @@ void VMenu::DrawEdges()
 			Box(X1, Y1, X2, Y2, Colors[VMenuColorBox], BoxType);
 
 			if (!CheckFlags(VMENU_LISTBOX | VMENU_ALWAYSSCROLLBAR)) {
-				MakeShadow(X1 + 2, Y2 + 1, X2 + 1, Y2 + 1);
-				MakeShadow(X2 + 1, Y1 + 1, X2 + 2, Y2 + 1);
+				MakeShadow(X1 + 2, Y2 + 1, X2, Y2 + 1, SaveScr);
+				MakeShadow(X2 + 1, Y1 + 1, X2 + 2, Y2 + 1, SaveScr);
 			}
 		} else {
 			if (BoxType != NO_BOX)
@@ -1589,8 +1597,8 @@ void VMenu::DrawEdges()
 				SetScreen(X1, Y1, X2, Y2, L' ', Colors[VMenuColorBody]);
 
 			if (!CheckFlags(VMENU_LISTBOX | VMENU_ALWAYSSCROLLBAR)) {
-				MakeShadow(X1, Y2 + 2, X2 + 3, Y2 + 2);
-				MakeShadow(X2 + 3, Y1, X2 + 4, Y2 + 2);
+				MakeShadow(X1, Y2 + 2, X2 + 2, Y2 + 2, SaveScr);
+				MakeShadow(X2 + 3, Y1, X2 + 4, Y2 + 2, SaveScr);
 			}
 
 			if (BoxType != NO_BOX)
@@ -1905,7 +1913,7 @@ void VMenu::ShowMenu(bool IsParent, bool ForceFrameRedraw)
 					CheckMark[0] = wchar_t((Item[I]->Flags & 0xFFFF) ? Item[I]->Flags & 0xFFFF : 0x221A);
 				}
 
-				int Col;
+				uint64_t Col;
 				if ((Item[I]->Flags & LIF_SELECTED))
 					Col = Colors[Item[I]->Flags & LIF_GRAYED ? VMenuColorSelGrayed : VMenuColorSelected];
 				else
@@ -1981,6 +1989,7 @@ void VMenu::ShowMenu(bool IsParent, bool ForceFrameRedraw)
 			}
 
 			SetColor(Colors[VMenuColorText]);
+
 			// сделаем добавочку для NO_BOX
 			FS << fmt::Expand(((BoxType != NO_BOX) ? X2 - X1 - 1 : X2 - X1) + ((BoxType == NO_BOX) ? 1 : 0))
 				<< L"";
@@ -2171,7 +2180,8 @@ bool VMenu::CheckKeyHiOrAcc(DWORD Key, int Type, int Translate)
 
 		if (ItemCanHaveFocus(CurItem->Flags)
 				&& ((!Type && CurItem->AccelKey && Key == CurItem->AccelKey)
-						|| (Type && IsKeyHighlighted(CurItem->strName, Key, Translate, CurItem->AmpPos)))) {
+						|| (Type && !CheckFlags(VMENU_SHOWAMPERSAND)
+								&& IsKeyHighlighted(CurItem->strName, Key, Translate, CurItem->AmpPos)))) {
 			SetSelectPos(I, 1);
 			ShowMenu(true, false);
 
@@ -2452,12 +2462,14 @@ void VMenu::GetColors(FarListColors *ColorsOut)
 	memmove(ColorsOut->Colors, Colors, Min(sizeof(Colors), ColorsOut->ColorCount * sizeof(Colors[0])));
 }
 
-void VMenu::SetOneColor(int Index, short Color)
+void VMenu::SetOneColor(int Index, uint64_t Color)
 {
 	CriticalSectionLock Lock(CS);
 
 	if (Index < (int)ARRAYSIZE(Colors))
-		Colors[Index] = FarColorToReal(Color);
+		Colors[Index] = Color;
+
+//		Colors[Index] = FarColorToReal(Color);
 }
 
 BOOL VMenu::GetVMenuInfo(FarListInfo *Info)
@@ -2737,4 +2749,14 @@ void VMenu::SortItems(int Direction, int Offset, BOOL SortForDataDWORD)
 	UpdateSelectPos();
 
 	SetFlags(VMENU_UPDATEREQUIRED);
+}
+
+void VMenu::EnableFilter(bool Enable)
+{
+	bFilterEnabled = Enable;
+	bFilterLocked = false;
+	strFilter.Clear();
+
+	if (!Enable)
+		RestoreFilteredItems();
 }

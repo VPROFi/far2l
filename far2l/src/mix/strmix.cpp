@@ -189,6 +189,28 @@ FARString &EscapeSpace(FARString &strStr)
 	return strStr;
 }
 
+static FARString unEscapeSpace(const wchar_t *str)
+{
+	if (*str == L'\0')
+		return "";
+	FARString result;
+	for (const wchar_t *cur = str; *cur; ++cur) {
+		if (*cur == L'\\' && *(cur+1) != L'\\')
+			continue;
+		result.Append(*cur);
+	}
+	return result;
+}
+
+FARString &UnEscapeSpace(FARString &strStr)
+{
+	if (strStr.IsEmpty() || strStr.Contains(L'\\')) {
+		strStr.Copy(unEscapeSpace(strStr.CPtr()));
+	}
+
+	return strStr;
+}
+
 wchar_t *WINAPI QuoteSpaceOnly(wchar_t *Str)
 {
 	if (wcschr(Str, L' '))
@@ -771,7 +793,7 @@ From PHP 4.x.x
 
 Разбивает на строки с выравниваением влево.
 
-Если параметр Flahs & FFTM_BREAKLONGWORD, то строка всегда
+Если параметр Flags & FFTM_BREAKLONGWORD, то строка всегда
 сворачивается по заданной ширине. Так если у вас есть слово,
 которое больше заданной ширины, то оно будет разрезано на части.
 
@@ -1153,11 +1175,12 @@ wchar_t GetDecimalSeparator()
 	// wchar_t Separator[4];
 	// GetLocaleInfo(LOCALE_USER_DEFAULT,LOCALE_SDECIMAL,Separator,ARRAYSIZE(Separator));
 	// return *Separator;
-	return L'.';
+	//return L'.';
+	return Opt.strDecimalSeparator.IsEmpty() ? GetDecimalSeparatorDefault() : Opt.strDecimalSeparator.At(0);
 }
 
 FARString
-ReplaceBrackets(const FARString &SearchStr, const FARString &ReplaceStr, RegExpMatch *Match, int Count)
+ReplaceBrackets(const wchar_t* SearchStr, const FARString &ReplaceStr, RegExpMatch *Match, int Count)
 {
 	FARString result;
 	size_t pos = 0, length = ReplaceStr.GetLength();
@@ -1182,7 +1205,7 @@ ReplaceBrackets(const FARString &SearchStr, const FARString &ReplaceStr, RegExpM
 
 			if (index >= 0) {
 				if (index < Count) {
-					FARString bracket(SearchStr.CPtr() + Match[index].start,
+					FARString bracket(SearchStr + Match[index].start,
 							Match[index].end - Match[index].start);
 					result+= bracket;
 				}
@@ -1209,7 +1232,7 @@ std::string EscapeUnprintable(const std::string &str)
 		unsigned char c = (unsigned char)*i;
 		if (c <= 0x20 || c > 0x7e || c == '\\') {
 			char buf[32];
-			sprintf(buf, "\\x%02x", c);
+			snprintf(buf, sizeof(buf), "\\x%02x", c);
 			out+= buf;
 		} else
 			out+= c;

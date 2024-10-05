@@ -90,7 +90,7 @@ public:
 		HelpStr = nullptr;
 		if (HStr)
 			HelpStr = wcsdup(HStr);
-	};
+	}
 
 	const HelpRecord &operator=(const HelpRecord &rhs)
 	{
@@ -100,11 +100,11 @@ public:
 		}
 
 		return *this;
-	};
+	}
 
-	bool operator==(const HelpRecord &rhs) const { return !StrCmpI(HelpStr, rhs.HelpStr); };
+	bool operator==(const HelpRecord &rhs) const { return !StrCmpI(HelpStr, rhs.HelpStr); }
 
-	int operator<(const HelpRecord &rhs) const { return StrCmpI(HelpStr, rhs.HelpStr) < 0; };
+	int operator<(const HelpRecord &rhs) const { return StrCmpI(HelpStr, rhs.HelpStr) < 0; }
 
 	~HelpRecord() { free(HelpStr); }
 };
@@ -131,7 +131,7 @@ private:
 
 	FARString strCtrlColorChar;		// CtrlColorChar - опция! для спецсимвола-
 	//   символа - для атрибутов
-	int CurColor;						// CurColor - текущий цвет отрисовки
+	uint64_t CurColor;						// CurColor - текущий цвет отрисовки
 	int CtrlTabSize;					// CtrlTabSize - опция! размер табуляции
 
 	FARString strCurPluginContents;		// помним PluginContents (для отображения в заголовке)
@@ -170,7 +170,7 @@ public:
 
 public:
 	virtual void Hide();
-	virtual int ProcessKey(int Key);
+	virtual int ProcessKey(FarKey Key);
 	virtual int ProcessMouse(MOUSE_EVENT_RECORD *MouseEvent);
 	virtual void InitKeyBar();
 	BOOL GetError() { return ErrorHelp; }
@@ -184,7 +184,7 @@ public:
 	virtual int GetTypeAndName(FARString &strType, FARString &strName);
 	virtual int GetType() { return MODALTYPE_HELP; }
 
-	virtual int64_t VMProcess(int OpCode, void *vParam, int64_t iParam);
+	virtual int64_t VMProcess(MacroOpcode OpCode, void *vParam, int64_t iParam);
 
 	static FARString &MkTopic(INT_PTR PluginNumber, const wchar_t *HelpTopic, FARString &strTopic);
 };

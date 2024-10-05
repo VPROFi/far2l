@@ -35,29 +35,25 @@ namespace Sudo
 	template <class OBJ> class Opened
 	{
 		std::set<OBJ> _set;
-		std::mutex _mutex;
 		
 	public:
 		void Put(OBJ obj)
 		{
-			std::lock_guard<std::mutex> lock(_mutex);
 			_set.insert(obj);
 		}
 
 		bool Check(OBJ obj)
 		{
-			std::lock_guard<std::mutex> lock(_mutex);
 			return (_set.find(obj) != _set.end());
 		}
 		
 		bool Remove(OBJ obj)
 		{
-			std::lock_guard<std::mutex> lock(_mutex);
 			return (_set.erase(obj) != 0);
 		}
 	};
-	
-	static Opened<DIR *> g_dirs;
+
+	typedef Opened<DIR *> OpenedDirs;
 
 	static void OnSudoDispatch_Execute(BaseTransaction &bt)
 	{
@@ -117,34 +113,42 @@ namespace Sudo
 			bt.SendPOD(s);
 	}
 
-	static void OnSudoDispatch_CloseDir(BaseTransaction &bt)
+	static void OnSudoDispatch_CloseDir(BaseTransaction &bt, OpenedDirs &dirs)
 	{		
 		DIR *d;
 		bt.RecvPOD(d);
-		int r = g_dirs.Remove(d) ? closedir(d) : -1;
+		int r = dirs.Remove(d) ? closedir(d) : -1;
 		bt.SendPOD(r);
 	}
 	
-	static void OnSudoDispatch_OpenDir(BaseTransaction &bt)
+	static void OnSudoDispatch_OpenDir(BaseTransaction &bt, OpenedDirs &dirs)
 	{
 		std::string path;
 		bt.RecvStr(path);
 		DIR *d = opendir(path.c_str());
-		g_dirs.Put(d);
+		dirs.Put(d);
 		bt.SendPOD(d);
 		if (!d)
 			bt.SendErrno();
 	}
 	
-	static void OnSudoDispatch_ReadDir(BaseTransaction &bt)
+	static void OnSudoDispatch_ReadDir(BaseTransaction &bt, OpenedDirs &dirs)
 	{
 		DIR *d;
 		bt.RecvPOD(d);
 		bt.RecvErrno();
-		struct dirent *de = g_dirs.Check(d) ? readdir(d) : nullptr;
+		struct dirent *de = dirs.Check(d) ? readdir(d) : nullptr;
 		if (de) {
+			// It appears that actual size of allocated memory for de
+			// can be less than sizeof(*de), so direct send sometimes
+			// fails with EFAULT, so here is workaround: use full-sized
+			// local dirent and copy into it information by two parts:
+			// fixed-sized part of dirent then strnlen(path) of path
+			struct dirent dex{};
+			memcpy(&dex, de, sizeof(dex) - sizeof(dex.d_name));
+			strncpy(dex.d_name, de->d_name, sizeof(dex.d_name));
 			bt.SendInt(0);
-			bt.SendPOD(*de);
+			bt.SendPOD(dex);
 		} else {
 			int err = errno;
 			bt.SendInt(err ? err : -1);
@@ -236,7 +240,25 @@ namespace Sudo
 			bt.SendErrno();
 	}
 
-	static void OnSudoDispatch_TwoPathes(int (*pfn)(const char *, const char *), BaseTransaction &bt)
+    static void OnSudoDispatch_FUTimens(BaseTransaction &bt)
+    {
+        struct timespec times[2];
+        int fd = bt.RecvFD();
+		int r = -1;
+        bt.RecvPOD(times[0]);
+        bt.RecvPOD(times[1]);
+
+		if (fd != -1) {
+			r = futimens(fd, times);
+			close(fd);
+		}
+
+        bt.SendInt(r);
+        if (r==-1)
+            bt.SendErrno();
+    }
+
+	static void OnSudoDispatch_TwoPaths(int (*pfn)(const char *, const char *), BaseTransaction &bt)
 	{
 		std::string path1, path2;
 		
@@ -342,8 +364,36 @@ namespace Sudo
 		}
 		bt.SendInt(r);
 	}
+
+	static void OnSudoDispatch_MkFifo(BaseTransaction &bt)
+	{
+		std::string path;
+		mode_t mode;
+		bt.RecvStr(path);
+		bt.RecvPOD(mode);
+		int r = mkfifo(path.c_str(), mode);
+		bt.SendInt(r);
+		if (r != 0) {
+			bt.SendErrno();
+		}
+	}
+
+	static void OnSudoDispatch_MkNod(BaseTransaction &bt)
+	{
+		std::string path;
+		mode_t mode;
+		dev_t dev;
+		bt.RecvStr(path);
+		bt.RecvPOD(mode);
+		bt.RecvPOD(dev);
+		int r = mknod(path.c_str(), mode, dev);
+		bt.SendInt(r);
+		if (r != 0) {
+			bt.SendErrno();
+		}
+	}
 	
-	void OnSudoDispatch(SudoCommand cmd, BaseTransaction &bt)
+	void OnSudoDispatch(SudoCommand cmd, BaseTransaction &bt, OpenedDirs &dirs)
 	{
 		//fprintf(stderr, "OnSudoDispatch: %u\n", cmd);
 		switch (cmd) {
@@ -375,15 +425,15 @@ namespace Sudo
 				break;
 
 			case SUDO_CMD_CLOSEDIR:
-				OnSudoDispatch_CloseDir(bt);
+				OnSudoDispatch_CloseDir(bt, dirs);
 				break;
 				
 			case SUDO_CMD_OPENDIR:
-				OnSudoDispatch_OpenDir(bt);
+				OnSudoDispatch_OpenDir(bt, dirs);
 				break;
 				
 			case SUDO_CMD_READDIR:
-				OnSudoDispatch_ReadDir(bt);
+				OnSudoDispatch_ReadDir(bt, dirs);
 				break;
 				
 			case SUDO_CMD_MKDIR:
@@ -417,17 +467,21 @@ namespace Sudo
 			case SUDO_CMD_UTIMENS:
 				OnSudoDispatch_UTimens(bt);
 				break;
-			
-			case SUDO_CMD_RENAME:
-				OnSudoDispatch_TwoPathes(&rename, bt);
+
+            case SUDO_CMD_FUTIMENS:
+                OnSudoDispatch_FUTimens(bt);
+                break;
+
+            case SUDO_CMD_RENAME:
+				OnSudoDispatch_TwoPaths(&rename, bt);
 				break;
 
 			case SUDO_CMD_SYMLINK:
-				OnSudoDispatch_TwoPathes(&symlink, bt);
+				OnSudoDispatch_TwoPaths(&symlink, bt);
 				break;
 				
 			case SUDO_CMD_LINK:
-				OnSudoDispatch_TwoPathes(&link, bt);
+				OnSudoDispatch_TwoPaths(&link, bt);
 				break;
 
 			case SUDO_CMD_REALPATH:
@@ -449,6 +503,14 @@ namespace Sudo
 			case SUDO_CMD_FCHMOD:
 				OnSudoDispatch_FChMod(bt);
 				break;
+
+			case SUDO_CMD_MKFIFO:
+				OnSudoDispatch_MkFifo(bt);
+				break;
+
+			case SUDO_CMD_MKNOD:
+				OnSudoDispatch_MkNod(bt);
+				break;
 				
 			default:
 				throw std::runtime_error("OnSudoDispatch - bad command");
@@ -461,10 +523,11 @@ namespace Sudo
 		
 		SudoCommand cmd = SUDO_CMD_INVALID;
 		try {
+			OpenedDirs dirs;
 			for (;;) {
 				BaseTransaction bt(sock);
 				bt.RecvPOD(cmd);
-				OnSudoDispatch(cmd, bt);
+				OnSudoDispatch(cmd, bt, dirs);
 				bt.SendPOD(cmd);
 			}
 		} catch (std::exception &e) {
@@ -482,7 +545,7 @@ namespace Sudo
 			return -1;
 		}
 
-		std::string ipc_client = InMyTemp(StrPrintf("sudo/%u", getpid()).c_str());
+		const auto &ipc_client = InMyTempFmt("sudo/%u", (unsigned int)getpid());
 
 		try {
 			LocalSocketClient udc(LocalSocket::STREAM, argv[0], ipc_client);

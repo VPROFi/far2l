@@ -8,6 +8,10 @@
 	#include <posix/sys/select.h>
 #endif
 
+#if defined(__DragonFly__)
+#include <sys/select.h>
+#endif
+
 static std::string FormatIPCError(const char *msg, unsigned int code)
 {
 	std::string s = msg;
@@ -198,8 +202,8 @@ PipeIPCFD::PipeIPCFD()
 	MakeFDCloexec(master2broker[1]);
 	MakeFDCloexec(broker2master[0]);
 
-	sprintf(broker_arg_r, "%d", master2broker[0]);
-	sprintf(broker_arg_w, "%d", broker2master[1]);
+	snprintf(broker_arg_r, sizeof(broker_arg_r), "%d", master2broker[0]);
+	snprintf(broker_arg_w, sizeof(broker_arg_r), "%d", broker2master[1]);
 }
 
 void PipeIPCFD::Detach()

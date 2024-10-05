@@ -38,6 +38,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "lang.hpp"
 #include "keys.hpp"
 #include "colors.hpp"
+#include "palette.hpp"
 #include "scantree.hpp"
 #include "savescr.hpp"
 #include "manager.hpp"
@@ -89,8 +90,8 @@ private:
 	ListNode *topOfStack;
 
 public:
-	CallBackStack() { topOfStack = nullptr; };
-	~CallBackStack() { ClearStack(); };
+	CallBackStack() { topOfStack = nullptr; }
+	~CallBackStack() { ClearStack(); }
 
 public:
 	void ClearStack();
@@ -118,7 +119,7 @@ Help::Help(const wchar_t *Topic, const wchar_t *Mask, DWORD Flags)
 	ErrorHelp(TRUE),
 	IsNewTopic(TRUE),
 	MouseDown(FALSE),
-	CurColor(COL_HELPTEXT),
+	CurColor(FarColorToReal(COL_HELPTEXT)),
 	CtrlTabSize(8)
 {
 	CanLoseFocus = FALSE;
@@ -356,7 +357,7 @@ int Help::ReadHelp(const wchar_t *Mask)
 
 		RepeatLastLine = FALSE;
 
-		// заменим табулятор по всем праивилам
+		// заменим табулятор по всем правилам
 		ReplaceTabsBySpaces(strReadStr, CtrlTabSize);
 		RemoveTrailingSpaces(strReadStr);
 
@@ -646,7 +647,7 @@ void Help::FastShow()
 		Установим по умолчанию текущий цвет отрисовки...
 		чтобы новая тема начиналась с нормальными атрибутами
 	*/
-	CurColor = COL_HELPTEXT;
+	CurColor = FarColorToReal(COL_HELPTEXT);
 
 	for (int i = 0; i < Y2 - Y1 - 1; i++) {
 		int StrPos;
@@ -656,7 +657,7 @@ void Help::FastShow()
 		} else if (i == FixCount && FixCount > 0) {
 			if (!Locked()) {
 				GotoXY(X1, Y1 + i + 1);
-				SetColor(COL_HELPBOX);
+				SetFarColor(COL_HELPBOX);
 				ShowSeparator(X2 - X1 + 1, 1);
 			}
 
@@ -691,16 +692,16 @@ void Help::FastShow()
 	}
 
 	if (!Locked()) {
-		SetColor(COL_HELPSCROLLBAR);
+		SetFarColor(COL_HELPSCROLLBAR);
 		ScrollBarEx(X2, Y1 + FixSize + 1, Y2 - Y1 - FixSize - 1, StackData.TopStr, StrCount - FixCount);
 	}
 }
 
 void Help::DrawWindowFrame()
 {
-	SetScreen(X1, Y1, X2, Y2, L' ', COL_HELPTEXT);
-	Box(X1, Y1, X2, Y2, COL_HELPBOX, DOUBLE_BOX);
-	SetColor(COL_HELPBOXTITLE);
+	SetScreen(X1, Y1, X2, Y2, L' ', FarColorToReal(COL_HELPTEXT));
+	Box(X1, Y1, X2, Y2, FarColorToReal(COL_HELPBOX), DOUBLE_BOX);
+	SetFarColor(COL_HELPBOXTITLE);
 	FARString strHelpTitleBuf;
 	strHelpTitleBuf = Msg::HelpTitle;
 	strHelpTitleBuf+= L" - ";
@@ -753,7 +754,7 @@ void Help::OutString(const wchar_t *Str)
 
 				if (WhereY() == RealCurY && RealCurX >= WhereX()
 						&& RealCurX < WhereX() + (Str - StartTopic) - 1) {
-					SetColor(COL_HELPSELECTEDTOPIC);
+					SetFarColor(COL_HELPSELECTEDTOPIC);
 
 					if (Str[1] == L'@') {
 						StackData.strSelTopic = (Str + 2);
@@ -783,11 +784,11 @@ void Help::OutString(const wchar_t *Str)
 						}
 					}
 				} else {
-					SetColor(COL_HELPTOPIC);
+					SetFarColor(COL_HELPTOPIC);
 				}
 			} else {
 				if (Highlight)
-					SetColor(COL_HELPHIGHLIGHTTEXT);
+					SetFarColor(COL_HELPHIGHLIGHTTEXT);
 				else
 					SetColor(CurColor);
 			}
@@ -846,7 +847,7 @@ void Help::OutString(const wchar_t *Str)
 			if (Chr == L'-')	// "\-" - установить дефолтовый цвет
 			{
 				Str+= 2;
-				CurColor = COL_HELPTEXT;
+				CurColor = FarColorToReal(COL_HELPTEXT);
 				continue;
 			}
 
@@ -965,7 +966,7 @@ void Help::CorrectPosition()
 		StackData.TopStr = 0;
 }
 
-int64_t Help::VMProcess(int OpCode, void *vParam, int64_t iParam)
+int64_t Help::VMProcess(MacroOpcode OpCode, void *vParam, int64_t iParam)
 {
 	switch (OpCode) {
 		case MCODE_V_HELPFILENAME:							// Help.FileName
@@ -984,7 +985,7 @@ int64_t Help::VMProcess(int OpCode, void *vParam, int64_t iParam)
 	return 1;
 }
 
-int Help::ProcessKey(int Key)
+int Help::ProcessKey(FarKey Key)
 {
 	if (StackData.strSelTopic.IsEmpty())
 		StackData.CurX = StackData.CurY = 0;
@@ -1266,7 +1267,7 @@ int Help::JumpTopic(const wchar_t *JumpTopic)
 		DeleteEndSlash(strFullPath, true);
 		strFullPath+= L"/";
 		strFullPath+= strNewTopic.CPtr() + (IsSlash(strNewTopic.At(0)) ? 1 : 0);
-		BOOL addSlash = DeleteEndSlash(strFullPath);
+		bool addSlash = DeleteEndSlash(strFullPath);
 		ConvertNameToFull(strFullPath, strNewTopic);
 		strFullPath.Format(addSlash ? HelpFormatLink : HelpFormatLinkModule, strNewTopic.CPtr(),
 				wcschr(StackData.strSelTopic.CPtr() + 2, HelpEndLink) + 1);

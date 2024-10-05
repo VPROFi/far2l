@@ -173,7 +173,7 @@ public:
 
 private:
 	void LoadIfCacheAbsent();
-	void ReadUserBackgound(SaveScreen *SaveScr);
+	void ReadUserBackground(SaveScreen *SaveScr);
 
 	void GetPluginHotKey(Plugin *pPlugin, int ItemNumber, HotKeyKind Kind, FARString &strHotKey);
 
@@ -254,6 +254,7 @@ public:
 	int SetDirectory(HANDLE hPlugin, const wchar_t *Dir, int OpMode);
 	int GetFile(HANDLE hPlugin, PluginPanelItem *PanelItem, const wchar_t *DestPath, FARString &strResultName,
 			int OpMode);
+	bool GetLinkTarget(HANDLE hPlugin, PluginPanelItem *PanelItem, FARString &result, int OpMode);
 	int GetFiles(HANDLE hPlugin, PluginPanelItem *PanelItem, int ItemsNumber, int Move,
 			const wchar_t **DestPath, int OpMode);
 	int PutFiles(HANDLE hPlugin, PluginPanelItem *PanelItem, int ItemsNumber, int Move, int OpMode);
@@ -275,8 +276,8 @@ public:
 	void GetCustomData(FileListItem *ListItem);
 	bool MayExitFar();
 
-	void BackroundTaskStarted(const wchar_t *Info);
-	void BackroundTaskFinished(const wchar_t *Info);
+	void BackgroundTaskStarted(const wchar_t *Info);
+	void BackgroundTaskFinished(const wchar_t *Info);
 	bool HasBackgroundTasks();
 	std::map<std::wstring, unsigned int> BackgroundTasks();
 

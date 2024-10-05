@@ -5,15 +5,19 @@
 #define TIMER_ID     10
 
 // interval of timer that used to blink cursor and do some other things
-#define TIMER_PERIOD 500             // 0.5 second
+#define DEF_TIMER_PERIOD 500  // 0.1 second
+#define MIN_TIMER_PERIOD 100  // 0.1 second
+#define MAX_TIMER_PERIOD 500  // 0.5 second
 
 // time interval that used for deferred extra refresh after last title update
 // see comment on WinPortPanel::OnTitleChangedSync
-#define TIMER_EXTRA_REFRESH 100      // 0.1 second
+#define TIMER_EXTRA_REFRESH 100        // 0.1 second
 
 // how many timer ticks may pass since last input activity
 // before timer will be stopped until restarted by some activity
-#define TIMER_IDLING_CYCLES 60       // 0.5 second * 60 = 30 seconds
+//#define TIMER_IDLING_CYCLES 600       // 0.5 second * 60 = 30 seconds
+#define TIMER_IDLING_TIME (60000 * 3)  // 3 minutes
+
 
 // If time between adhoc text copy and mouse button release less then this value then text will not be copied. Used to protect against unwanted copy-paste-s
 #define QEDIT_COPY_MINIMAL_DELAY 150
@@ -23,13 +27,19 @@
 	#define WX_ALT_NONLATIN
 #endif
 
+//30000
+
 IConsoleOutput *g_winport_con_out = nullptr;
 IConsoleInput *g_winport_con_in = nullptr;
 bool g_broadway = false, g_wayland = false, g_remote = false;
+
 static int g_exit_code = 0;
 static int g_maximize = 0;
 static WinPortAppThread *g_winport_app_thread = NULL;
 static WinPortFrame *g_winport_frame = nullptr;
+
+static DWORD g_TIMER_PERIOD = DEF_TIMER_PERIOD;
+static DWORD g_TIMER_IDLING_CYCLES = TIMER_IDLING_TIME / DEF_TIMER_PERIOD;
 
 bool WinPortClipboard_IsBusy();
 
@@ -80,6 +90,11 @@ static void DetectHostAbilities()
 		g_wayland = true;
 	}
 
+	const char *wayland_display = getenv("WAYLAND_DISPLAY");
+	if (wayland_display) {
+		g_wayland = true;
+	}
+
 	const char *ssh_conn = getenv("SSH_CONNECTION");
 	if (ssh_conn && *ssh_conn
 		&& strstr(ssh_conn, "127.0.0.") == NULL
@@ -94,6 +109,9 @@ static void DetectHostAbilities()
 	}
 }
 
+#ifdef __APPLE__
+void MacInit();
+#endif
 
 extern "C" __attribute__ ((visibility("default"))) bool WinPortMainBackend(WinPortMainBackendArg *a)
 {
@@ -101,6 +119,10 @@ extern "C" __attribute__ ((visibility("default"))) bool WinPortMainBackend(WinPo
 		fprintf(stderr, "This far2l_gui is not compatible and cannot be used\n");
 		return false;
 	}
+#ifdef __APPLE__
+	MacInit();
+#endif
+
 
 	g_wx_norgb = a->norgb;
 	g_winport_con_out = a->winport_con_out;
@@ -256,6 +278,7 @@ wxDEFINE_EVENT(WX_CONSOLE_ADHOC_QEDIT, wxCommandEvent);
 wxDEFINE_EVENT(WX_CONSOLE_SET_TWEAKS, wxCommandEvent);
 wxDEFINE_EVENT(WX_CONSOLE_CHANGE_FONT, wxCommandEvent);
 wxDEFINE_EVENT(WX_CONSOLE_SAVE_WIN_STATE, wxCommandEvent);
+wxDEFINE_EVENT(WX_CONSOLE_SET_CURSOR_BLINK_TIME, wxCommandEvent);
 wxDEFINE_EVENT(WX_CONSOLE_EXIT, wxCommandEvent);
 
 
@@ -334,6 +357,8 @@ WinPortFrame::WinPortFrame(const wxString& title)
 
 	// far2l doesn't need special erase background
 	SetBackgroundStyle(wxBG_STYLE_PAINT);
+	const auto bkclr = g_wx_palette.background[0];
+	SetBackgroundColour(wxColour(bkclr.r, bkclr.g, bkclr.b));
 	Create(NULL, wxID_ANY, title, _win_state.pos, _win_state.size, style);
 	_panel = new WinPortPanel(this, wxPoint(0, 0), GetClientSize());
 	_panel->SetFocus();
@@ -411,6 +436,7 @@ void WinPortFrame::OnEraseBackground(wxEraseEvent &event)
 void WinPortFrame::OnPaint(wxPaintEvent &event)
 {
 	wxPaintDC dc(this);
+	dc.Clear();
 }
 
 void WinPortFrame::OnChar(wxKeyEvent &event)
@@ -524,6 +550,7 @@ wxBEGIN_EVENT_TABLE(WinPortPanel, wxPanel)
 	EVT_COMMAND(wxID_ANY, WX_CONSOLE_ADHOC_QEDIT, WinPortPanel::OnConsoleAdhocQuickEditSync)
 	EVT_COMMAND(wxID_ANY, WX_CONSOLE_SET_TWEAKS, WinPortPanel::OnConsoleSetTweaksSync)
 	EVT_COMMAND(wxID_ANY, WX_CONSOLE_CHANGE_FONT, WinPortPanel::OnConsoleChangeFontSync)
+	EVT_COMMAND(wxID_ANY, WX_CONSOLE_SET_CURSOR_BLINK_TIME, WinPortPanel::OnConsoleSetCursorBlinkTimeSync)
 	EVT_COMMAND(wxID_ANY, WX_CONSOLE_EXIT, WinPortPanel::OnConsoleExitSync)
 
 	EVT_IDLE(WinPortPanel::OnIdle)
@@ -550,7 +577,7 @@ WinPortPanel::WinPortPanel(WinPortFrame *frame, const wxPoint& pos, const wxSize
 	Create(frame, wxID_ANY, pos, size, wxWANTS_CHARS | wxNO_BORDER);
 	g_winport_con_out->SetBackend(this);
 	_periodic_timer = new wxTimer(this, TIMER_ID);
-	_periodic_timer->Start(TIMER_PERIOD);
+	_periodic_timer->Start(g_TIMER_PERIOD);
 	OnConsoleOutputTitleChanged();
 	_resize_pending = RP_INSTANT;
 }
@@ -728,7 +755,7 @@ void WinPortPanel::OnTimerPeriodic(wxTimerEvent& event)
 			_periodic_timer->Stop();
 			_extra_refresh = false;
 			Refresh();
-			_periodic_timer->Start(TIMER_PERIOD);
+			_periodic_timer->Start(g_TIMER_PERIOD);
 			fprintf(stderr, "Extra refresh\n");
 		}
 		return;
@@ -742,15 +769,15 @@ void WinPortPanel::OnTimerPeriodic(wxTimerEvent& event)
 	_paint_context.BlinkCursor();
 	++_timer_idling_counter;
 	// stop timer if counter reached limit and cursor is visible and no other timer-dependent things remained
-	if (_timer_idling_counter >= TIMER_IDLING_CYCLES && _paint_context.CursorBlinkState() && _text2clip.empty()) {
+	if (_timer_idling_counter >= g_TIMER_IDLING_CYCLES && _paint_context.CursorBlinkState() && _text2clip.empty()) {
 		_periodic_timer->Stop();
 	}
 }
 
 void WinPortPanel::ResetTimerIdling()
 {
-	if (_timer_idling_counter >= TIMER_IDLING_CYCLES && !_periodic_timer->IsRunning()) {
-		_periodic_timer->Start(_extra_refresh ? TIMER_EXTRA_REFRESH : TIMER_PERIOD);
+	if (_timer_idling_counter >= g_TIMER_IDLING_CYCLES && !_periodic_timer->IsRunning()) {
+		_periodic_timer->Start(_extra_refresh ? TIMER_EXTRA_REFRESH : g_TIMER_PERIOD);
 
 	} else if (_extra_refresh) {
 		_periodic_timer->Stop();
@@ -1059,7 +1086,7 @@ static void TitleChangeCallback(PVOID ctx)
 // Another level of workaround for #1303 #1454:
 // Problem happens if window title change happened just before repaint but
 // it doesn't happen if title changed after repaint even if just after repaint.
-// So instead of appling new title just when application wanted it to apply
+// So instead of applying new title just when application wanted it to apply
 // - wait until application will invoke some console readout function, meaning
 // it entered idle state and risk of upcoming repaints is much lowered then.
 // Do this by using CALLBACK_EVENT functionality that was added exactly for this.
@@ -1082,12 +1109,147 @@ static bool IsForcedCharTranslation(int code)
 		|| code==WXK_NUMPAD_MULTIPLY || code==WXK_NUMPAD_SUBTRACT || code==WXK_NUMPAD_DIVIDE);
 }
 
+// helper function that returns textual description of wx virtual keycode
+const char* GetWxVirtualKeyCodeName(int keycode)
+{
+	switch ( keycode )
+	{
+#define WXK_(x) \
+		case WXK_##x: return #x;
+
+		WXK_(BACK)
+		WXK_(TAB)
+		WXK_(RETURN)
+		WXK_(ESCAPE)
+		WXK_(SPACE)
+		WXK_(DELETE)
+		WXK_(START)
+		WXK_(LBUTTON)
+		WXK_(RBUTTON)
+		WXK_(CANCEL)
+		WXK_(MBUTTON)
+//		WXK_(NUMPAD_CENTER)
+		WXK_(SHIFT)
+		WXK_(ALT)
+		WXK_(CONTROL)
+		WXK_(MENU)
+		WXK_(PAUSE)
+		WXK_(CAPITAL)
+		WXK_(END)
+		WXK_(HOME)
+		WXK_(LEFT)
+		WXK_(UP)
+		WXK_(RIGHT)
+		WXK_(DOWN)
+		WXK_(SELECT)
+		WXK_(PRINT)
+		WXK_(EXECUTE)
+		WXK_(SNAPSHOT)
+		WXK_(INSERT)
+		WXK_(HELP)
+		WXK_(NUMPAD0)
+		WXK_(NUMPAD1)
+		WXK_(NUMPAD2)
+		WXK_(NUMPAD3)
+		WXK_(NUMPAD4)
+		WXK_(NUMPAD5)
+		WXK_(NUMPAD6)
+		WXK_(NUMPAD7)
+		WXK_(NUMPAD8)
+		WXK_(NUMPAD9)
+		WXK_(MULTIPLY)
+		WXK_(ADD)
+		WXK_(SEPARATOR)
+		WXK_(SUBTRACT)
+		WXK_(DECIMAL)
+		WXK_(DIVIDE)
+		WXK_(F1)
+		WXK_(F2)
+		WXK_(F3)
+		WXK_(F4)
+		WXK_(F5)
+		WXK_(F6)
+		WXK_(F7)
+		WXK_(F8)
+		WXK_(F9)
+		WXK_(F10)
+		WXK_(F11)
+		WXK_(F12)
+		WXK_(F13)
+		WXK_(F14)
+		WXK_(F15)
+		WXK_(F16)
+		WXK_(F17)
+		WXK_(F18)
+		WXK_(F19)
+		WXK_(F20)
+		WXK_(F21)
+		WXK_(F22)
+		WXK_(F23)
+		WXK_(F24)
+		WXK_(NUMLOCK)
+		WXK_(SCROLL)
+		WXK_(PAGEUP)
+		WXK_(PAGEDOWN)
+		WXK_(NUMPAD_SPACE)
+		WXK_(NUMPAD_TAB)
+		WXK_(NUMPAD_ENTER)
+		WXK_(NUMPAD_F1)
+		WXK_(NUMPAD_F2)
+		WXK_(NUMPAD_F3)
+		WXK_(NUMPAD_F4)
+		WXK_(NUMPAD_HOME)
+		WXK_(NUMPAD_LEFT)
+		WXK_(NUMPAD_UP)
+		WXK_(NUMPAD_RIGHT)
+		WXK_(NUMPAD_DOWN)
+		WXK_(NUMPAD_PAGEUP)
+		WXK_(NUMPAD_PAGEDOWN)
+		WXK_(NUMPAD_END)
+		WXK_(NUMPAD_INSERT)
+		WXK_(NUMPAD_DELETE)
+		WXK_(NUMPAD_EQUAL)
+		WXK_(NUMPAD_MULTIPLY)
+		WXK_(NUMPAD_ADD)
+		WXK_(NUMPAD_SEPARATOR)
+		WXK_(NUMPAD_SUBTRACT)
+		WXK_(NUMPAD_DECIMAL)
+		WXK_(NUMPAD_DIVIDE)
+
+		WXK_(WINDOWS_LEFT)
+		WXK_(WINDOWS_RIGHT)
+#ifdef __WXOSX__
+		WXK_(RAW_CONTROL)
+#endif
+#undef WXK_
+
+	default:
+		return "ERR";
+	}
+}
+
+char* FormatWxKeyState(uint16_t state) {
+
+	static char buffer[5];
+
+	buffer[0]  = state & wxMOD_ALT          ? 'A' : 'a';
+	buffer[1]  = state & wxMOD_CONTROL      ? 'C' : 'c';
+	buffer[2]  = state & wxMOD_SHIFT        ? 'S' : 's';
+	buffer[3]  = state & wxMOD_META         ? 'M' : 'm';
+
+	buffer[4] = '\0';
+
+	return buffer;
+}
+
 void WinPortPanel::OnKeyDown( wxKeyEvent& event )
 {
 	ResetTimerIdling();
 	DWORD now = WINPORT(GetTickCount)();
 	const auto uni = event.GetUnicodeKey();
-	fprintf(stderr, "OnKeyDown: raw=%x code=%x uni=%x (%lc) ts=%lu [now=%u]",
+	fprintf(stderr, "\nOnKeyDown: %s %s raw=%x code=%x uni=%x (%lc) ts=%lu [now=%u]",
+		FormatWxKeyState(event.GetModifiers()),
+		GetWxVirtualKeyCodeName(event.GetKeyCode()),
 		event.GetRawKeyCode(), event.GetKeyCode(),
 		uni, (uni > 0x1f) ? uni : L' ', event.GetTimestamp(), now);
 
@@ -1175,7 +1337,7 @@ void WinPortPanel::OnKeyDown( wxKeyEvent& event )
 #endif
 
 	if ( (dwMods != 0 && event.GetUnicodeKey() < 32)
-		|| (dwMods & (RIGHT_CTRL_PRESSED | LEFT_ALT_PRESSED)) != 0
+		|| (dwMods & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED | LEFT_ALT_PRESSED)) != 0
 		|| event.GetKeyCode() == WXK_DELETE || event.GetKeyCode() == WXK_RETURN
 		|| (event.GetUnicodeKey()==WXK_NONE && !IsForcedCharTranslation(event.GetKeyCode()) ))
 	{
@@ -1206,7 +1368,9 @@ void WinPortPanel::OnKeyUp( wxKeyEvent& event )
 {
 	ResetTimerIdling();
 	const auto uni = event.GetUnicodeKey();
-	fprintf(stderr, "OnKeyUp: raw=%x code=%x uni=%x (%lc) ts=%lu",
+	fprintf(stderr, "\nOnKeyUp: %s %s raw=%x code=%x uni=%x (%lc) ts=%lu",
+		FormatWxKeyState(event.GetModifiers()),
+		GetWxVirtualKeyCodeName(event.GetKeyCode()),
 		event.GetRawKeyCode(), event.GetKeyCode(),
 		uni, (uni > 0x1f) ? uni : L' ', event.GetTimestamp());
 
@@ -1284,7 +1448,12 @@ void WinPortPanel::OnChar( wxKeyEvent& event )
 {
 	ResetTimerIdling();
 	const auto uni = event.GetUnicodeKey();
-	fprintf(stderr, "OnChar: raw=%x code=%x uni=%x (%lc) ts=%lu lke=%u",
+	if (_key_tracker.LastKeydown().GetTimestamp() != event.GetTimestamp()) {
+		fprintf(stderr, "\n");
+	}
+	fprintf(stderr, "OnChar: %s %s raw=%x code=%x uni=%x (%lc) ts=%lu lke=%u",
+		FormatWxKeyState(event.GetModifiers()),
+		GetWxVirtualKeyCodeName(event.GetKeyCode()),
 		event.GetRawKeyCode(), event.GetKeyCode(),
 		uni, (uni > 0x1f) ? uni : L' ', event.GetTimestamp(), _last_keydown_enqueued);
 	_exclusive_hotkeys.OnKeyUp(event);
@@ -1591,7 +1760,7 @@ void WinPortPanel::OnConsoleSetTweaksSync( wxCommandEvent& event )
 
 DWORD64 WinPortPanel::OnConsoleSetTweaks(DWORD64 tweaks)
 {
-	DWORD64 out = TWEAK_STATUS_SUPPORT_CHANGE_FONT;
+	DWORD64 out = TWEAK_STATUS_SUPPORT_CHANGE_FONT | TWEAK_STATUS_SUPPORT_BLINK_RATE;
 
 	if (_paint_context.IsSharpSupported())
 		out|= TWEAK_STATUS_SUPPORT_PAINT_SHARP;
@@ -1638,14 +1807,20 @@ static std::string GetNotifySH()
 
 void WinPortPanel::OnConsoleDisplayNotification(const wchar_t *title, const wchar_t *text)
 {
+	const std::string &str_title = Wide2MB(title);
+	const std::string &str_text = Wide2MB(text);
+
+#ifdef __APPLE__
+	auto fn = std::bind(MacDisplayNotify, str_title.c_str(), str_text.c_str());
+	CallInMain<bool>(fn);
+
+#else
+
 	static std::string s_notify_sh = GetNotifySH();
 	if (s_notify_sh.empty()) {
 		fprintf(stderr, "OnConsoleDisplayNotification: notify.sh not found\n");
 		return;
 	}
-
-	const std::string &str_title = Wide2MB(title);
-	const std::string &str_text = Wide2MB(text);
 
 	pid_t pid = fork();
 	if (pid == 0) {
@@ -1659,6 +1834,7 @@ void WinPortPanel::OnConsoleDisplayNotification(const wchar_t *title, const wcha
 	} else if (pid != -1) {
 		waitpid(pid, 0, 0);
 	}
+#endif
 }
 
 bool WinPortPanel::OnConsoleBackgroundMode(bool TryEnterBackgroundMode)
@@ -1699,6 +1875,30 @@ void WinPortPanel::OnConsoleExitSync( wxCommandEvent& event )
 void WinPortPanel::OnConsoleExit()
 {
 	wxCommandEvent *event = new(std::nothrow) wxCommandEvent(WX_CONSOLE_EXIT);
+	if (event)
+		wxQueueEvent(this, event);
+}
+
+void WinPortPanel::OnConsoleSetCursorBlinkTimeSync( wxCommandEvent& event )
+{
+	EventWithDWORD64 *e = (EventWithDWORD64 *)&event;
+	DWORD interval = e->cookie;
+	if (interval < 100 )
+		g_TIMER_PERIOD = 100;
+	else if (interval > 500 )
+		g_TIMER_PERIOD = 500;
+	else
+		g_TIMER_PERIOD = interval;
+
+	g_TIMER_IDLING_CYCLES = TIMER_IDLING_TIME / g_TIMER_PERIOD;
+
+	_periodic_timer->Stop();
+	_periodic_timer->Start(g_TIMER_PERIOD);
+}
+
+void WinPortPanel::OnConsoleSetCursorBlinkTime(DWORD interval)
+{
+	EventWithDWORD64 *event = new(std::nothrow) EventWithDWORD64(interval, WX_CONSOLE_SET_CURSOR_BLINK_TIME);
 	if (event)
 		wxQueueEvent(this, event);
 }
@@ -1746,6 +1946,24 @@ void WinPortPanel::ResetInputState()
 
 static void ConsoleOverrideColorInMain(DWORD Index, DWORD *ColorFG, DWORD *ColorBK)
 {
+	if (Index == (DWORD)-1) {
+		const DWORD64 orig_attrs = g_winport_con_out->GetAttributes();
+		DWORD64 new_attrs = orig_attrs;
+		if ((*ColorFG & 0xff000000) == 0) {
+			SET_RGB_FORE(new_attrs, *ColorFG);
+		}
+		if ((*ColorBK & 0xff000000) == 0) {
+			SET_RGB_BACK(new_attrs, *ColorBK);
+		}
+		if (new_attrs != orig_attrs) {
+			g_winport_con_out->SetAttributes(new_attrs);
+		}
+
+		*ColorFG = WxConsoleForeground2RGB(orig_attrs & ~(DWORD64)COMMON_LVB_REVERSE_VIDEO).AsRGB();
+		*ColorBK = WxConsoleBackground2RGB(orig_attrs & ~(DWORD64)COMMON_LVB_REVERSE_VIDEO).AsRGB();
+		return;
+	}
+
 	WinPortRGB fg(*ColorFG), bk(*ColorBK);
 	if (*ColorFG == (DWORD)-1) {
 		fg = g_winport_palette.foreground[Index];
@@ -1753,10 +1971,37 @@ static void ConsoleOverrideColorInMain(DWORD Index, DWORD *ColorFG, DWORD *Color
 	if (*ColorBK == (DWORD)-1) {
 		bk = g_winport_palette.background[Index];
 	}
-	*ColorFG = g_wx_palette.foreground[Index].AsRGB();
-	*ColorBK = g_wx_palette.background[Index].AsRGB();
-	g_wx_palette.foreground[Index] = fg;
-	g_wx_palette.background[Index] = bk;
+	const auto prev_fg = g_wx_palette.foreground[Index].AsRGB();
+	const auto prev_bk = g_wx_palette.background[Index].AsRGB();
+	if (*ColorFG != (DWORD)-2) {
+		g_wx_palette.foreground[Index] = fg;
+	}
+	if (*ColorBK != (DWORD)-2) {
+		g_wx_palette.background[Index] = bk;
+	}
+	*ColorFG = prev_fg;
+	*ColorBK = prev_bk;
+}
+
+static void ConsoleOverrideBasePaletteInMain(void *pbuff)
+{
+	memcpy(&g_wx_palette, pbuff, BASE_PALETTE_SIZE * sizeof(WinPortRGB) * 2);
+}
+
+void WinPortPanel::OnConsoleGetBasePalette(void *pbuff)
+{
+	memcpy(pbuff, &g_wx_palette, BASE_PALETTE_SIZE * sizeof(WinPortRGB) * 2);
+}
+
+bool WinPortPanel::OnConsoleSetBasePalette(void *pbuff)
+{
+	if (!pbuff)
+		return false;
+
+	auto fn = std::bind(&ConsoleOverrideBasePaletteInMain, pbuff);
+	CallInMainNoRet(fn);
+
+	return true;
 }
 
 void WinPortPanel::OnConsoleOverrideColor(DWORD Index, DWORD *ColorFG, DWORD *ColorBK)

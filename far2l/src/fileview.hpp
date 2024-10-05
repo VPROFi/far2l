@@ -81,9 +81,9 @@ public:
 	void Init(FileHolderPtr NewFileHolder, int EnableSwitch, int DisableHistory, long ViewStartPos,
 			const wchar_t *PluginData, NamesList *ViewNamesList, int ToSaveAs);
 	virtual void InitKeyBar();
-	virtual int ProcessKey(int Key);
+	virtual int ProcessKey(FarKey Key);
 	virtual int ProcessMouse(MOUSE_EVENT_RECORD *MouseEvent);
-	virtual int64_t VMProcess(int OpCode, void *vParam = nullptr, int64_t iParam = 0);
+	virtual int64_t VMProcess(MacroOpcode OpCode, void *vParam = nullptr, int64_t iParam = 0);
 	virtual void ShowConsoleTitle();
 	virtual void OnDestroy();
 	virtual void OnChangeFocus(int focus);
@@ -122,4 +122,4 @@ public:
 };
 
 void ModalViewFile(const std::string &pathname);
-void ViewConsoleHistory(bool modal, bool autoclose);
+void ViewConsoleHistory(HANDLE con_hnd, bool modal, bool autoclose);

@@ -32,6 +32,7 @@
 # include "Mac/dockicon.h"
 # include "Mac/touchbar.h"
 # include "Mac/hide.h"
+# include "Mac/displaynotify.h"
 #endif
 
 class WinPortAppThread : public wxThread
@@ -127,6 +128,7 @@ class WinPortPanel: public wxPanel, protected IConsoleOutputBackend
 	void OnConsoleChangeFontSync(wxCommandEvent& event);
 	void OnConsoleSaveWindowStateSync(wxCommandEvent& event);
 	void OnConsoleExitSync( wxCommandEvent& event );
+	void OnConsoleSetCursorBlinkTimeSync(wxCommandEvent& event);
 	void OnIdle( wxIdleEvent& event );
 	void OnKeyDown( wxKeyEvent& event );
 	void OnKeyUp( wxKeyEvent& event );
@@ -159,7 +161,10 @@ class WinPortPanel: public wxPanel, protected IConsoleOutputBackend
 	virtual bool OnConsoleBackgroundMode(bool TryEnterBackgroundMode);
 	virtual bool OnConsoleSetFKeyTitles(const char **titles);
 	virtual BYTE OnConsoleGetColorPalette();
+	virtual void OnConsoleGetBasePalette(void *pbuff);
+	virtual bool OnConsoleSetBasePalette(void *pbuff);
 	virtual void OnConsoleOverrideColor(DWORD Index, DWORD *ColorFG, DWORD *ColorBK);
+	virtual void OnConsoleSetCursorBlinkTime(DWORD interval);
 
 public:
 	WinPortPanel(WinPortFrame *frame, const wxPoint& pos, const wxSize& size);

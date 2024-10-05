@@ -93,29 +93,48 @@ enum DLGITEMINTERNALFLAGS
 const wchar_t *fmtSavedDialogHistory = L"SavedDialogHistory/";
 
 //////////////////////////////////////////////////////////////////////////
-/*
-	Функция, определяющая - "Может ли элемент диалога иметь фокус ввода"
+/**
+ * check if dialog element can be focused
 */
-static inline bool CanGetFocus(int Type)
+static inline bool IsItemFocusable(const struct DialogItemEx* item)
 {
-	switch (Type) {
+	switch (item->Type)
+	{
 		case DI_EDIT:
 		case DI_FIXEDIT:
 		case DI_PSWEDIT:
 		case DI_COMBOBOX:
+		case DI_MEMOEDIT:
 		case DI_BUTTON:
 		case DI_CHECKBOX:
 		case DI_RADIOBUTTON:
 		case DI_LISTBOX:
-		case DI_MEMOEDIT:
 		case DI_USERCONTROL:
-			return true;
+			return !(item->Flags & (DIF_NOFOCUS | DIF_DISABLE | DIF_HIDDEN));
 		default:
 			return false;
 	}
 }
 
-bool IsKeyHighlighted(const wchar_t *Str, int Key, int Translate, int AmpPos)
+/**
+ * check if dialog item is horizontal separator.
+*/
+static inline bool IsItemHorizontalSeparator(const struct DialogItemEx* item)
+{
+	return (item->Type == DI_SINGLEBOX || item->Type == DI_DOUBLEBOX ||
+		(item->Type == DI_TEXT && (item->Flags & (DIF_SEPARATOR | DIF_SEPARATOR2 | DIF_SEPARATORUSER))));
+}
+
+/**
+ * check if dialog item is vertical separator.
+*/
+static inline bool IsItemVerticalSeparator(const struct DialogItemEx* item)
+{
+	return (item->Type == DI_SINGLEBOX || item->Type == DI_DOUBLEBOX ||
+		(item->Type == DI_VTEXT && (item->Flags & (DIF_SEPARATOR | DIF_SEPARATOR2 | DIF_SEPARATORUSER))));
+}
+
+bool IsKeyHighlighted(const wchar_t *Str, FarKey Key, int Translate, int AmpPos)
 {
 	if (AmpPos == -1) {
 		if (!(Str = wcschr(Str, L'&')))
@@ -135,14 +154,14 @@ bool IsKeyHighlighted(const wchar_t *Str, int Key, int Translate, int AmpPos)
 
 	wchar_t UpperStrKey = Upper(Str[AmpPos]);
 
-	if (Key < 0xFFFF) {
+	if (WCHAR_IS_VALID(Key)) {
 		return UpperStrKey == Upper(Key) || (Translate && KeyToKeyLayoutCompare(Upper(Key), UpperStrKey));
 	}
 
 	if (Key & KEY_ALT) {
 		uint32_t AltKey = Key & (~KEY_ALT);
 
-		if (AltKey < 0xFFFF) {
+		if (WCHAR_IS_VALID(AltKey)) {
 			if (iswdigit(AltKey) != 0)
 				return (AltKey == (uint32_t)UpperStrKey);
 
@@ -185,6 +204,11 @@ void DialogItemExToDialogItemEx(DialogItemEx *pSrc, DialogItemEx *pDest)
 	pDest->UCData = pSrc->UCData;
 	pDest->SelStart = pSrc->SelStart;
 	pDest->SelEnd = pSrc->SelEnd;
+
+	pDest->customItemColor[0] = pSrc->customItemColor[0];
+	pDest->customItemColor[1] = pSrc->customItemColor[1];
+	pDest->customItemColor[2] = pSrc->customItemColor[2];
+	pDest->customItemColor[3] = pSrc->customItemColor[3];
 }
 
 void ConvertItemSmall(FarDialogItem *Item, DialogItemEx *Data)
@@ -340,6 +364,11 @@ void DataToItemEx(const DialogDataEx *Data, DialogItemEx *Item, int Count)
 		Item[i].X2 = Data[i].X2;
 		Item[i].Y2 = Data[i].Y2;
 
+		Item[i].customItemColor[0] = 0;
+		Item[i].customItemColor[1] = 0;
+		Item[i].customItemColor[2] = 0;
+		Item[i].customItemColor[3] = 0;
+
 		if (Item[i].X2 < Item[i].X1)
 			Item[i].X2 = Item[i].X1;
 
@@ -448,6 +477,7 @@ void Dialog::Init(FARWINDOWPROC DlgProc,	// Диалоговая процеду�
 Dialog::~Dialog()
 {
 	_tran(SysLog(L"[%p] Dialog::~Dialog()", this));
+
 	DeleteDialogObjects();
 
 	Hide();
@@ -460,9 +490,13 @@ Dialog::~Dialog()
 		delete Item[i];
 
 	free(Item);
-	INPUT_RECORD rec;
-	PeekInputRecord(&rec);
 	delete OldTitle;
+
+	if (!WinPortTesting()) {
+		INPUT_RECORD rec;
+		PeekInputRecord(&rec);
+	}
+
 	_DIALOG(CleverSysLog CL(L"Destroy Dialog"));
 }
 
@@ -693,8 +727,7 @@ unsigned Dialog::InitDialogObjects(unsigned ID)
 	}
 
 	// если FocusPos в пределах и элемент задисаблен, то ищем сначала
-	if (FocusPos != (unsigned)-1 && FocusPos < ItemCount
-			&& (Item[FocusPos]->Flags & (DIF_DISABLE | DIF_NOFOCUS | DIF_HIDDEN)))
+	if (FocusPos != (unsigned)-1 && FocusPos < ItemCount && !IsItemFocusable(Item[FocusPos]))
 		FocusPos = (unsigned)-1;	// будем искать сначала!
 
 	// предварительный цикл по поводу кнопок
@@ -719,8 +752,7 @@ unsigned Dialog::InitDialogObjects(unsigned ID)
 			}
 		}
 		// предварительный поик фокуса
-		if (FocusPos == (unsigned)-1 && CanGetFocus(Type) && CurItem->Focus
-				&& !(ItemFlags & (DIF_DISABLE | DIF_NOFOCUS | DIF_HIDDEN)))
+		if (FocusPos == (unsigned)-1 && IsItemFocusable(CurItem) && CurItem->Focus)
 			FocusPos = I;		// запомним первый фокусный элемент
 
 		CurItem->Focus = 0;		// сбросим для всех, чтобы не оказалось,
@@ -750,7 +782,7 @@ unsigned Dialog::InitDialogObjects(unsigned ID)
 		{
 			CurItem = Item[I];
 
-			if (CanGetFocus(CurItem->Type) && !(CurItem->Flags & (DIF_DISABLE | DIF_NOFOCUS | DIF_HIDDEN))) {
+			if (IsItemFocusable(CurItem)) {
 				FocusPos = I;
 				break;
 			}
@@ -1053,44 +1085,57 @@ void Dialog::ProcessLastHistory(DialogItemEx *CurItem, int MsgIndex)
 	}
 }
 
+
+static int ToRange(int Val, int Min, int Max)
+{
+	return std::min(std::max(Val, Min), Max);
+}
+
 // Изменение координат и/или размеров итема диалога.
-BOOL Dialog::SetItemRect(unsigned ID, SMALL_RECT *Rect)
+BOOL Dialog::SetItemRect(unsigned ID, SMALL_RECT *aRect)
 {
 	CriticalSectionLock Lock(CS);
 
 	if (ID >= ItemCount)
 		return FALSE;
 
+
+	auto Rect = *aRect;
+	Rect.Left = ToRange(Rect.Left, 0, X2-X1);
+	Rect.Top = ToRange(Rect.Top, 0, Y2-Y1);
+	Rect.Right = ToRange(Rect.Right, Rect.Left, X2-X1);
+	Rect.Bottom = ToRange(Rect.Bottom, Rect.Top, Y2-Y1);
+
 	DialogItemEx *CurItem = Item[ID];
 	int Type = CurItem->Type;
-	CurItem->X1 = Rect->Left;
-	CurItem->Y1 = (Rect->Top < 0) ? 0 : Rect->Top;
+	CurItem->X1 = Rect.Left;
+	CurItem->Y1 = (Rect.Top < 0) ? 0 : Rect.Top;
 
 	if (FarIsEdit(Type)) {
 		DlgEdit *DialogEdit = (DlgEdit *)CurItem->ObjPtr;
-		CurItem->X2 = Rect->Right;
-		CurItem->Y2 = (Type == DI_MEMOEDIT ? Rect->Bottom : 0);
-		DialogEdit->SetPosition(X1 + Rect->Left, Y1 + Rect->Top, X1 + Rect->Right, Y1 + Rect->Top);
+		CurItem->X2 = Rect.Right;
+		CurItem->Y2 = (Type == DI_MEMOEDIT ? Rect.Bottom : 0);
+		DialogEdit->SetPosition(X1 + Rect.Left, Y1 + Rect.Top, X1 + Rect.Right, Y1 + Rect.Top);
 	} else if (Type == DI_LISTBOX) {
-		CurItem->X2 = Rect->Right;
-		CurItem->Y2 = Rect->Bottom;
-		CurItem->ListPtr->SetPosition(X1 + Rect->Left, Y1 + Rect->Top, X1 + Rect->Right, Y1 + Rect->Bottom);
+		CurItem->X2 = Rect.Right;
+		CurItem->Y2 = Rect.Bottom;
+		CurItem->ListPtr->SetPosition(X1 + Rect.Left, Y1 + Rect.Top, X1 + Rect.Right, Y1 + Rect.Bottom);
 		CurItem->ListPtr->SetMaxHeight(CurItem->Y2 - CurItem->Y1 + 1);
 	}
 
 	switch (Type) {
 		case DI_TEXT:
-			CurItem->X2 = Rect->Right;
+			CurItem->X2 = Rect.Right;
 			CurItem->Y2 = 0;	// ???
 			break;
 		case DI_VTEXT:
 			CurItem->X2 = 0;	// ???
-			CurItem->Y2 = Rect->Bottom;
+			CurItem->Y2 = Rect.Bottom;
 		case DI_DOUBLEBOX:
 		case DI_SINGLEBOX:
 		case DI_USERCONTROL:
-			CurItem->X2 = Rect->Right;
-			CurItem->Y2 = Rect->Bottom;
+			CurItem->X2 = Rect.Right;
+			CurItem->Y2 = Rect.Bottom;
 			break;
 	}
 
@@ -1369,7 +1414,7 @@ void Dialog::GetDialogObjectsData()
 }
 
 // Функция формирования и запроса цветов.
-DWORD Dialog::CtlColorDlgItem(int ItemPos, const DialogItemEx *CurItem)
+DWORD Dialog::CtlColorDlgItem(int ItemPos, const DialogItemEx *CurItem, uint64_t *Color)
 {
 	CriticalSectionLock Lock(CS);
 	const int Type = CurItem->Type;
@@ -1377,12 +1422,22 @@ DWORD Dialog::CtlColorDlgItem(int ItemPos, const DialogItemEx *CurItem)
 	const int Default = CurItem->DefaultButton;
 	const DWORD Flags = CurItem->Flags;
 
+	const bool IsWarning = DialogMode.Check(DMODE_WARNINGSTYLE);
 	const bool DisabledItem = (Flags & DIF_DISABLE) != 0;
-	DWORD Attr = 0;
 
 	switch (Type) {
 		case DI_SINGLEBOX:
 		case DI_DOUBLEBOX: {
+
+			// Title
+			Color[0] = FarColorToReal(IsWarning? (DisabledItem?COL_WARNDIALOGDISABLED:COL_WARNDIALOGBOXTITLE) : (DisabledItem?COL_DIALOGDISABLED:COL_DIALOGBOXTITLE));
+			// HiText
+			Color[1] = FarColorToReal(IsWarning? (DisabledItem?COL_WARNDIALOGDISABLED:COL_WARNDIALOGHIGHLIGHTBOXTITLE) : (DisabledItem?COL_DIALOGDISABLED:COL_DIALOGHIGHLIGHTBOXTITLE));
+			// Box
+			Color[2] = FarColorToReal(IsWarning? (DisabledItem?COL_WARNDIALOGDISABLED:COL_WARNDIALOGBOX) : (DisabledItem?COL_DIALOGDISABLED:COL_DIALOGBOX));
+			break;
+
+/**
 			if (Flags & DIF_SETCOLOR)
 				Attr = Flags & DIF_COLORMASK;
 			else {
@@ -1404,11 +1459,24 @@ DWORD Dialog::CtlColorDlgItem(int ItemPos, const DialogItemEx *CurItem)
 							0)																				// HIBYTE
 			);
 			break;
+**/
 		}
 #if defined(VTEXT_ADN_SEPARATORS)
 		case DI_VTEXT:
 #endif
 		case DI_TEXT: {
+
+			Color[0] = FarColorToReal((Flags & DIF_BOXCOLOR)? (IsWarning? (DisabledItem?COL_WARNDIALOGDISABLED:COL_WARNDIALOGBOX) : (DisabledItem?COL_DIALOGDISABLED:COL_DIALOGBOX)) : (IsWarning? (DisabledItem?COL_WARNDIALOGDISABLED:COL_WARNDIALOGTEXT) : (DisabledItem?COL_DIALOGDISABLED:COL_DIALOGTEXT)));
+			// HiText
+			Color[1] = FarColorToReal(IsWarning? (DisabledItem?COL_WARNDIALOGDISABLED:COL_WARNDIALOGHIGHLIGHTTEXT) : (DisabledItem?COL_DIALOGDISABLED:COL_DIALOGHIGHLIGHTTEXT));
+			if (Flags & (DIF_SEPARATORUSER|DIF_SEPARATOR|DIF_SEPARATOR2))
+			{
+				// Box
+				Color[2] = FarColorToReal(IsWarning? (DisabledItem?COL_WARNDIALOGDISABLED:COL_WARNDIALOGBOX) : (DisabledItem?COL_DIALOGDISABLED:COL_DIALOGBOX));
+			}
+			break;
+
+/**
 			if (Flags & DIF_SETCOLOR)
 				Attr = Flags & DIF_COLORMASK;
 			else {
@@ -1437,7 +1505,9 @@ DWORD Dialog::CtlColorDlgItem(int ItemPos, const DialogItemEx *CurItem)
 										0))
 																					: 0));
 			break;
+**/
 		}
+#if 0
 #if !defined(VTEXT_ADN_SEPARATORS)
 		case DI_VTEXT: {
 			if (Flags & DIF_BOXCOLOR)
@@ -1455,8 +1525,15 @@ DWORD Dialog::CtlColorDlgItem(int ItemPos, const DialogItemEx *CurItem)
 			break;
 		}
 #endif
+#endif
 		case DI_CHECKBOX:
 		case DI_RADIOBUTTON: {
+
+			Color[0] = FarColorToReal(IsWarning? (DisabledItem?COL_WARNDIALOGDISABLED:COL_WARNDIALOGTEXT) : (DisabledItem?COL_DIALOGDISABLED:COL_DIALOGTEXT));
+			// HiText
+			Color[1] = FarColorToReal(IsWarning? (DisabledItem?COL_WARNDIALOGDISABLED:COL_WARNDIALOGHIGHLIGHTTEXT) : (DisabledItem?COL_DIALOGDISABLED:COL_DIALOGHIGHLIGHTTEXT));
+			break;
+/**
 			if (Flags & DIF_SETCOLOR)
 				Attr = (Flags & DIF_COLORMASK);
 			else
@@ -1469,8 +1546,30 @@ DWORD Dialog::CtlColorDlgItem(int ItemPos, const DialogItemEx *CurItem)
 									? (DisabledItem ? COL_WARNDIALOGDISABLED : COL_WARNDIALOGHIGHLIGHTTEXT)
 									: (DisabledItem ? COL_DIALOGDISABLED : COL_DIALOGHIGHLIGHTTEXT)));		// HiText
 			break;
+**/
 		}
 		case DI_BUTTON: {
+
+			if (Focus)
+			{
+				SetCursorType(0, 10);
+				// TEXT
+				Color[0] = FarColorToReal(IsWarning? (DisabledItem?COL_WARNDIALOGDISABLED:(Default?COL_WARNDIALOGSELECTEDDEFAULTBUTTON:COL_WARNDIALOGSELECTEDBUTTON)) : (DisabledItem?COL_DIALOGDISABLED:(Default?COL_DIALOGSELECTEDDEFAULTBUTTON:COL_DIALOGSELECTEDBUTTON)));
+				// HiText
+				Color[1] = FarColorToReal(IsWarning? (DisabledItem?COL_WARNDIALOGDISABLED:(Default?COL_WARNDIALOGHIGHLIGHTSELECTEDDEFAULTBUTTON:COL_WARNDIALOGHIGHLIGHTSELECTEDBUTTON)) : (DisabledItem?COL_DIALOGDISABLED:(Default?COL_DIALOGHIGHLIGHTSELECTEDDEFAULTBUTTON:COL_DIALOGHIGHLIGHTSELECTEDBUTTON)));
+			}
+			else
+			{
+				// TEXT
+				Color[0] = FarColorToReal(IsWarning?
+						(DisabledItem?COL_WARNDIALOGDISABLED:(Default?COL_WARNDIALOGDEFAULTBUTTON:COL_WARNDIALOGBUTTON)):
+						(DisabledItem?COL_DIALOGDISABLED:(Default?COL_DIALOGDEFAULTBUTTON:COL_DIALOGBUTTON)));
+				// HiText
+				Color[1] = FarColorToReal(IsWarning? (DisabledItem?COL_WARNDIALOGDISABLED:(Default?COL_WARNDIALOGHIGHLIGHTDEFAULTBUTTON:COL_WARNDIALOGHIGHLIGHTBUTTON)) : (DisabledItem?COL_DIALOGDISABLED:(Default?COL_DIALOGHIGHLIGHTDEFAULTBUTTON:COL_DIALOGHIGHLIGHTBUTTON)));
+			}
+			break;
+
+/**
 			if (Focus) {
 				SetCursorType(0, 10);
 				Attr = MAKEWORD((Flags & DIF_SETCOLOR)
@@ -1509,12 +1608,66 @@ DWORD Dialog::CtlColorDlgItem(int ItemPos, const DialogItemEx *CurItem)
 			}
 
 			break;
+**/
 		}
 		case DI_EDIT:
 		case DI_FIXEDIT:
 		case DI_PSWEDIT:
 		case DI_COMBOBOX:
 		case DI_MEMOEDIT: {
+
+			if (Type == DI_COMBOBOX && (Flags & DIF_DROPDOWNLIST))
+			{
+				if (IsWarning)
+				{
+					// Text
+					Color[0] = FarColorToReal(DisabledItem? COL_WARNDIALOGEDITDISABLED: Focus? COL_WARNDIALOGEDITSELECTED : COL_WARNDIALOGEDIT);
+					// Select
+					Color[1] = FarColorToReal(DisabledItem? COL_WARNDIALOGEDITDISABLED : Focus? COL_WARNDIALOGEDITSELECTED : COL_WARNDIALOGEDIT);
+					// Unchanged
+					Color[2] = FarColorToReal(DisabledItem? COL_WARNDIALOGEDITDISABLED : Focus? COL_WARNDIALOGEDITSELECTED : COL_WARNDIALOGEDITUNCHANGED);
+					// History
+					Color[3] = FarColorToReal(DisabledItem? COL_WARNDIALOGDISABLED : COL_WARNDIALOGTEXT);
+				}
+				else
+				{
+					// Text
+					Color[0] = FarColorToReal(DisabledItem? COL_DIALOGEDITDISABLED : Focus? COL_DIALOGEDITSELECTED : COL_DIALOGEDIT);
+					// Select
+					Color[1] = FarColorToReal(DisabledItem? COL_DIALOGEDITDISABLED: Focus? COL_DIALOGEDITSELECTED : COL_DIALOGEDIT);
+					// Unchanged
+					Color[2] = FarColorToReal(DisabledItem? COL_DIALOGEDITDISABLED :  Focus? COL_DIALOGEDITSELECTED : COL_DIALOGEDITUNCHANGED);
+					// History
+					Color[3] = FarColorToReal(DisabledItem? COL_DIALOGDISABLED : COL_DIALOGTEXT);
+				}
+			}
+			else
+			{
+				if (IsWarning)
+				{
+					// Text
+					Color[0] = FarColorToReal(DisabledItem? COL_WARNDIALOGEDITDISABLED : Flags & DIF_NOFOCUS? COL_WARNDIALOGEDITUNCHANGED : COL_WARNDIALOGEDIT);
+					// Select
+					Color[1] = FarColorToReal(DisabledItem? COL_WARNDIALOGEDITDISABLED : COL_WARNDIALOGEDITSELECTED);
+					// Unchanged
+					Color[2] = FarColorToReal(DisabledItem? COL_WARNDIALOGEDITDISABLED : COL_WARNDIALOGEDITUNCHANGED);
+					// History
+					Color[3] = FarColorToReal(DisabledItem? COL_WARNDIALOGDISABLED : COL_WARNDIALOGTEXT);
+				}
+				else
+				{
+					// Text
+					Color[0] = FarColorToReal(DisabledItem? COL_DIALOGEDITDISABLED : Flags & DIF_NOFOCUS? COL_DIALOGEDITUNCHANGED : COL_DIALOGEDIT);
+					// Select
+					Color[1] = FarColorToReal(DisabledItem? COL_DIALOGEDITDISABLED : COL_DIALOGEDITSELECTED);
+					// Unchanged
+					Color[2] = FarColorToReal(DisabledItem ? COL_DIALOGEDITDISABLED : COL_DIALOGEDITUNCHANGED);
+					// History
+					Color[3] = FarColorToReal(DisabledItem? COL_DIALOGDISABLED : COL_DIALOGTEXT);
+				}
+			}
+			break;
+/**
 			if (Type == DI_COMBOBOX && (Flags & DIF_DROPDOWNLIST)) {
 				if (DialogMode.Check(DMODE_WARNINGSTYLE))
 					Attr = MAKELONG(MAKEWORD(		// LOWORD
@@ -1586,6 +1739,7 @@ DWORD Dialog::CtlColorDlgItem(int ItemPos, const DialogItemEx *CurItem)
 			}
 
 			break;
+**/
 		}
 		case DI_LISTBOX: {
 			Item[ItemPos]->ListPtr->SetColors(nullptr);
@@ -1597,11 +1751,12 @@ DWORD Dialog::CtlColorDlgItem(int ItemPos, const DialogItemEx *CurItem)
 	}
 
 	++InCtlColorDlgItem;
-	DWORD out = DlgProc((HANDLE)this, DN_CTLCOLORDLGITEM, ItemPos, Attr);
+	DWORD out = DlgProc((HANDLE)this, DN_CTLCOLORDLGITEM, ItemPos, (LONG_PTR)Color);
 	--InCtlColorDlgItem;
 	return out;
 }
 
+/*
 static void SetColorNormal(DWORD Attr, const std::unique_ptr<DialogItemTrueColors> &TrueColors)
 {
 	ComposeAndSetColor(Attr & 0xff, TrueColors ? &TrueColors->Normal : nullptr);
@@ -1611,7 +1766,7 @@ static void SetColorFrame(DWORD Attr, const std::unique_ptr<DialogItemTrueColors
 {
 	ComposeAndSetColor(LOBYTE(HIWORD(Attr)), TrueColors ? &TrueColors->Frame : nullptr);
 }
-
+*/
 
 //////////////////////////////////////////////////////////////////////////
 /*
@@ -1628,8 +1783,9 @@ void Dialog::ShowDialog(unsigned ID)
 	FARString strStr;
 	DialogItemEx *CurItem;
 	int X, Y;
+//	size_t I, DrawItemCount;
 	unsigned I, DrawItemCount;
-	DWORD Attr;
+	uint64_t ItemColor[4];
 
 	// Если не разрешена отрисовка, то вываливаем.
 	if (IsEnableRedraw ||							// разрешена прорисовка ?
@@ -1655,9 +1811,12 @@ void Dialog::ShowDialog(unsigned ID)
 			Shadow(DialogMode.Check(DMODE_FULLSHADOW) != FALSE);	// "наводим" тень
 
 		if (!DialogMode.Check(DMODE_NODRAWPANEL)) {
-			Attr = (DWORD)DlgProc((HANDLE)this, DN_CTLCOLORDIALOG, 0,
-					DialogMode.Check(DMODE_WARNINGSTYLE) ? COL_WARNDIALOGTEXT : COL_DIALOGTEXT);
-			SetScreen(X1, Y1, X2, Y2, L' ', Attr);
+
+			uint64_t Color[4];
+
+			Color[0] = FarColorToReal(DialogMode.Check(DMODE_WARNINGSTYLE) ? COL_WARNDIALOGTEXT:COL_DIALOGTEXT);
+			DlgProc((HANDLE)this, DN_CTLCOLORDIALOG, 0, (LONG_PTR)Color);
+			SetScreen(X1, Y1, X2, Y2, L' ', Color[0]);
 		}
 
 		ID = 0;
@@ -1716,7 +1875,13 @@ void Dialog::ShowDialog(unsigned ID)
 
 		short CW = CX2 - CX1 + 1;
 		short CH = CY2 - CY1 + 1;
-		Attr = CtlColorDlgItem(I, CurItem);
+
+		CtlColorDlgItem(I, CurItem, ItemColor);
+
+		for (size_t g = 0; g < 4; g++)
+			if (CurItem->customItemColor[g])
+				ItemColor[g] = CurItem->customItemColor[g];
+
 #if 0
 
 		// TODO: прежде чем эту строку применять... нужно проверить _ВСЕ_ диалоги на предмет X2, Y2. !!!
@@ -1732,7 +1897,8 @@ void Dialog::ShowDialog(unsigned ID)
 			case DI_DOUBLEBOX: {
 				BOOL IsDrawTitle = TRUE;
 				GotoXY(X1 + CX1, Y1 + CY1);
-				SetColorFrame(Attr, CurItem->TrueColors);
+//				SetColorFrame(Attr, CurItem->TrueColors);
+				SetColor(ItemColor[2]);
 
 				if (CY1 == CY2) {
 					DrawLine(CX2 - CX1 + 1, CurItem->Type == DI_SINGLEBOX ? 8 : 9);		//???
@@ -1740,7 +1906,7 @@ void Dialog::ShowDialog(unsigned ID)
 					DrawLine(CY2 - CY1 + 1, CurItem->Type == DI_SINGLEBOX ? 10 : 11);
 					IsDrawTitle = FALSE;
 				} else {
-					Box(X1 + CX1, Y1 + CY1, X1 + CX2, Y1 + CY2, LOBYTE(HIWORD(Attr)),
+					Box(X1 + CX1, Y1 + CY1, X1 + CX2, Y1 + CY2, ItemColor[2],
 							(CurItem->Type == DI_SINGLEBOX) ? SINGLE_BOX : DOUBLE_BOX);
 				}
 
@@ -1765,15 +1931,24 @@ void Dialog::ShowDialog(unsigned ID)
 					if ((CurItem->Flags & DIF_LEFTTEXT) && X1 + CX1 + 1 < X)
 						X = X1 + CX1 + 1;
 
-					SetColorNormal(Attr, CurItem->TrueColors);
+//					SetColorNormal(Attr, CurItem->TrueColors);
+					SetColor(ItemColor[0]);
 					GotoXY(X, Y1 + CY1);
 
 					if (CurItem->Flags & DIF_SHOWAMPERSAND)
 						Text(strStr);
-					else if (CurItem->TrueColors)
-						HiText(strStr, ComposeColor(HIBYTE(LOWORD(Attr)), &CurItem->TrueColors->Hilighted));
 					else
-						HiText(strStr, HIBYTE(LOWORD(Attr)));
+						HiText(strStr, ItemColor[1]);
+
+/**
+					if (CurItem->Flags & DIF_SHOWAMPERSAND)
+						Text(strStr);
+					else if (CurItem->TrueColors)
+						HiText(strStr, ComposeColor(ItemColor[1] & 0xFF, &CurItem->TrueColors->Hilighted));
+					else
+						HiText(strStr, ItemColor[1]);
+**/
+
 				}
 
 				break;
@@ -1814,7 +1989,8 @@ void Dialog::ShowDialog(unsigned ID)
 						&& !(CurItem->Flags & (DIF_SEPARATORUSER | DIF_SEPARATOR | DIF_SEPARATOR2))) {		// половинчатое решение
 
 					int CntChr = CX2 - CX1 + 1;
-					SetColorNormal(Attr, CurItem->TrueColors);
+//					SetColorNormal(Attr, CurItem->TrueColors);
+					SetColor(ItemColor[0]);
 					GotoXY(X1 + X, Y1 + Y);
 
 					if (X1 + X + CntChr - 1 > X2)
@@ -1826,8 +2002,27 @@ void Dialog::ShowDialog(unsigned ID)
 						strStr.TruncateByCells(CntChr);
 				}
 
+///					if (CX1 > -1 && CX2 > CX1 && !(Item.Flags & (DIF_SEPARATORUSER|DIF_SEPARATOR|DIF_SEPARATOR2))) //половинчатое решение
+///					{
+///						SetScreen({ m_Where.left + CX1, m_Where.top + Y, m_Where.left + CX2, m_Where.top + Y }, L' ', ItemColor[0]);
+						/*
+						int CntChr=CX2-CX1+1;
+						SetColor(ItemColor[0]);
+						GotoXY(X1+X,Y1+Y);
+
+						if (X1+X+CntChr-1 > X2)
+							CntChr=X2-(X1+X)+1;
+
+						Text(string(CntChr, L' '));
+
+						if (CntChr < LenText)
+							strStr.SetLength(CntChr);
+						*/
+///					}
+
 				if (CurItem->Flags & (DIF_SEPARATORUSER | DIF_SEPARATOR | DIF_SEPARATOR2)) {
-					SetColorFrame(Attr, CurItem->TrueColors);
+//					SetColorFrame(Attr, CurItem->TrueColors);
+					SetColor(ItemColor[2]);
 					GotoXY(X1
 									+ ((CurItem->Flags & DIF_SEPARATORUSER)
 													? X
@@ -1842,7 +2037,8 @@ void Dialog::ShowDialog(unsigned ID)
 							CurItem->strMask);
 				}
 
-				SetColorNormal(Attr, CurItem->TrueColors);
+//				SetColorNormal(Attr, CurItem->TrueColors);
+				SetColor(ItemColor[0]);
 				GotoXY(X1 + X, Y1 + Y);
 
 				if (CurItem->Flags & DIF_SHOWAMPERSAND) {
@@ -1850,7 +2046,7 @@ void Dialog::ShowDialog(unsigned ID)
 					Text(strStr);
 				} else {
 					// MessageBox(0, strStr, strStr, MB_OK);
-					HiText(strStr, HIBYTE(LOWORD(Attr)));
+					HiText(strStr, ItemColor[1]);
 				}
 
 				break;
@@ -1891,7 +2087,8 @@ void Dialog::ShowDialog(unsigned ID)
 						&& !(CurItem->Flags & (DIF_SEPARATORUSER | DIF_SEPARATOR | DIF_SEPARATOR2))) {		// половинчатое решение
 
 					int CntChr = CY2 - CY1 + 1;
-					SetColorNormal(Attr, CurItem->TrueColors);
+					SetColor(ItemColor[0]);
+//					SetColorNormal(Attr, CurItem->TrueColors);
 					GotoXY(X1 + X, Y1 + Y);
 
 					if (Y1 + Y + CntChr - 1 > Y2)
@@ -1900,10 +2097,32 @@ void Dialog::ShowDialog(unsigned ID)
 					vmprintf(L"%*ls", CntChr, L"");
 				}
 
+				// нужно ЭТО
+				//SetScreen(X1+CX1,Y1+CY1,X1+CX2,Y1+CY2,' ',Attr&0xFF);
+				// вместо этого:
+///				if (CY1 > -1 && CY2 > CY1 && !(Item.Flags & (DIF_SEPARATORUSER|DIF_SEPARATOR|DIF_SEPARATOR2))) //половинчатое решение
+///				{
+///					SetScreen({ m_Where.left + X, m_Where.top + CY1, m_Where.left + X, m_Where.top + CY2 }, L' ', ItemColor[0]);
+					/*
+					int CntChr=CY2-CY1+1;
+					SetColor(ItemColor[0]);
+					GotoXY(X1+X,Y1+Y);
+
+					if (Y1+Y+CntChr-1 > Y2)
+						CntChr=Y2-(Y1+Y)+1;
+
+					vmprintf(L"%*s",CntChr,L"");
+					*/
+///				}
+
+
+
+
 #if defined(VTEXT_ADN_SEPARATORS)
 
 				if (CurItem->Flags & (DIF_SEPARATORUSER | DIF_SEPARATOR | DIF_SEPARATOR2)) {
-					SetColorFrame(Attr, CurItem->TrueColors);
+//					SetColorFrame(Attr, CurItem->TrueColors);
+					SetColor(ItemColor[2]);
 					GotoXY(X1 + X,
 							Y1
 									+ ((CurItem->Flags & DIF_SEPARATORUSER)
@@ -1919,20 +2138,22 @@ void Dialog::ShowDialog(unsigned ID)
 				}
 
 #endif
-				SetColorNormal(Attr, CurItem->TrueColors);
+				SetColor(ItemColor[0]);
+//				SetColorNormal(Attr, CurItem->TrueColors);
 				GotoXY(X1 + X, Y1 + Y);
 
 				if (CurItem->Flags & DIF_SHOWAMPERSAND)
 					VText(strStr);
 				else
-					HiText(strStr, HIBYTE(LOWORD(Attr)), TRUE);
+					HiText(strStr, ItemColor[1], TRUE);
 
 				break;
 			}
 			/* ***************************************************************** */
 			case DI_CHECKBOX:
 			case DI_RADIOBUTTON: {
-				SetColorNormal(Attr, CurItem->TrueColors);
+//				SetColorNormal(Attr, CurItem->TrueColors);
+				SetColor(ItemColor[0]);
 				GotoXY(X1 + CX1, Y1 + CY1);
 
 				if (CurItem->Type == DI_CHECKBOX) {
@@ -1970,7 +2191,7 @@ void Dialog::ShowDialog(unsigned ID)
 				if (CurItem->Flags & DIF_SHOWAMPERSAND)
 					Text(strStr);
 				else
-					HiText(strStr, HIBYTE(LOWORD(Attr)));
+					HiText(strStr, ItemColor[1]);
 
 				if (CurItem->Focus) {
 					// Отключение мигающего курсора при перемещении диалога
@@ -1985,13 +2206,15 @@ void Dialog::ShowDialog(unsigned ID)
 			/* ***************************************************************** */
 			case DI_BUTTON: {
 				strStr = CurItem->strData;
-				SetColorNormal(Attr, CurItem->TrueColors);
+				SetColor(ItemColor[0]);
+//				SetColorNormal(Attr, CurItem->TrueColors);
 				GotoXY(X1 + CX1, Y1 + CY1);
 
 				if (CurItem->Flags & DIF_SHOWAMPERSAND)
 					Text(strStr);
 				else
-					HiText(strStr, HIBYTE(LOWORD(Attr)));
+					HiText(strStr,ItemColor[1]);
+//					HiText(strStr, HIBYTE(LOWORD(Attr)));
 
 				if (CurItem->Flags & DIF_SETSHIELD) {
 					int startx = X1 + CX1 + (CurItem->Flags & DIF_NOBRACKETS ? 0 : 2);
@@ -2010,7 +2233,8 @@ void Dialog::ShowDialog(unsigned ID)
 				if (!EditPtr)
 					break;
 
-				EditPtr->SetObjectColor(Attr & 0xFF, HIBYTE(LOWORD(Attr)), LOBYTE(HIWORD(Attr)));
+//				EditPtr->SetObjectColor(Attr & 0xFF, HIBYTE(LOWORD(Attr)), LOBYTE(HIWORD(Attr)));
+				EditPtr->SetObjectColor(ItemColor[0],ItemColor[1],ItemColor[2]);
 
 				if (CurItem->Focus) {
 					// Отключение мигающего курсора при перемещении диалога
@@ -2031,7 +2255,7 @@ void Dialog::ShowDialog(unsigned ID)
 					int EditX1, EditY1, EditX2, EditY2;
 					EditPtr->GetPosition(EditX1, EditY1, EditX2, EditY2);
 					// Text((CurItem->Type == DI_COMBOBOX?"\x1F":"\x19"));
-					Text(EditX2 + 1, EditY1, HIBYTE(HIWORD(Attr)), L"\x2193");
+					Text(EditX2 + 1, EditY1, ItemColor[3], L"\x2193");
 				}
 
 				if (CurItem->Type == DI_COMBOBOX && GetDropDownOpened() && CurItem->ListPtr->IsVisible())		// need redraw VMenu?
@@ -2046,7 +2270,7 @@ void Dialog::ShowDialog(unsigned ID)
 			case DI_LISTBOX: {
 				if (CurItem->ListPtr) {
 					// Перед отрисовкой спросим об изменении цветовых атрибутов
-					BYTE RealColors[VMENU_COLOR_COUNT];
+					uint64_t RealColors[VMENU_COLOR_COUNT];
 					FarListColors ListColors = {0};
 					ListColors.ColorCount = VMENU_COLOR_COUNT;
 					ListColors.Colors = RealColors;
@@ -2300,7 +2524,7 @@ int Dialog::ProcessMoveDialog(DWORD Key)
 	return (FALSE);
 }
 
-int64_t Dialog::VMProcess(int OpCode, void *vParam, int64_t iParam)
+int64_t Dialog::VMProcess(MacroOpcode OpCode, void *vParam, int64_t iParam)
 {
 	switch (OpCode) {
 		case MCODE_F_MENU_CHECKHOTKEY:
@@ -2431,7 +2655,7 @@ int64_t Dialog::VMProcess(int OpCode, void *vParam, int64_t iParam)
 		Обработка данных от клавиатуры.
 		Перекрывает BaseInput::ProcessKey.
 */
-int Dialog::ProcessKey(int Key)
+int Dialog::ProcessKey(FarKey Key)
 {
 	CriticalSectionLock Lock(CS);
 	_DIALOG(CleverSysLog CL(L"Dialog::ProcessKey"));
@@ -2520,7 +2744,7 @@ int Dialog::ProcessKey(int Key)
 			case KEY_ENTER:
 				VMenu *List = Item[FocusPos]->ListPtr;
 				int CurListPos = List->GetSelectPos();
-				int CheckedListItem = List->GetCheck(-1);
+				auto CheckedListItem = List->GetCheck(-1);
 				List->ProcessKey(Key);
 				int NewListPos = List->GetSelectPos();
 
@@ -2715,48 +2939,19 @@ int Dialog::ProcessKey(int Key)
 				((DlgEdit *)(Item[FocusPos]->ObjPtr))->ProcessKey(Key);
 				return TRUE;
 			} else {
-				int MinDist = 1000, MinPos = 0;
-
-				for (I = 0; I < ItemCount; I++) {
-					if (I != FocusPos && (!(Item[I]->Flags & (DIF_NOFOCUS | DIF_DISABLE | DIF_HIDDEN)))
-							&& (FarIsEdit(Item[I]->Type) || Item[I]->Type == DI_CHECKBOX
-									|| Item[I]->Type == DI_RADIOBUTTON)
-							&& Item[I]->Y1 == Item[FocusPos]->Y1) {
-						int Dist = Item[I]->X1 - Item[FocusPos]->X1;
-
-						if (((Key == KEY_LEFT || Key == KEY_SHIFTNUMPAD4) && Dist < 0)
-								|| ((Key == KEY_RIGHT || Key == KEY_SHIFTNUMPAD6) && Dist > 0))
-							if (abs(Dist) < MinDist) {
-								MinDist = abs(Dist);
-								MinPos = I;
-							}
-					}
-				}
-
-				if (MinDist < 1000) {
-					ChangeFocus2(MinPos);
-
-					if (Item[MinPos]->Flags & DIF_MOVESELECT) {
-						Do_ProcessSpace();
-					} else {
-						ShowDialog();
-					}
-
-					return TRUE;
-				}
+				return MoveToCtrlHorizontal(Key == KEY_RIGHT || Key == KEY_NUMPAD6);
 			}
 		}
 		case KEY_UP:
 		case KEY_NUMPAD8:
 		case KEY_DOWN:
-		case KEY_NUMPAD2:
-
+		case KEY_NUMPAD2: {
 			if (Item[FocusPos]->Type == DI_USERCONTROL)		// для user-типа вываливаем
 				return TRUE;
 
-			return Do_ProcessNextCtrl(
-					Key == KEY_LEFT || Key == KEY_UP || Key == KEY_NUMPAD4 || Key == KEY_NUMPAD8);
-			// $ 27.04.2001 VVM - Обработка колеса мышки
+			return MoveToCtrlVertical(Key == KEY_UP || Key == KEY_NUMPAD8);
+		}
+		// $ 27.04.2001 VVM - Обработка колеса мышки
 		case KEY_MSWHEEL_UP:
 		case KEY_MSWHEEL_DOWN:
 		case KEY_CTRLUP:
@@ -2809,7 +3004,7 @@ int Dialog::ProcessKey(int Key)
 			if (Item[FocusPos]->Type == DI_LISTBOX) {
 				VMenu *List = Item[FocusPos]->ListPtr;
 				int CurListPos = List->GetSelectPos();
-				int CheckedListItem = List->GetCheck(-1);
+				auto CheckedListItem = List->GetCheck(-1);
 				List->ProcessKey(Key);
 				int NewListPos = List->GetSelectPos();
 
@@ -3033,7 +3228,7 @@ int Dialog::ProcessKey(int Key)
 	return FALSE;
 }
 
-void Dialog::ProcessKey(int Key, unsigned ItemPos)
+void Dialog::ProcessKey(FarKey Key, unsigned ItemPos)
 {
 	unsigned SavedFocusPos = FocusPos;
 	FocusPos = ItemPos;
@@ -3085,7 +3280,7 @@ int Dialog::ProcessMouse(MOUSE_EVENT_RECORD *MouseEvent)
 				&& MsX >= X1 + Item[I]->X1 && MsX <= X1 + Item[I]->X2) {
 			VMenu *List = Item[I]->ListPtr;
 			int Pos = List->GetSelectPos();
-			int CheckedListItem = List->GetCheck(-1);
+			auto CheckedListItem = List->GetCheck(-1);
 
 			if ((MouseEvent->dwButtonState & FROM_LEFT_1ST_BUTTON_PRESSED)) {
 				if (FocusPos != I) {
@@ -3564,7 +3759,7 @@ int Dialog::Do_ProcessFirstCtrl()
 		return TRUE;
 	} else {
 		for (unsigned I = 0; I < ItemCount; I++)
-			if (CanGetFocus(Item[I]->Type)) {
+			if (IsItemFocusable(Item[I])) {
 				ChangeFocus2(I);
 				ShowDialog();
 				break;
@@ -3596,6 +3791,117 @@ int Dialog::Do_ProcessNextCtrl(int Up, BOOL IsRedraw)
 	else if (IsRedraw) {
 		ShowDialog(OldPos);
 		ShowDialog(FocusPos);
+	}
+
+	return TRUE;
+}
+
+int Dialog::MoveToCtrlHorizontal(int right)
+{
+	int MinDist     = RealWidth,
+		LeftBorder  = 0,
+		RightBorder = RealWidth,
+		Dist        = 0,
+		MinPos      = 0;
+
+	for (unsigned int I = 0; I < ItemCount; I++) {
+		//first, let's find nearest borders
+		if (IsItemHorizontalSeparator(Item[I])) {
+			if (Item[I]->X1 < Item[FocusPos]->X1){
+				if (LeftBorder < Item[I]->X1) {
+					LeftBorder = Item[I]->X1;
+				}
+			} else if (Item[I]->X1 > Item[FocusPos]->X1) {
+				if (RightBorder > Item[I]->X1) {
+					RightBorder = Item[I]->X1;
+				}
+			}
+		}
+
+		//find nearest item _inside_ nearest borders
+		if (I != FocusPos && IsItemFocusable(Item[I]) && Item[I]->Y1 == Item[FocusPos]->Y1) {
+			Dist = Item[I]->X1 - Item[FocusPos]->X1;
+
+			if ((!right && Dist < 0 &&(Item[I]->X1 > LeftBorder))
+				|| (right && Dist > 0 &&(Item[I]->X1 < RightBorder))
+			) {
+				if (abs(Dist) < MinDist) {
+					MinDist = abs(Dist);
+					MinPos = I;
+				}
+			}
+		}
+	}
+
+	//MinDist still equal to RealWidth,
+	//it means current line inside block of items has no focusable controls
+	//fallback to Do_ProcessNextCtrl
+	if (MinDist < RealWidth) {
+		ChangeFocus2(MinPos);
+
+		if (Item[MinPos]->Flags & DIF_MOVESELECT) {
+			Do_ProcessSpace();
+		} else {
+			ShowDialog();
+		}
+	} else {
+		return Do_ProcessNextCtrl(!right);
+	}
+
+
+	return TRUE;
+}
+
+int Dialog::MoveToCtrlVertical(int up)
+{
+	int MinDist      = RealHeight,
+		UpperBorder  = 0,
+		BottomBorder = RealHeight,
+		Dist         = 0,
+		MinPos       = 0;
+
+	for (unsigned int I = 0; I < ItemCount; I++) {
+		//first, let's find nearest borders
+		if (IsItemVerticalSeparator(Item[I])) {
+			if (Item[I]->Y1 < Item[FocusPos]->Y1){
+				if (UpperBorder < Item[I]->Y1) {
+					UpperBorder = Item[I]->Y1;
+				}
+			} else if (Item[I]->Y1 > Item[FocusPos]->Y1) {
+				if (BottomBorder > Item[I]->Y1) {
+					BottomBorder = Item[I]->Y1;
+				}
+			}
+		}
+
+		//find nearest item _inside_ nearest borders
+		if (I != FocusPos && IsItemFocusable(Item[I]) && Item[I]->X1 == Item[FocusPos]->X1) {
+			Dist = Item[I]->Y1 - Item[FocusPos]->Y1;
+
+			if ((up && Dist < 0 && (Item[I]->Y1 > UpperBorder))
+				|| (!up && Dist > 0 && (Item[I]->Y1 < BottomBorder))
+			) {
+				if (abs(Dist) < MinDist) {
+					MinDist = abs(Dist);
+					MinPos = I;
+				}
+			}
+		}
+	}
+
+	//current column inside block of items has no focusable controls
+	//gap more than one line considered as "native" block separator
+	//fallback to Do_ProcessNextCtrl
+	if (MinDist < 3) {
+		ChangeFocus2(MinPos);
+
+		if (Item[MinPos]->Flags & DIF_MOVESELECT) {
+			Do_ProcessSpace();
+		} else {
+			ShowDialog();
+		}
+	} else {
+		return Do_ProcessNextCtrl(up);
 	}
 
 	return TRUE;
@@ -3685,48 +3991,34 @@ int Dialog::Do_ProcessSpace()
 unsigned Dialog::ChangeFocus(unsigned CurFocusPos, int Step, int SkipGroup)
 {
 	CriticalSectionLock Lock(CS);
-	int Type;
 	unsigned OrigFocusPos = CurFocusPos;
-	//	int FucusPosNeed=-1;
-	// В функцию обработки диалога здесь передаем сообщение,
-	// что элемент - LostFocus() - теряет фокус ввода.
-	//	if(DialogMode.Check(DMODE_INITOBJECTS))
-	//		FucusPosNeed=DlgProc((HANDLE)this,DN_KILLFOCUS,FocusPos,0);
-	//	if(FucusPosNeed != -1 && CanGetFocus(Item[FucusPosNeed].Type))
-	//		FocusPos=FucusPosNeed;
-	//	else
-	{
-		for (;;) {
-			CurFocusPos+= Step;
 
-			if ((int)CurFocusPos < 0)
-				CurFocusPos = ItemCount - 1;
+	for (;;) {
+		CurFocusPos += Step;
 
-			if (CurFocusPos >= ItemCount)
-				CurFocusPos = 0;
+		if ((int)CurFocusPos < 0) {
+			CurFocusPos = ItemCount - 1;
+		}
 
-			Type = Item[CurFocusPos]->Type;
+		if (CurFocusPos >= ItemCount) {
+			CurFocusPos = 0;
+		}
 
-			if (!(Item[CurFocusPos]->Flags & (DIF_NOFOCUS | DIF_DISABLE | DIF_HIDDEN))) {
-				if (Type == DI_LISTBOX || Type == DI_BUTTON || Type == DI_CHECKBOX || FarIsEdit(Type)
-						|| Type == DI_USERCONTROL)
-					break;
-
-				if (Type == DI_RADIOBUTTON && (!SkipGroup || Item[CurFocusPos]->Selected))
-					break;
-			}
-
-			// убираем зацикливание с последующим подвисанием :-)
-			if (OrigFocusPos == CurFocusPos)
+		if (IsItemFocusable(Item[CurFocusPos])) {
+			//move straight to selected radio when SkipGroup is true
+			if (Item[CurFocusPos]->Type == DI_RADIOBUTTON && !(SkipGroup && Item[CurFocusPos]->Selected)) {
+				continue;
+			} else {
 				break;
+			}
+		}
+
+		// убираем зацикливание с последующим подвисанием :-)
+		if (OrigFocusPos == CurFocusPos) {
+			break;
 		}
 	}
-	//	Dialog::FocusPos=FocusPos;
-	// В функцию обработки диалога здесь передаем сообщение,
-	// что элемент GotFocus() - получил фокус ввода.
-	// Игнорируем возвращаемое функцией диалога значение
-	//	if(DialogMode.Check(DMODE_INITOBJECTS))
-	//		DlgProc((HANDLE)this,DN_GOTFOCUS,FocusPos,0);
+
 	return (CurFocusPos);
 }
 
@@ -3741,7 +4033,7 @@ void Dialog::ChangeFocus2(unsigned SetFocusPos)
 	CriticalSectionLock Lock(CS);
 	int FocusPosNeed = -1;
 
-	if (!(Item[SetFocusPos]->Flags & (DIF_NOFOCUS | DIF_DISABLE | DIF_HIDDEN))) {
+	if (IsItemFocusable(Item[SetFocusPos])) {
 		if (DialogMode.Check(DMODE_INITOBJECTS)) {
 			FocusPosNeed = (int)DlgProc((HANDLE)this, DN_KILLFOCUS, FocusPos, 0);
 
@@ -3749,7 +4041,7 @@ void Dialog::ChangeFocus2(unsigned SetFocusPos)
 				return;
 		}
 
-		if (FocusPosNeed != -1 && CanGetFocus(Item[FocusPosNeed]->Type))
+		if (FocusPosNeed >= 0 && FocusPosNeed < (int)ItemCount && IsItemFocusable(Item[FocusPosNeed]))
 			SetFocusPos = FocusPosNeed;
 
 		Item[FocusPos]->Focus = 0;
@@ -3857,22 +4149,17 @@ int Dialog::SelectFromComboBox(DialogItemEx *CurItem,
 		VMenu *ComboBox)		// список строк
 {
 	CriticalSectionLock Lock(CS);
-	// char *Str;
 	FARString strStr;
-	int EditX1, EditY1, EditX2, EditY2;
 	int I, Dest, OriginalPos;
 	unsigned CurFocusPos = FocusPos;
-	// if((Str=(char*)malloc(MaxLen)) )
-	{
-		EditLine->GetPosition(EditX1, EditY1, EditX2, EditY2);
 
-		if (EditX2 - EditX1 < 20)
-			EditX2 = EditX1 + 20;
+//		if (EditX2 - EditX1 < 20)
+//			EditX2 = EditX1 + 20;
 
 		SetDropDownOpened(TRUE);	// Установим флаг "открытия" комбобокса.
 		SetComboBoxPos(CurItem);
 		// Перед отрисовкой спросим об изменении цветовых атрибутов
-		BYTE RealColors[VMENU_COLOR_COUNT];
+		uint64_t RealColors[VMENU_COLOR_COUNT];
 		FarListColors ListColors = {0};
 		ListColors.ColorCount = VMENU_COLOR_COUNT;
 		ListColors.Colors = RealColors;
@@ -3900,88 +4187,84 @@ int Dialog::SelectFromComboBox(DialogItemEx *CurItem,
 				continue;
 			}
 
-			INPUT_RECORD ReadRec;
-			int Key = ComboBox->ReadInput(&ReadRec);
+		INPUT_RECORD ReadRec;
+		FarKey Key = ComboBox->ReadInput(&ReadRec);
 
-			if (CurItem->IFlags.Check(DLGIIF_COMBOBOXEVENTKEY) && ReadRec.EventType == KEY_EVENT) {
-				if (DlgProc((HANDLE)this, DN_KEY, FocusPos, Key))
-					continue;
-			} else if (CurItem->IFlags.Check(DLGIIF_COMBOBOXEVENTMOUSE) && ReadRec.EventType == MOUSE_EVENT)
-				if (!DlgProc((HANDLE)this, DN_MOUSEEVENT, 0, (LONG_PTR)&ReadRec.Event.MouseEvent))
-					continue;
+		if (CurItem->IFlags.Check(DLGIIF_COMBOBOXEVENTKEY) && ReadRec.EventType == KEY_EVENT) {
+			if (DlgProc((HANDLE)this, DN_KEY, FocusPos, Key))
+				continue;
+		} else if (CurItem->IFlags.Check(DLGIIF_COMBOBOXEVENTMOUSE) && ReadRec.EventType == MOUSE_EVENT)
+			if (!DlgProc((HANDLE)this, DN_MOUSEEVENT, 0, (LONG_PTR)&ReadRec.Event.MouseEvent))
+				continue;
 
-			// здесь можно добавить что-то свое, например,
-			I = ComboBox->GetSelectPos();
+		// здесь можно добавить что-то свое, например,
+		I = ComboBox->GetSelectPos();
 
-			if (Key == KEY_TAB)		// Tab в списке - аналог Enter
-			{
-				ComboBox->ProcessKey(KEY_ENTER);
-				continue;	//??
-			}
+		if (Key == KEY_TAB)		// Tab в списке - аналог Enter
+		{
+			ComboBox->ProcessKey(KEY_ENTER);
+			continue;	//??
+		}
 
-			if (I != Dest) {
-				if (!DlgProc((HANDLE)this, DN_LISTCHANGE, CurFocusPos, I))
-					ComboBox->SetSelectPos(Dest, Dest < I ? -1 : 1);	//????
-				else
-					Dest = I;
+		if (I != Dest) {
+			if (!DlgProc((HANDLE)this, DN_LISTCHANGE, CurFocusPos, I))
+				ComboBox->SetSelectPos(Dest, Dest < I ? -1 : 1);	//????
+			else
+				Dest = I;
 
 #if 0
 
-				// во время навигации по DropDown листу - отобразим ЭТО дело в
-				// связанной строке
-				// ВНИМАНИЕ!!!
-				// Очень медленная реакция!
-				if (EditLine->GetDropDownBox())
-				{
-					MenuItem *CurCBItem=ComboBox->GetItemPtr();
-					EditLine->SetString(CurCBItem->Name);
-					EditLine->Show();
-					//EditLine->FastShow();
-				}
-
-#endif
+			// во время навигации по DropDown листу - отобразим ЭТО дело в
+			// связанной строке
+			// ВНИМАНИЕ!!!
+			// Очень медленная реакция!
+			if (EditLine->GetDropDownBox())
+			{
+				MenuItem *CurCBItem=ComboBox->GetItemPtr();
+				EditLine->SetString(CurCBItem->Name);
+				EditLine->Show();
+				//EditLine->FastShow();
 			}
 
-			// обработку multiselect ComboBox
-			// ...
-			ComboBox->ProcessInput();
+#endif
 		}
 
-		CurItem->IFlags.Clear(DLGIIF_COMBOBOXNOREDRAWEDIT);
-		ComboBox->ClearDone();
-		ComboBox->Hide();
-
-		if (GetDropDownOpened())	// Закрылся не программным путём?
-			Dest = ComboBox->Modal::GetExitCode();
-		else
-			Dest = -1;
-
-		if (Dest == -1)
-			ComboBox->SetSelectPos(OriginalPos, 0);		//????
-
-		SetDropDownOpened(FALSE);						// Установим флаг "закрытия" комбобокса.
-
-		if (Dest < 0) {
-			Redraw();
-			// free(Str);
-			return KEY_ESC;
-		}
-
-		// ComboBox->GetUserData(Str,MaxLen,Dest);
-		MenuItemEx *ItemPtr = ComboBox->GetItemPtr(Dest);
-
-		if (CurItem->Flags & (DIF_DROPDOWNLIST | DIF_LISTNOAMPERSAND)) {
-			HiText2Str(strStr, ItemPtr->strName);
-			EditLine->SetString(strStr);
-		} else
-			EditLine->SetString(ItemPtr->strName);
-
-		EditLine->SetLeftPos(0);
-		Redraw();
-		// free(Str);
-		return KEY_ENTER;
+		// обработку multiselect ComboBox
+		// ...
+		ComboBox->ProcessInput();
 	}
-	// return KEY_ESC;
+
+	CurItem->IFlags.Clear(DLGIIF_COMBOBOXNOREDRAWEDIT);
+	ComboBox->ClearDone();
+	ComboBox->Hide();
+
+	if (GetDropDownOpened())	// Закрылся не программным путём?
+		Dest = ComboBox->Modal::GetExitCode();
+	else
+		Dest = -1;
+
+	if (Dest == -1)
+		ComboBox->SetSelectPos(OriginalPos, 0);		//????
+
+	SetDropDownOpened(FALSE);						// Установим флаг "закрытия" комбобокса.
+
+	if (Dest < 0) {
+		Redraw();
+		return KEY_ESC;
+	}
+
+	// ComboBox->GetUserData(Str,MaxLen,Dest);
+	MenuItemEx *ItemPtr = ComboBox->GetItemPtr(Dest);
+
+	if (CurItem->Flags & (DIF_DROPDOWNLIST | DIF_LISTNOAMPERSAND)) {
+		HiText2Str(strStr, ItemPtr->strName);
+		EditLine->SetString(strStr);
+	} else
+		EditLine->SetString(ItemPtr->strName);
+
+	EditLine->SetLeftPos(0);
+	Redraw();
+	return KEY_ENTER;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -4086,7 +4369,7 @@ int Dialog::CheckHighlights(WORD CheckSymbol, int StartPos)
 	Private:
 	Если жмакнули Alt-???
 */
-int Dialog::ProcessHighlighting(int Key, unsigned FocusPos, int Translate)
+int Dialog::ProcessHighlighting(FarKey Key, unsigned FocusPos, int Translate)
 {
 	CriticalSectionLock Lock(CS);
 	int Type;
@@ -4213,7 +4496,7 @@ void Dialog::SetDialogData(LONG_PTR NewDataDialog)
 //////////////////////////////////////////////////////////////////////////
 /*
 	$ 29.06.2007 yjh\
-	При рассчётах времён копирования проще/надёжнее учитывать время ожидания
+	При расчётах времён копирования проще/надёжнее учитывать время ожидания
 	пользовательских ответов в одном месте (здесь).
 	Сброс этой переменной должен осуществляться перед общим началом операции
 */
@@ -5447,7 +5730,7 @@ LONG_PTR SendDlgMessageSynched(HANDLE hDlg, int Msg, int Param1, LONG_PTR Param2
 		}
 		/*****************************************************************/
 		case DM_SETFOCUS: {
-			if (!CanGetFocus(Type))
+			if (!IsItemFocusable(CurItem))
 				return FALSE;
 
 			if (Dlg->FocusPos == (unsigned)Param1)	// уже и так установлено все!
@@ -5606,6 +5889,22 @@ LONG_PTR SendDlgMessageSynched(HANDLE hDlg, int Msg, int Param1, LONG_PTR Param2
 			FarDialogItemData IData = {(size_t)StrLength((wchar_t *)Param2), (wchar_t *)Param2};
 			return SendDlgMessage(hDlg, DM_SETTEXT, Param1, (LONG_PTR)&IData);
 		}
+
+		case DM_SETTEXTPTRSILENT: {
+			if (!Param2)
+				return 0;
+
+			if (CurItem->Type != DI_FIXEDIT && CurItem->Type != DI_EDIT)
+				return 0;
+
+			reinterpret_cast<DlgEdit *>(CurItem->ObjPtr)->SetCallbackState(false);
+			FarDialogItemData IData = {(size_t)StrLength((wchar_t *)Param2), (wchar_t *)Param2};
+			intptr_t rv = SendDlgMessage(hDlg, DM_SETTEXT, Param1, (LONG_PTR)&IData);
+			reinterpret_cast<DlgEdit *>(CurItem->ObjPtr)->SetCallbackState(true);
+
+			return rv;
+		}
+
 		/*****************************************************************/
 		case DM_SETTEXT: {
 			if (Param2) {
@@ -5883,38 +6182,62 @@ LONG_PTR SendDlgMessageSynched(HANDLE hDlg, int Msg, int Param1, LONG_PTR Param2
 			return (PrevFlags & DIF_DISABLE) ? FALSE : TRUE;
 		}
 
-		case DM_GETCOLOR: {
-			*(DWORD *)Param2 = (DWORD)Dlg->CtlColorDlgItem(Param1, CurItem);
-			*(DWORD *)Param2|= (CurItem->Flags & DIF_SETCOLOR);
+//* `DM_SETREADONLY` - changes readonly-ness of selected dialog edit control item
+//* `DM_GETCOLOR` - retrieves current color attributes of selected dialog item
+//* `DM_SETCOLOR` - changes current color attributes of selected dialog item
+//* `DM_SETTRUECOLOR` - sets 24-bit RGB colors to selected dialog item, can be used within DN_CTLCOLORDLGITEM handler to provide extra coloring.
+//* `DM_GETTRUECOLOR` - retrieves 24-bit RGB colors of selected dialog item, if they were set before by DM_SETTRUECOLOR.
+//* `ECTL_ADDTRUECOLOR` - applies coloring to editor like ECTL_ADDCOLOR does but allows to specify 24 RGB color using EditorTrueColor structure.
+//* `ECTL_GETTRUECOLOR` - retrieves coloring of editor like ECTL_GETCOLOR does but gets 24 RGB color using EditorTrueColor structure.
+
+
+//		case DM_GETCOLOR: {
+//			*(DWORD *)Param2 = (DWORD)Dlg->CtlColorDlgItem(Param1, CurItem);
+//			*(DWORD *)Param2|= (CurItem->Flags & DIF_SETCOLOR);
+//			return TRUE;
+//		}
+
+//		case DM_SETCOLOR: {
+//			CurItem->Flags&= ~(DIF_SETCOLOR | DIF_COLORMASK);
+//			CurItem->Flags|= Param2 & (DIF_SETCOLOR | DIF_COLORMASK);
+//			if (Dlg->DialogMode.Check(DMODE_SHOW)) {		//???
+//				Dlg->ShowDialog(Param1);
+//				ScrBuf.Flush();
+//			}
+//			return TRUE;
+//		}
+
+		case DM_GETDEFAULTCOLOR: {
+			if (Param2)
+				Dlg->CtlColorDlgItem(Param1, CurItem, (uint64_t *)Param2);
+
 			return TRUE;
 		}
 
-		case DM_SETCOLOR: {
-			CurItem->Flags&= ~(DIF_SETCOLOR | DIF_COLORMASK);
-			CurItem->Flags|= Param2 & (DIF_SETCOLOR | DIF_COLORMASK);
-
-			if (Dlg->DialogMode.Check(DMODE_SHOW)) {		//???
-				Dlg->ShowDialog(Param1);
-				ScrBuf.Flush();
-			}
-
-			return TRUE;
-		}
-
+		///case DM_GETCOLOR:///
 		case DM_GETTRUECOLOR: {
-			if (!CurItem->TrueColors) {
-				memset((DialogItemTrueColors *)Param2, 0, sizeof(DialogItemTrueColors));
-			} else {
-				*(DialogItemTrueColors *)Param2 = *CurItem->TrueColors;
-			}
+			if (Param2)
+				memcpy((uint64_t *)Param2, CurItem->customItemColor, sizeof(uint64_t) * 4);
+//			if (!CurItem->TrueColors) {
+//				memset((uint64_t *)Param2, 0, sizeof(DialogItemTrueColors));
+//			} else {
+//				*(DialogItemTrueColors *)Param2 = *CurItem->TrueColors;
+//			}
+//			Param2 = CurItem->customItemColor
+
 			return TRUE;
 		}
 
+		///case DM_SETCOLOR:///
 		case DM_SETTRUECOLOR: {
-			if (!CurItem->TrueColors) {
-				CurItem->TrueColors.reset(new DialogItemTrueColors);
-			}
-			*CurItem->TrueColors = *(const DialogItemTrueColors *)Param2;
+			if (Param2)
+				memcpy(CurItem->customItemColor, (uint64_t *)Param2, sizeof(uint64_t) * 4);
+
+//			if (!CurItem->TrueColors) {
+//				CurItem->TrueColors.reset(new DialogItemTrueColors);
+//			}
+//			*CurItem->TrueColors = *(const DialogItemTrueColors *)Param2;
+
 			if (Dlg->InCtlColorDlgItem == 0 && Dlg->DialogMode.Check(DMODE_SHOW)) {		//???
 				Dlg->ShowDialog(Param1);
 				ScrBuf.Flush();

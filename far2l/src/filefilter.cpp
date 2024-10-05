@@ -98,7 +98,7 @@ bool FileFilter::FilterEdit()
 		if (!i)
 			ListItem.Flags|= LIF_SELECTED;
 
-		int Check = GetCheck(FilterData.getItem(i));
+		auto Check = GetCheck(FilterData.getItem(i));
 
 		if (Check)
 			ListItem.SetCheck(Check);
@@ -140,7 +140,7 @@ bool FileFilter::FilterEdit()
 		ListItem.Clear();
 		FoldersFilter.SetTitle(Msg::FolderFileType);
 		MenuString(ListItem.strName, &FoldersFilter, false, L'0');
-		int Check = GetCheck(&FoldersFilter);
+		auto Check = GetCheck(&FoldersFilter);
 
 		if (Check)
 			ListItem.SetCheck(Check);
@@ -183,7 +183,7 @@ bool FileFilter::FilterEdit()
 	FilterList.Show();
 
 	while (!FilterList.Done()) {
-		int Key = FilterList.ReadInput();
+		FarKey Key = FilterList.ReadInput();
 
 		if (Key == KEY_ADD)
 			Key = L'+';
@@ -203,11 +203,11 @@ bool FileFilter::FilterEdit()
 			case KEY_BS: {
 				int SelPos = FilterList.GetSelectPos();
 
-				if (SelPos == (int)FilterData.getCount())
+				if (SelPos < 0 || SelPos == (int)FilterData.getCount())
 					break;
 
-				int Check = FilterList.GetCheck(SelPos);
-				int NewCheck;
+				auto Check = FilterList.GetCheck(SelPos);
+				uint32_t NewCheck;
 
 				if (Key == KEY_BS)
 					NewCheck = 0;
@@ -235,12 +235,14 @@ bool FileFilter::FilterEdit()
 			}
 			case KEY_F4: {
 				int SelPos = FilterList.GetSelectPos();
+				if (SelPos < 0)
+					break;
 
 				if (SelPos < (int)FilterData.getCount()) {
 					if (FileFilterConfig(FilterData.getItem(SelPos))) {
 						ListItem.Clear();
 						MenuString(ListItem.strName, FilterData.getItem(SelPos));
-						int Check = GetCheck(FilterData.getItem(SelPos));
+						auto Check = GetCheck(FilterData.getItem(SelPos));
 
 						if (Check)
 							ListItem.SetCheck(Check);
@@ -261,8 +263,11 @@ bool FileFilter::FilterEdit()
 			case KEY_NUMPAD0:
 			case KEY_INS:
 			case KEY_F5: {
-				size_t SelPos = FilterList.GetSelectPos();
-				size_t SelPos2 = SelPos + 1;
+				int pos = FilterList.GetSelectPos();
+				if (pos < 0)
+					break;
+				size_t SelPos = pos;
+				size_t SelPos2 = pos + 1;
 
 				SelPos = Min(FilterData.getCount(), SelPos);
 
@@ -311,6 +316,8 @@ bool FileFilter::FilterEdit()
 			case KEY_NUMDEL:
 			case KEY_DEL: {
 				int SelPos = FilterList.GetSelectPos();
+				if (SelPos < 0)
+					break;
 
 				if (SelPos < (int)FilterData.getCount()) {
 					FARString strQuotedTitle = FilterData.getItem(SelPos)->GetTitle();
@@ -411,7 +418,7 @@ enumFileFilterFlagsType FileFilter::GetFFFT()
 	return FFFT_CUSTOM;
 }
 
-int FileFilter::GetCheck(FileFilterParams *FFP)
+uint32_t FileFilter::GetCheck(FileFilterParams *FFP)
 {
 	DWORD Flags = FFP->GetFlags(GetFFFT());
 
@@ -436,7 +443,7 @@ void FileFilter::ProcessSelection(VMenu *FilterList)
 	FileFilterParams *CurFilterData;
 
 	for (int i = 0, j = 0; i < FilterList->GetItemCount(); i++) {
-		int Check = FilterList->GetCheck(i);
+		auto Check = FilterList->GetCheck(i);
 		CurFilterData = nullptr;
 
 		if (i < (int)FilterData.getCount()) {
@@ -463,14 +470,16 @@ void FileFilter::ProcessSelection(VMenu *FilterList)
 				strMask2 = FMask;
 				Unquote(strMask2);
 
-				if (StrCmpI(strMask1, strMask2) < 1)
+				// if (StrCmpI(strMask1, strMask2) < 1)
+				if (StrCmp(strMask1, strMask2) < 1)
 					break;
 
 				j++;
 			}
 
 			if (CurFilterData) {
-				if (!StrCmpI(Mask, FMask)) {
+				// if (!StrCmpI(Mask, FMask)) {
+				if (!StrCmp(Mask, FMask)) {
 					if (!Check) {
 						bool bCheckedNowhere = true;
 
@@ -711,7 +720,8 @@ void FileFilter::InitFilter(ConfigReader &cfg_reader)
 			// настройки старых версий фара.
 			NewFilter->SetTitle(strTitle);
 			FARString strMask = cfg_reader.GetString("Mask", L"");
-			NewFilter->SetMask(cfg_reader.GetUInt("UseMask", 1) != 0, strMask);
+			UINT MaskIgnoreCase = cfg_reader.GetUInt("MaskIgnoreCase", 1);
+			NewFilter->SetMask(cfg_reader.GetUInt("UseMask", 1) != 0, strMask, MaskIgnoreCase == 1);
 
 			FILETIME DateAfter, DateBefore;
 			cfg_reader.GetPOD("DateAfter", DateAfter);
@@ -786,6 +796,7 @@ void FileFilter::SaveFilters(ConfigWriter &cfg_writer)
 		const wchar_t *Mask = nullptr;
 		cfg_writer.SetUInt("UseMask", CurFilterData->GetMask(&Mask) ? 1 : 0);
 		cfg_writer.SetString("Mask", Mask);
+		cfg_writer.SetUInt("MaskIgnoreCase", CurFilterData->GetMaskIgnoreCase() ? 1 : 0);
 		DWORD DateType;
 		FILETIME DateAfter, DateBefore;
 		bool bRelative;
@@ -895,5 +906,6 @@ int FileFilter::ParseAndAddMasks(wchar_t **ExtPtr, const wchar_t *FileName, DWOR
 
 int _cdecl ExtSort(const void *el1, const void *el2)
 {
-	return StrCmpI((const wchar_t *)el1, (const wchar_t *)el2);
+	// return StrCmpI((const wchar_t *)el1, (const wchar_t *)el2);
+	return StrCmp((const wchar_t *)el1, (const wchar_t *)el2);
 }

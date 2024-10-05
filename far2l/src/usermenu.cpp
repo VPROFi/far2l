@@ -62,7 +62,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #if defined(PROJECT_DI_MEMOEDIT)
 /*
 	Идея в следующем.
-	1. Строки в реестре храняться как и раньше, т.к. CommandXXX
+	1. Строки в реестре хранятся как и раньше, т.к. CommandXXX
 	2. Для DI_MEMOEDIT мы из только преобразовываем в один массив
 */
 #endif
@@ -463,7 +463,7 @@ FillUserMenu(VMenu &UserMenu, const wchar_t *MenuKey, int MenuPos, int *FuncPos,
 			}
 
 			UserMenuItem.SetSelect(NumLines == MenuPos);
-			UserMenuItem.Flags&= ~LIF_SEPARATOR;
+			UserMenuItem.Flags &= ~LIF_SEPARATOR;
 		}
 
 		int ItemPos = UserMenu.AddItem(&UserMenuItem);
@@ -473,10 +473,13 @@ FillUserMenu(VMenu &UserMenu, const wchar_t *MenuKey, int MenuPos, int *FuncPos,
 		}
 	}
 
+#if 0
+	// Extra empty item
 	MenuItemEx UserMenuItem;
 	UserMenuItem.Clear();
 	UserMenuItem.SetSelect(NumLines == MenuPos);
 	UserMenu.AddItem(&UserMenuItem);
+#endif
 	return NumLines;
 }
 
@@ -546,7 +549,7 @@ int UserMenu::ProcessSingleMenu(const wchar_t *MenuKey, int MenuPos, const wchar
 					MenuNeedRefresh = false;
 				}
 
-				int Key = UserMenu.ReadInput();
+				FarKey Key = UserMenu.ReadInput();
 				MenuPos = UserMenu.GetSelectPos();
 
 				if ((unsigned int)Key >= KEY_F1 && (unsigned int)Key <= KEY_F24) {
@@ -580,28 +583,31 @@ int UserMenu::ProcessSingleMenu(const wchar_t *MenuKey, int MenuPos, const wchar
 						break;
 					case KEY_NUMDEL:
 					case KEY_DEL:
-
-						if (MenuPos < NumLine)
+						if (NumLine && MenuPos > -1 && MenuPos < NumLine)
 							DeleteMenuRecord(MenuKey, MenuPos);
 
 						break;
 					case KEY_INS:
 					case KEY_F4:
 					case KEY_SHIFTF4:
-					case KEY_NUMPAD0:
+					case KEY_NUMPAD0: {
+						bool bInsertNew = (Key == KEY_INS || Key == KEY_NUMPAD0);
 
-						if (Key != KEY_INS && Key != KEY_NUMPAD0 && MenuPos >= NumLine)
+						if (!bInsertNew && (MenuPos >= NumLine || MenuPos < 0))
 							break;
+						if (bInsertNew && MenuPos < 0)
+							MenuPos = 0;
 
-						EditMenu(MenuKey, MenuPos, NumLine, Key == KEY_INS || Key == KEY_NUMPAD0);
+						EditMenu(MenuKey, MenuPos, NumLine, bInsertNew);
+					}
 						break;
 					case KEY_CTRLUP:
 					case KEY_CTRLDOWN: {
 						int Pos = UserMenu.GetSelectPos();
 
-						if (Pos != UserMenu.GetItemCount() - 1) {
+						if (Pos != UserMenu.GetItemCount()) {
 							if (!(Key == KEY_CTRLUP && !Pos)
-									&& !(Key == KEY_CTRLDOWN && Pos == UserMenu.GetItemCount() - 2)) {
+									&& !(Key == KEY_CTRLDOWN && Pos == UserMenu.GetItemCount() - 1)) {
 								MenuPos = Pos + (Key == KEY_CTRLUP ? -1 : +1);
 								MoveMenuItem(MenuKey, Pos, MenuPos);
 							}
@@ -646,7 +652,7 @@ int UserMenu::ProcessSingleMenu(const wchar_t *MenuKey, int MenuPos, const wchar
 											nullptr, OPEN_EXISTING))) {
 								apiDeleteFile(strMenuFileName);
 
-								if (Key == KEY_ALTSHIFTF4)	// для тукущего пункта меню закрывать ненадо
+								if (Key == KEY_ALTSHIFTF4)	// для текущего пункта меню закрывать не надо
 									break;
 
 								return 0;
@@ -663,7 +669,7 @@ int UserMenu::ProcessSingleMenu(const wchar_t *MenuKey, int MenuPos, const wchar
 						MenuModified = true;
 						UserMenu.Hide();
 
-						if (Key == KEY_ALTSHIFTF4)	// для тукущего пункта меню закрывать ненадо
+						if (Key == KEY_ALTSHIFTF4)	// для текущего пункта меню закрывать не надо
 							break;
 
 						return 0;	// Закрыть меню
@@ -749,6 +755,8 @@ int UserMenu::ProcessSingleMenu(const wchar_t *MenuKey, int MenuPos, const wchar
 		CtrlObject->CmdLine->GetSelection(OldCmdLineSelStart, OldCmdLineSelEnd);
 		CtrlObject->CmdLine->LockUpdatePanel(TRUE);
 
+		Panel *ActivePanel = CtrlObject->Cp()->ActivePanel;
+
 		// Цикл исполнения команд меню (CommandX)
 		for (;;) {
 			FormatString strLineName;
@@ -803,8 +811,12 @@ int UserMenu::ProcessSingleMenu(const wchar_t *MenuKey, int MenuPos, const wchar
 							}
 
 							// ProcessOSAliases(strCommand);
-							if (!isSilent) {
-								CtrlObject->CmdLine->ExecString(strCommand, FALSE, 0, 0, ListFileUsed);
+							if (CtrlObject->CmdLine->ProcessFarCommands(strCommand))	// far commands always not silent
+								;
+							else if (!isSilent) {
+								if (!ActivePanel->ProcessPluginEvent(FE_COMMAND, (void *)strCommand.CPtr())) {
+									CtrlObject->CmdLine->ExecString(strCommand, FALSE, 0, 0, ListFileUsed);
+								}
 							} else {
 								SaveScreen SaveScr;
 								CtrlObject->Cp()->LeftPanel->CloseFile();

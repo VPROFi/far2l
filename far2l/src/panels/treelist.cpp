@@ -273,12 +273,12 @@ void TreeList::DisplayTree(int Fast)
 		strCurDir = ListData[CurFile]->strName;		// BUGBUG
 
 	if (!Fast) {
-		Box(X1, Y1, X2, Y2, COL_PANELBOX, DOUBLE_BOX);
+		Box(X1, Y1, X2, Y2, FarColorToReal(COL_PANELBOX), DOUBLE_BOX);
 		DrawSeparator(Y2 - 2 - (ModalMode));
 		GetTitle(strTitle);
 
 		if (!strTitle.IsEmpty()) {
-			SetColor((Focus || ModalMode) ? COL_PANELSELECTEDTITLE : COL_PANELTITLE);
+			SetFarColor((Focus || ModalMode) ? COL_PANELSELECTEDTITLE : COL_PANELTITLE);
 			GotoXY(X1 + (X2 - X1 + 1 - (int)strTitle.GetLength()) / 2, Y1);
 			Text(strTitle);
 		}
@@ -286,7 +286,7 @@ void TreeList::DisplayTree(int Fast)
 
 	for (int I = Y1 + 1, J = CurTopFile; I < Y2 - 2 - (ModalMode); I++, J++) {
 		GotoXY(X1 + 1, I);
-		SetColor(COL_PANELTEXT);
+		SetFarColor(COL_PANELTEXT);
 		Text(L" ");
 
 		if (J < TreeCount && Flags.Check(FTREELIST_TREEISPREPARED)) {
@@ -310,7 +310,7 @@ void TreeList::DisplayTree(int Fast)
 			}
 		}
 
-		SetColor(COL_PANELTEXT);
+		SetFarColor(COL_PANELTEXT);
 
 		if (WhereX() < X2) {
 			FS << fmt::Cells() << fmt::Expand(X2 - WhereX()) << L"";
@@ -318,12 +318,12 @@ void TreeList::DisplayTree(int Fast)
 	}
 
 	if (Opt.ShowPanelScrollbar) {
-		SetColor(COL_PANELSCROLLBAR);
+		SetFarColor(COL_PANELSCROLLBAR);
 		ScrollBarEx(X2, Y1 + 1, Y2 - Y1 - 3, CurTopFile, TreeCount);
 	}
 
-	SetColor(COL_PANELTEXT);
-	SetScreen(X1 + 1, Y2 - (ModalMode ? 2 : 1), X2 - 1, Y2 - 1, L' ', COL_PANELTEXT);
+	SetFarColor(COL_PANELTEXT);
+	SetScreen(X1 + 1, Y2 - (ModalMode ? 2 : 1), X2 - 1, Y2 - 1, L' ', FarColorToReal(COL_PANELTEXT));
 
 	if (TreeCount > 0) {
 		GotoXY(X1 + 1, Y2 - 1);
@@ -346,14 +346,14 @@ void TreeList::DisplayTreeName(const wchar_t *Name, int Pos)
 		GotoXY(WhereX() - 1, WhereY());
 
 		if (Focus || ModalMode) {
-			SetColor((Pos == WorkDir) ? COL_PANELSELECTEDCURSOR : COL_PANELCURSOR);
+			SetFarColor((Pos == WorkDir) ? COL_PANELSELECTEDCURSOR : COL_PANELCURSOR);
 			FS << L" " << fmt::Cells() << fmt::Truncate(X2 - WhereX() - 3) << Name << L" ";
 		} else {
-			SetColor((Pos == WorkDir) ? COL_PANELSELECTEDTEXT : COL_PANELTEXT);
+			SetFarColor((Pos == WorkDir) ? COL_PANELSELECTEDTEXT : COL_PANELTEXT);
 			FS << L"[" << fmt::Cells() << fmt::Truncate(X2 - WhereX() - 3) << Name << L"]";
 		}
 	} else {
-		SetColor((Pos == WorkDir) ? COL_PANELSELECTEDTEXT : COL_PANELTEXT);
+		SetFarColor((Pos == WorkDir) ? COL_PANELSELECTEDTEXT : COL_PANELTEXT);
 		FS << fmt::Cells() << fmt::Truncate(X2 - WhereX() - 1) << Name;
 	}
 }
@@ -729,7 +729,7 @@ UINT TreeList::CountSlash(const wchar_t *Str)
 	return (Count);
 }
 
-int64_t TreeList::VMProcess(int OpCode, void *vParam, int64_t iParam)
+int64_t TreeList::VMProcess(MacroOpcode OpCode, void *vParam, int64_t iParam)
 {
 	switch (OpCode) {
 		case MCODE_C_EMPTY:
@@ -749,7 +749,7 @@ int64_t TreeList::VMProcess(int OpCode, void *vParam, int64_t iParam)
 	return 0;
 }
 
-int TreeList::ProcessKey(int Key)
+int TreeList::ProcessKey(FarKey Key)
 {
 	if (!IsVisible())
 		return FALSE;
@@ -1908,9 +1908,7 @@ static void MkTreeName(FARString &out, const wchar_t *RootDir, const char *ext)
 	struct stat s{};
 	int r = sdc_stat(Wide2MB(RootDir).c_str(), &s);
 	if (r == 0) {
-		char tmp[128];
-		sprintf(tmp, "tree/%llx-%llx.%s", (unsigned long long)s.st_rdev, (unsigned long long)s.st_ino, ext);
-		out = InMyTemp(tmp);
+		out = InMyTempFmt("tree/%llx-%llx.%s", (unsigned long long)s.st_rdev, (unsigned long long)s.st_ino, ext);
 	} else {
 		std::string tmp = InMyTemp("tree/wtf-");
 		const std::string &RootMB = Wide2MB(RootDir);

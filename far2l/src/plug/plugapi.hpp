@@ -56,6 +56,8 @@ wchar_t WINAPI farUpper(wchar_t Ch);
 wchar_t WINAPI farLower(wchar_t Ch);
 int WINAPI farStrCmpNI(const wchar_t *s1, const wchar_t *s2, int n);
 int WINAPI farStrCmpI(const wchar_t *s1, const wchar_t *s2);
+int WINAPI farStrCmpN(const wchar_t *s1, const wchar_t *s2, int n);
+int WINAPI farStrCmp(const wchar_t *s1, const wchar_t *s2);
 int WINAPI farIsLower(wchar_t Ch);
 int WINAPI farIsUpper(wchar_t Ch);
 int WINAPI farIsAlpha(wchar_t Ch);
@@ -91,8 +93,8 @@ int WINAPI FarViewer(const wchar_t *FileName, const wchar_t *Title, int X1, int 
 int WINAPI FarEditor(const wchar_t *FileName, const wchar_t *Title, int X1, int Y1, int X2, int Y2,
 		DWORD Flags, int StartLine, int StartChar, UINT CodePage);
 int WINAPI FarCmpName(const wchar_t *pattern, const wchar_t *string, int skippath);
-void WINAPI FarText(int X, int Y, int Color, const wchar_t *Str);
-int WINAPI TextToCharInfo(const char *Text, WORD Attr, CHAR_INFO *CharInfo, int Length, DWORD Reserved);
+void WINAPI FarText(int X, int Y, uint64_t Color, const wchar_t *Str);
+int WINAPI TextToCharInfo(const char *Text, uint64_t Attr, CHAR_INFO *CharInfo, int Length, DWORD Reserved);
 int WINAPI FarEditorControl(int Command, void *Param);
 
 int WINAPI FarViewerControl(int Command, void *Param);
@@ -108,7 +110,7 @@ BOOL WINAPI FarShowHelp(const wchar_t *ModuleName, const wchar_t *HelpTopic, DWO
 int WINAPI FarInputBox(const wchar_t *Title, const wchar_t *Prompt, const wchar_t *HistoryName,
 		const wchar_t *SrcText, wchar_t *DestText, int DestLength, const wchar_t *HelpTopic, DWORD Flags);
 /* Функция, которая будет действовать и в редакторе, и в панелях, и... */
-INT_PTR WINAPI FarAdvControl(INT_PTR ModuleNumber, int Command, void *Param);
+INT_PTR WINAPI FarAdvControl(INT_PTR ModuleNumber, int Command, void *Param1, void *Param2);
 // Функция расширенного диалога
 HANDLE WINAPI FarDialogInit(INT_PTR PluginNumber, int X1, int Y1, int X2, int Y2, const wchar_t *HelpTopic,
 		struct FarDialogItem *Item, unsigned int ItemsNumber, DWORD Reserved, DWORD Flags, FARWINDOWPROC Proc,
@@ -142,6 +144,7 @@ enum ExceptFunctionsType
 	EXCEPT_FREEFINDDATA,
 	EXCEPT_FREEVIRTUALFINDDATA,
 	EXCEPT_SETDIRECTORY,
+	EXCEPT_GETLINKTARGET,
 	EXCEPT_GETFILES,
 	EXCEPT_PUTFILES,
 	EXCEPT_DELETEFILES,

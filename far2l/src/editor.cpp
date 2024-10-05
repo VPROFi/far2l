@@ -58,6 +58,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "palette.hpp"
 #include "DialogBuilder.hpp"
 #include "wakeful.hpp"
+#include "codepage.hpp"
 
 static int ReplaceMode, ReplaceAll;
 
@@ -160,6 +161,7 @@ void Editor::FreeAllocatedData(bool FreeUndo)
 	ClearStackBookmarks();
 	TopList = EndList = CurLine = nullptr;
 	NumLastLine = 0;
+	NumLine = 0;
 }
 
 void Editor::KeepInitParameters()
@@ -283,7 +285,11 @@ void Editor::ShowEditor(int CurLineOnly)
 	if (!Flags.Check(FEDITOR_DIALOGMEMOEDIT))
 		CtrlObject->Plugins.CurEditor = HostFileEditor;		// this;
 
-	XX2 = X2 - (EdOpt.ShowScrollBar ? 1 : 0);
+	if (NumLastLine > (Y2 - Y1) + 1)
+		XX2 = X2 - (EdOpt.ShowScrollBar ? 1 : 0);
+	else
+		XX2 = X2;
+
 	/*
 		17.04.2002 skv
 		Что б курсор не бегал при Alt-F9 в конце длинного файла.
@@ -389,7 +395,7 @@ void Editor::ShowEditor(int CurLineOnly)
 				CurPtr->SetEditBeyondEnd(EdOpt.CursorBeyondEOL);
 				CurPtr = CurPtr->m_next;
 			} else {
-				SetScreen(X1, Y, XX2, Y, L' ', COL_EDITORTEXT);		// Пустые строки после конца текста
+				SetScreen(X1, Y, XX2, Y, L' ', FarColorToReal(COL_EDITORTEXT));		// Пустые строки после конца текста
 			}
 	}
 
@@ -413,7 +419,7 @@ void Editor::ShowEditor(int CurLineOnly)
 						BlockX2 = XX2;
 
 					if (BlockX1 <= XX2 && BlockX2 >= X1)
-						ChangeBlockColor(BlockX1, Y, BlockX2, Y, COL_EDITORSELECTEDTEXT);
+						ChangeBlockColor(BlockX1, Y, BlockX2, Y, FarColorToReal(COL_EDITORSELECTEDTEXT));
 				}
 
 				CurPtr = CurPtr->m_next;
@@ -530,7 +536,7 @@ int Editor::BlockEnd2NumLine(int *Pos)
 	return iLine;
 }
 
-int64_t Editor::VMProcess(int OpCode, void *vParam, int64_t iParam)
+int64_t Editor::VMProcess(MacroOpcode OpCode, void *vParam, int64_t iParam)
 {
 	int CurPos = CurLine->GetCurPos();
 
@@ -784,7 +790,7 @@ void Editor::ProcessPasteEvent()
 	Show();
 }
 
-int Editor::ProcessKey(int Key)
+int Editor::ProcessKey(FarKey Key)
 {
 	if (Key == KEY_IDLE) {
 		if (Opt.ViewerEditorClock && HostFileEditor && HostFileEditor->IsFullScreen()
@@ -802,7 +808,7 @@ int Editor::ProcessKey(int Key)
 	int CurPos, CurVisPos, I;
 	CurPos = CurLine->GetCurPos();
 	CurVisPos = GetLineCurPos();
-	int isk = IsShiftKey(Key);
+	const bool isk = IsShiftKey(Key);
 	_SVS(SysLog(L"[%d] isk=%d", __LINE__, isk));
 
 	// if ((!isk || CtrlObject->Macro.IsExecuting()) && !isk && !Pasting)
@@ -821,7 +827,7 @@ int Editor::ProcessKey(int Key)
 			Flags.Clear(FEDITOR_MARKINGVBLOCK | FEDITOR_MARKINGBLOCK);
 
 			if (!EdOpt.PersistentBlocks) {
-				static int UnmarkKeys[] = {
+				static FarKey UnmarkKeys[] = {
 						KEY_LEFT,
 						KEY_NUMPAD4,
 						KEY_RIGHT,
@@ -1960,6 +1966,7 @@ int Editor::ProcessKey(int Key)
 			if (!Flags.Check(FEDITOR_LOCKMODE)) {
 				Lock();
 				Undo(Key == KEY_CTRLSHIFTZ);
+				Flags.Set(FEDITOR_NEWUNDO);
 				Unlock();
 				Show();
 			}
@@ -2173,7 +2180,7 @@ int Editor::ProcessKey(int Key)
 			if (!Flags.Check(FEDITOR_MARKINGVBLOCK))
 				BeginVBlockMarking();
 
-			if (!EdOpt.CursorBeyondEOL && VBlockX >= CurLine->m_prev->GetLength())
+			if (!EdOpt.CursorBeyondEOL && VBlockX >= CurLine->m_prev->RealPosToCell(CurLine->m_prev->GetLength()))
 				return TRUE;
 
 			Pasting++;
@@ -2203,7 +2210,7 @@ int Editor::ProcessKey(int Key)
 			if (!Flags.Check(FEDITOR_MARKINGVBLOCK))
 				BeginVBlockMarking();
 
-			if (!EdOpt.CursorBeyondEOL && VBlockX >= CurLine->m_next->GetLength())
+			if (!EdOpt.CursorBeyondEOL && VBlockX >= CurLine->m_next->RealPosToCell(CurLine->m_prev->GetLength()))
 				return TRUE;
 
 			Pasting++;
@@ -2292,7 +2299,9 @@ int Editor::ProcessKey(int Key)
 			Lock();
 			Pasting++;
 
-			while (CurLine != TopList) {
+			Edit* PrevLine = nullptr;
+			while (CurLine!=TopList && PrevLine!=CurLine) {
+				PrevLine = CurLine;
 				ProcessKey(KEY_ALTUP);
 			}
 
@@ -2308,7 +2317,9 @@ int Editor::ProcessKey(int Key)
 			Lock();
 			Pasting++;
 
-			while (CurLine != EndList) {
+			Edit* PrevLine = nullptr;
+			while (CurLine!=EndList && PrevLine!=CurLine) {
+				PrevLine = CurLine;
 				ProcessKey(KEY_ALTDOWN);
 			}
 
@@ -2450,7 +2461,7 @@ int Editor::ProcessKey(int Key)
 				}
 
 				if (!Pasting && !EdOpt.PersistentBlocks && BlockStart)
-					if ((Key >= 32 && Key < 0x10000) || Key == KEY_ADD || Key == KEY_SUBTRACT ||	// ??? 256 ???
+					if ((Key >= L' ' && WCHAR_IS_VALID(Key)) || Key == KEY_ADD || Key == KEY_SUBTRACT ||	// ??? 256 ???
 							Key == KEY_MULTIPLY || Key == KEY_DIVIDE || Key == KEY_TAB) {
 						DeleteBlock();
 						/*
@@ -2534,7 +2545,7 @@ int Editor::ProcessKey(int Key)
 
 				CurPos = CurLine->GetCurPos();
 
-				if (Key < 0x10000 && CurPos > Length) {
+				if (WCHAR_IS_VALID(Key) && CurPos > Length) {
 
 					// detect space alignment by search for lines starting with space
 					Edit *PrevLine = CurLine->m_prev;
@@ -2990,7 +3001,7 @@ void Editor::InsertString()
 	/*
 		$ 10.08.2000 skv
 		There is only one return - if new will fail.
-		In this case things are realy bad.
+		In this case things are really bad.
 		Move TextChanged to the end of functions
 		AFTER all modifications are made.
 	*/
@@ -3411,19 +3422,19 @@ BOOL Editor::Search(int Next)
 			if (CurTime - StartTime > RedrawTimeout) {
 				StartTime = CurTime;
 
-				if (CheckForEscSilent()) {
-					if (ConfirmAbortOp()) {
-						UserBreak = TRUE;
-						break;
-					}
-				}
-
 				strMsgStr = strSearchStr;
 				InsertQuote(strMsgStr);
 				SetCursorType(FALSE, -1);
 				int Total = ReverseSearch ? StartLine : NumLastLine - StartLine;
 				int Current = abs(NewNumLine - StartLine);
 				EditorShowMsg(Msg::EditSearchTitle, Msg::EditSearchingFor, strMsgStr, Current * 100 / Total);
+
+				if (CheckForEscSilent()) {
+					if (ConfirmAbortOp()) {
+						UserBreak = TRUE;
+						break;
+					}
+				}
 			}
 
 			int SearchLength = 0;
@@ -3521,7 +3532,7 @@ BOOL Editor::Search(int Next)
 
 							int I = 0;
 							for (; SearchLength && strReplaceStrCurrent[I]; I++, SearchLength--) {
-								int Ch = strReplaceStrCurrent[I];
+								unsigned int Ch = strReplaceStrCurrent[I];
 
 								if (Ch == KEY_TAB) {
 									Flags.Clear(FEDITOR_OVERTYPE);
@@ -3551,7 +3562,7 @@ BOOL Editor::Search(int Next)
 								CurLine->SetOvertypeMode(FALSE);
 
 								for (; strReplaceStrCurrent[I]; I++) {
-									int Ch = strReplaceStrCurrent[I];
+									unsigned Ch = strReplaceStrCurrent[I];
 
 									if (Ch != KEY_BS && !(Ch == KEY_DEL || Ch == KEY_NUMDEL))
 										ProcessKey(Ch);
@@ -4796,16 +4807,9 @@ void Editor::VPaste(wchar_t *ClipText)
 						ProcessKey(KEY_END);
 						ProcessKey(KEY_ENTER);
 
-						/*
-							$ 19.05.2001 IS
-							Не вставляем пробелы тогда, когда нас об этом не просят, а
-							именно - при включенном автоотступе ничего вставлять не нужно,
-							оно само вставится и в другом месте.
-						*/
-						if (!EdOpt.AutoIndent)
-							for (int I = 0; I < StartPos; I++)
-								ProcessKey(L' ');
-					}
+						// Mantis 0002966: Неправильная вставка вертикального блока в конце файла
+						for (int I = 0; I < StartPos; I++)
+							ProcessKey(L' ');					}
 				} else {
 					ProcessKey(KEY_DOWN);
 					CurLine->SetCellCurPos(StartPos);
@@ -4969,7 +4973,6 @@ int Editor::EditorControl(int Command, void *Param)
 
 				Flags.Set(FEDITOR_NEWUNDO);
 				InsertString();
-				Show();
 
 				if (!Indent)
 					Pasting--;
@@ -5498,6 +5501,8 @@ int Editor::EditorControl(int Command, void *Param)
 					case ESPT_CODEPAGE: {
 						// BUGBUG
 						if ((UINT)espar->Param.iParam == CP_AUTODETECT) {
+							rc = FALSE;
+						} else if (!IsCodePageSupported(espar->Param.iParam)) {
 							rc = FALSE;
 						} else {
 							if (HostFileEditor) {
@@ -6125,19 +6130,16 @@ void Editor::Xlat()
 // Обновим размер табуляции
 void Editor::SetTabSize(int NewSize)
 {
-	if (NewSize < 1 || NewSize > 512)
-		NewSize = 8;
+	if (NewSize<1 || NewSize>512 || NewSize==EdOpt.TabSize)
+		return; /* Меняем размер табуляции только в том случае, если он
+					на самом деле изменился */
 
-	if (NewSize != EdOpt.TabSize)
-	// Меняем размер табуляции только в том случае, если он на самом деле изменился
-	{
-		EdOpt.TabSize = NewSize;
-		Edit *CurPtr = TopList;
+	EdOpt.TabSize = NewSize;
+	Edit *CurPtr = TopList;
 
-		while (CurPtr) {
-			CurPtr->SetTabSize(NewSize);
-			CurPtr = CurPtr->m_next;
-		}
+	while (CurPtr) {
+		CurPtr->SetTabSize(NewSize);
+		CurPtr = CurPtr->m_next;
 	}
 }
 
@@ -6293,7 +6295,7 @@ Edit *Editor::CreateString(const wchar_t *lpwszStr, int nLength)
 			pEdit->SetBinaryString(lpwszStr, nLength);
 
 		pEdit->SetCurPos(0);
-		pEdit->SetObjectColor(COL_EDITORTEXT, COL_EDITORSELECTEDTEXT);
+		pEdit->SetObjectColor(FarColorToReal(COL_EDITORTEXT), FarColorToReal(COL_EDITORSELECTEDTEXT));
 		pEdit->SetEditorMode(TRUE);
 		pEdit->SetWordDiv(EdOpt.strWordDiv);
 		pEdit->SetShowWhiteSpace(EdOpt.ShowWhiteSpace);
@@ -6539,7 +6541,7 @@ void Editor::GetCursorType(bool &Visible, DWORD &Size)
 	CurLine->GetCursorType(Visible, Size);	//???
 }
 
-void Editor::SetObjectColor(int Color, int SelColor, int ColorUnChanged)
+void Editor::SetObjectColor(uint64_t Color, uint64_t SelColor, uint64_t ColorUnChanged)
 {
 	for (Edit *CurPtr = TopList; CurPtr; CurPtr = CurPtr->m_next)	//???
 		CurPtr->SetObjectColor(Color, SelColor, ColorUnChanged);
@@ -6548,7 +6550,7 @@ void Editor::SetObjectColor(int Color, int SelColor, int ColorUnChanged)
 void Editor::DrawScrollbar()
 {
 	if (EdOpt.ShowScrollBar) {
-		SetColor(COL_EDITORSCROLLBAR);
+		SetFarColor(COL_EDITORSCROLLBAR);
 		XX2 = X2
 				- (ScrollBarEx(X2, Y1, Y2 - Y1 + 1, NumLine - CalcDistance(TopScreen, CurLine, -1),
 							NumLastLine)

@@ -33,6 +33,8 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <vector>
+#include "FARString.hpp"
 #include "panel.hpp"
 
 enum
@@ -123,9 +125,9 @@ public:
 	virtual ~TreeList();
 
 public:
-	virtual int ProcessKey(int Key);
+	virtual int ProcessKey(FarKey Key);
 	virtual int ProcessMouse(MOUSE_EVENT_RECORD *MouseEvent);
-	virtual int64_t VMProcess(int OpCode, void *vParam = nullptr, int64_t iParam = 0);
+	virtual int64_t VMProcess(MacroOpcode OpCode, void *vParam = nullptr, int64_t iParam = 0);
 	//	virtual void KillFocus();
 	virtual void Update(int Mode);
 	int ReadTree();

@@ -127,9 +127,9 @@ static void file_logger(int level, const char *cname, const char *msg, va_list v
 	while (cplog == 0 && idx < 10) {
 		char log_name[30];
 #ifdef __unix__
-		sprintf(log_name, "/tmp/cp-trace%d.log", idx);
+		snprintf(log_name, sizeof(log_name), "/tmp/cp-trace%d.log", idx);
 #else
-		sprintf(log_name, "c:/cp-trace%d.log", idx);
+		snprintf(log_name, sizeof(log_name), "c:/cp-trace%d.log", idx);
 #endif
 		cplog = fopen(log_name, "ab+");
 		idx++;
@@ -205,7 +205,7 @@ static int GetCodePageSelectType(UINT codePage)		// selectedCodePages, (selectTy
 		return 0;
 	// Получаем признак выбранности таблицы символов
 	s_cfg_reader->SelectSection(FavoriteCodePagesKey);
-	return s_cfg_reader->GetInt(StrPrintf("%u", codePage), 0);
+	return s_cfg_reader->GetInt(ToDec(codePage), 0);
 }
 
 // Добавляем таблицу символов
@@ -452,7 +452,7 @@ static void ProcessSelected(bool select)
 		// FormatString strCPName;
 		// strCPName<<codePage;
 		// Получаем текущее состояние флага в реестре
-		std::string strCPName = StrPrintf("%u", codePage);
+		std::string strCPName = ToDec(codePage);
 		s_cfg_reader->SelectSection(FavoriteCodePagesKey);
 		int selectType = s_cfg_reader->GetInt(strCPName, 0);
 
@@ -593,7 +593,7 @@ FormatCodePageName(UINT CodePage, wchar_t *CodePageName, size_t Length, bool &Is
 	// strCodePage<<CodePage;
 	s_cfg_reader->SelectSection(NamesOfCodePagesKey);
 	FARString strCodePageName;
-	const std::string &strCodePage = StrPrintf("%u", CodePage);
+	const std::string &strCodePage = ToDec(CodePage);
 	if (s_cfg_reader->GetString(strCodePageName, strCodePage, L"")) {
 		Length = Min(Length - 1, strCodePageName.GetLength());
 		IsCodePageNameCustom = true;
@@ -634,7 +634,7 @@ static LONG_PTR WINAPI EditDialogProc(HANDLE hDlg, int Msg, int Param1, LONG_PTR
 			UINT CodePage = GetMenuItemCodePage();
 			// FormatString strCodePage;
 			// strCodePage<<CodePage;
-			const std::string &strCodePage = StrPrintf("%u", CodePage);
+			const std::string &strCodePage = ToDec(CodePage);
 			if (Param1 == EDITCP_OK) {
 				wchar_t *CodePageName =
 						strCodePageName.GetBuffer(SendDlgMessage(hDlg, DM_GETTEXTPTR, EDITCP_EDIT, 0) + 1);
@@ -801,4 +801,29 @@ bool IsCodePageSupported(UINT CodePage)
 	CPINFOEX cpiex;
 
 	return GetCodePageInfo(CodePage, cpiex);
+}
+
+void ShortReadableCodepageName(UINT cp, FARString &str_dest)
+{
+	if (cp == CP_UTF8)
+		str_dest = L"UTF-8";
+	/* in Linux ANSI & OEM is less informative than numeric
+	else if (cp == WINPORT(GetACP)())
+		str_dest = L"ANSI";
+	else if (cp == WINPORT(GetOEMCP)())
+		str_dest = L"OEM";*/
+	else if (cp == CP_UTF7)
+		str_dest = L"UTF-7";
+	else if (cp == CP_UTF16LE)
+		str_dest = L"U16LE";
+	else if (cp == CP_UTF16BE)
+		str_dest = L"U16BE";
+	else if (cp == CP_UTF32LE)
+		str_dest = L"U32LE";
+	else if (cp == CP_UTF32BE)
+		str_dest = L"U32BE";
+	else if (cp == CP_KOI8R)
+		str_dest = L"KOI8R";
+	else
+		str_dest.Format(L"%u",cp);
 }

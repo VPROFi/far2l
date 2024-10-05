@@ -68,6 +68,9 @@ static void TranslateFindFile(const WIN32_FIND_DATA &wfd, FAR_FIND_DATA_EX &Find
 	FindData.nHardLinks = wfd.nHardLinks;
 	FindData.nBlockSize = wfd.nBlockSize;
 
+	if (FindData.nHardLinks > 1)
+		FindData.dwFileAttributes |= FILE_ATTRIBUTE_HARDLINKS;
+
 	FindData.strFileName.CopyArray(wfd.cFileName);
 }
 
@@ -78,7 +81,7 @@ FindFile::FindFile(LPCWSTR Object, bool ScanSymLink, DWORD WinPortFindFlags)
 	// Strange things happen with ScanSymLink in original code:
 	// looks like tricky attempt to resolve symlinks in path without elevation
 	// while elevation required to perform actual FindFile operation.
-	// It seems this is not necesary for Linux,
+	// It seems this is not necessary for Linux,
 	// if confirmed: ScanSymLink should be removed from here and apiGetFindDataEx
 	WinPortFindFlags|= FIND_FILE_FLAG_NO_CUR_UP;
 
@@ -583,6 +586,9 @@ BOOL apiGetFindDataForExactPathName(const wchar_t *lpwszFileName, FAR_FIND_DATA_
 	FindData.nHardLinks = (DWORD)s.st_nlink;
 	FindData.nBlockSize = (DWORD)s.st_blksize;
 	FindData.strFileName = PointToName(lpwszFileName);
+
+	if (FindData.nHardLinks > 1)
+		FindData.dwFileAttributes |= FILE_ATTRIBUTE_HARDLINKS;
 
 	return TRUE;
 }

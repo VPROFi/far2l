@@ -25,9 +25,7 @@
 
 int TTYReviveMe(int std_in, int std_out, bool &far2l_tty, int kickass, const std::string &info)
 {
-	char sz[64] = {};
-	snprintf(sz, sizeof(sz) - 1, "TTY/srv-%lu.", (unsigned long)getpid());
-	std::string ipc_path = InMyTemp(sz);
+	std::string ipc_path = InMyTempFmt("TTY/srv-%lu.", (unsigned long)getpid());
 	std::string info_path = ipc_path;
 	ipc_path+= "ipc";
 	info_path+= "info";
@@ -104,6 +102,7 @@ int TTYReviveMe(int std_in, int std_out, bool &far2l_tty, int kickass, const std
 		return notify_pipe;
 
 	} catch (LocalSocketCancelled &e) {
+		(void)e;
 		fprintf(stderr, "TTYReviveMe: kickass signalled\n");
 		char c;
 		if (read(kickass, &c, 1) < 0) {
@@ -174,15 +173,9 @@ void TTYRevivableEnum(std::vector<TTYRevivableInstance> &instances)
 
 int TTYReviveIt(pid_t pid, int std_in, int std_out, bool far2l_tty)
 {
-	char sz[64] = {};
-	snprintf(sz, sizeof(sz) - 1, "TTY/srv-%lu.info", (unsigned long)pid);
-	const std::string &info_file = InMyTemp(sz);
-
-	snprintf(sz, sizeof(sz) - 1, "TTY/srv-%lu.ipc", (unsigned long)pid);
-	const std::string &ipc_path = InMyTemp(sz);
-
-	snprintf(sz, sizeof(sz) - 1, "TTY/clnt-%lu.ipc", (unsigned long)getpid());
-	const std::string &ipc_path_clnt = InMyTemp(sz);
+	const std::string &info_file = InMyTempFmt("TTY/srv-%lu.info", (unsigned long)pid);
+	const std::string &ipc_path = InMyTempFmt("TTY/srv-%lu.ipc", (unsigned long)pid);
+	const std::string &ipc_path_clnt = InMyTempFmt("TTY/clnt-%lu.ipc", (unsigned long)getpid());
 
 	UnlinkScope us_ipc_path_clnt(ipc_path_clnt);
 
@@ -214,7 +207,7 @@ int TTYReviveIt(pid_t pid, int std_in, int std_out, bool far2l_tty)
 			const char *envs[] = { "DISPLAY", "ICEAUTHORITY", "SESSION_MANAGER",
 				"XAPPLRESDIR", "XCMSDB", "XENVIRONMENT", "XFILESEARCHPATH", "XKEYSYMDB",
 				"XLOCALEDIR", "XMODIFIERS", "XUSERFILESEARCHPATH", "XWTRACE", "XWTRACELC"
-			}; 
+			};
 			uint32_t l;
 			for (const auto &env : envs) {
 				l = strlen(env);
@@ -238,8 +231,7 @@ int TTYReviveIt(pid_t pid, int std_in, int std_out, bool far2l_tty)
 	} catch (LocalSocketConnectError &e) {
 		fprintf(stderr, "TTYRevive: %s - discarding %lu\n", e.what(), (unsigned long)pid);
 		unlink(ipc_path.c_str());
-		snprintf(sz, sizeof(sz) - 1, "TTY/srv-%lu.info", (unsigned long)pid);
-		unlink(InMyTemp(sz).c_str());
+		unlink(info_file.c_str());
 
 	} catch (std::exception &e) {
 		fprintf(stderr, "TTYRevive: %s\n", e.what());

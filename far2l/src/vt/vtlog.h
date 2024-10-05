@@ -9,8 +9,10 @@ namespace VTLog
 	void Pause();
 	void Resume();
 
-	void Reset();
+	void ConsoleJoined(HANDLE con_hnd);
 
-	std::string GetAsFile(bool colored, bool append_screen_lines = true);
+	void Reset(HANDLE con_hnd);
+
+	std::string GetAsFile(HANDLE con_hnd, bool colored, bool append_screen_lines = true);
 	
 }

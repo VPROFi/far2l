@@ -42,10 +42,11 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ConfigRW.hpp"
 #include "FSNotify.h"
 #include <memory>
+#include <map>
 #include <vector>
 #include <deque>
 
-extern const HighlightDataColor DefaultStartingColors;
+extern const HighlightDataColor ZeroColors;
 
 struct FileListItem
 {
@@ -72,7 +73,7 @@ struct FileListItem
 
 	DWORD_PTR UserData{};
 
-	const HighlightDataColor *ColorsPtr = &DefaultStartingColors;
+	const HighlightDataColor *ColorsPtr = &ZeroColors;
 
 	DWORD NumberOfLinks{};
 	DWORD UserFlags{};
@@ -180,6 +181,7 @@ private:
 	FARString strOriginalCurDir;
 	FARString strPluginDizName;
 	ListDataVec ListData;
+	std::map<std::wstring, FARString> SymlinksCache;
 	HANDLE hPlugin;
 	DList<PrevDataItem *> PrevDataList;
 	DList<PluginsListItem *> PluginsList;
@@ -192,6 +194,7 @@ private:
 	uint64_t SelFileSize;
 	uint64_t TotalFileSize;
 	uint64_t FreeDiskSize;
+	size_t	MarkLM;
 	clock_t LastUpdateTime;
 	int Height, Columns;
 	std::deque<std::string> _symlinks_backlog;
@@ -226,7 +229,9 @@ private:
 	DWORD64 GetShowColor(int Position, int ColorType);
 	void ShowSelectedSize();
 	void ShowTotalSize(OpenPluginInfo &Info);
-	int ConvertName(const wchar_t *SrcName, FARString &strDest, int MaxLength, int RightAlign, int ShowStatus, DWORD dwFileAttr);
+	bool ResolveSymlink(FARString &target_path, const wchar_t *link_name, FileListItem *fi);
+	int ConvertName(FARString &strDest, const wchar_t *SrcName,
+		int MaxLength, int RightAlign, int ShowStatus, DWORD dwFileAttr, FileListItem *fi);
 
 	void Select(FileListItem *SelPtr, bool Selection);
 	long SelectFiles(int Mode, const wchar_t *Mask = nullptr);
@@ -279,7 +284,7 @@ private:
 	int PluginPutFilesToAnother(int Move, Panel *AnotherPanel);
 	void ProcessPluginCommand();
 	void PluginClearSelection(PluginPanelItem *ItemList, int ItemNumber);
-	void ProcessCopyKeys(int Key);
+	void ProcessCopyKeys(FarKey Key);
 	void ReadSortGroups(bool UpdateFilterCurrentTime = true);
 	int ProcessOneHostFile(int Idx);
 	bool TrySymlinkTraverse();
@@ -293,9 +298,9 @@ public:
 	virtual ~FileList();
 
 public:
-	virtual int ProcessKey(int Key);
+	virtual int ProcessKey(FarKey Key);
 	virtual int ProcessMouse(MOUSE_EVENT_RECORD *MouseEvent);
-	virtual int64_t VMProcess(int OpCode, void *vParam = nullptr, int64_t iParam = 0);
+	virtual int64_t VMProcess(MacroOpcode OpCode, void *vParam = nullptr, int64_t iParam = 0);
 	virtual void MoveToMouse(MOUSE_EVENT_RECORD *MouseEvent);
 	virtual void SetFocus();
 	virtual void Update(int Mode);

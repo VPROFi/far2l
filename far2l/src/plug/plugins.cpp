@@ -474,6 +474,8 @@ HANDLE PluginManager::OpenFilePlugin(const wchar_t *Name, int OpMode, OPENFILEPL
 
 		if (!pPlugin->HasOpenFilePlugin() && !(pPlugin->HasAnalyse() && pPlugin->HasOpenPlugin()))
 			continue;
+		if ((Type == OFP_EXTRACT && !pPlugin->HasGetFiles()) || (Type == OFP_COMMANDS && !pPlugin->HasProcessHostFile()))
+			continue;
 
 		if (Name && !smm) {
 			try {
@@ -865,7 +867,7 @@ int PluginManager::GetFile(HANDLE hPlugin, PluginPanelItem *PanelItem, const wch
 			Found = TRUE;
 	}
 
-	ReadUserBackgound(SaveScr);
+	ReadUserBackground(SaveScr);
 	delete SaveScr;
 	return Found;
 }
@@ -879,7 +881,7 @@ int PluginManager::DeleteFiles(HANDLE hPlugin, PluginPanelItem *PanelItem, int I
 	int Code = ph->pPlugin->DeleteFiles(ph->hPlugin, PanelItem, ItemsNumber, OpMode);
 
 	if (Code)
-		ReadUserBackgound(&SaveScr);	//???
+		ReadUserBackground(&SaveScr);	//???
 
 	return Code;
 }
@@ -893,7 +895,7 @@ int PluginManager::MakeDirectory(HANDLE hPlugin, const wchar_t **Name, int OpMod
 	int Code = ph->pPlugin->MakeDirectory(ph->hPlugin, Name, OpMode);
 
 	if (Code != -1)		//???BUGBUG
-		ReadUserBackgound(&SaveScr);
+		ReadUserBackground(&SaveScr);
 
 	return Code;
 }
@@ -907,9 +909,16 @@ int PluginManager::ProcessHostFile(HANDLE hPlugin, PluginPanelItem *PanelItem, i
 	int Code = ph->pPlugin->ProcessHostFile(ph->hPlugin, PanelItem, ItemsNumber, OpMode);
 
 	if (Code)	// BUGBUG
-		ReadUserBackgound(&SaveScr);
+		ReadUserBackground(&SaveScr);
 
 	return Code;
+}
+
+bool PluginManager::GetLinkTarget(HANDLE hPlugin, PluginPanelItem *PanelItem, FARString &result, int OpMode)
+{
+	ChangePriority ChPriority(ChangePriority::NORMAL);
+	PluginHandle *ph = (PluginHandle *)hPlugin;
+	return ph->pPlugin->GetLinkTarget(ph->hPlugin, PanelItem, result, OpMode);
 }
 
 int PluginManager::GetFiles(HANDLE hPlugin, PluginPanelItem *PanelItem, int ItemsNumber, int Move,
@@ -929,7 +938,7 @@ int PluginManager::PutFiles(HANDLE hPlugin, PluginPanelItem *PanelItem, int Item
 	int Code = ph->pPlugin->PutFiles(ph->hPlugin, PanelItem, ItemsNumber, Move, OpMode);
 
 	if (Code)	// BUGBUG
-		ReadUserBackgound(&SaveScr);
+		ReadUserBackground(&SaveScr);
 
 	return Code;
 }
@@ -1116,24 +1125,26 @@ void PluginManager::Configure(int StartPos)
 			PluginList.Show();
 
 			while (!PluginList.Done()) {
-				DWORD Key = PluginList.ReadInput();
+				const auto Key = PluginList.ReadInput();
 				int SelPos = PluginList.GetSelectPos();
 				PluginMenuItemData *item = (PluginMenuItemData *)PluginList.GetUserData(nullptr, 0, SelPos);
 
 				switch (Key) {
 					case KEY_SHIFTF1:
-						strPluginModuleName = item->pPlugin->GetModuleName();
+						if (item)
+						{
+							strPluginModuleName = item->pPlugin->GetModuleName();
 
-						if (!FarShowHelp(strPluginModuleName, L"Config", FHELP_SELFHELP | FHELP_NOSHOWERROR)
-								&& !FarShowHelp(strPluginModuleName, L"Configure",
-										FHELP_SELFHELP | FHELP_NOSHOWERROR)) {
-							FarShowHelp(strPluginModuleName, nullptr, FHELP_SELFHELP | FHELP_NOSHOWERROR);
+							if (!FarShowHelp(strPluginModuleName, L"Config", FHELP_SELFHELP | FHELP_NOSHOWERROR)
+									&& !FarShowHelp(strPluginModuleName, L"Configure",
+											FHELP_SELFHELP | FHELP_NOSHOWERROR)) {
+								FarShowHelp(strPluginModuleName, nullptr, FHELP_SELFHELP | FHELP_NOSHOWERROR);
+							}
 						}
 
 						break;
 					case KEY_F4:
-
-						if (PluginList.GetItemCount() > 0 && SelPos < MenuItemNumber) {
+						if (item && PluginList.GetItemCount() > 0 && SelPos < MenuItemNumber) {
 							FARString strName00;
 							int nOffset = HotKeysPresent ? 3 : 0;
 							strName00 = PluginList.GetItemPtr()->strName.CPtr() + nOffset;
@@ -1267,22 +1278,22 @@ int PluginManager::CommandsMenu(int ModalType, int StartPos, const wchar_t *Hist
 			PluginList.Show();
 
 			while (!PluginList.Done()) {
-				DWORD Key = PluginList.ReadInput();
+				const auto Key = PluginList.ReadInput();
 				int SelPos = PluginList.GetSelectPos();
 				PluginMenuItemData *item = (PluginMenuItemData *)PluginList.GetUserData(nullptr, 0, SelPos);
 
 				switch (Key) {
 					case KEY_SHIFTF1:
 						// Вызываем нужный топик, который передали в CommandsMenu()
-						FarShowHelp(item->pPlugin->GetModuleName(), HistoryName,
-								FHELP_SELFHELP | FHELP_NOSHOWERROR | FHELP_USECONTENTS);
+						if (item)
+							FarShowHelp(item->pPlugin->GetModuleName(), HistoryName,
+									FHELP_SELFHELP | FHELP_NOSHOWERROR | FHELP_USECONTENTS);
 						break;
 					case KEY_ALTF11:
 						// todo WriteEvent(FLOG_PLUGINSINFO);
 						break;
 					case KEY_F4:
-
-						if (PluginList.GetItemCount() > 0 && SelPos < MenuItemNumber) {
+						if (item && PluginList.GetItemCount() > 0 && SelPos < MenuItemNumber) {
 							FARString strName00;
 							int nOffset = HotKeysPresent ? 3 : 0;
 							strName00 = PluginList.GetItemPtr()->strName.CPtr() + nOffset;
@@ -1297,9 +1308,8 @@ int PluginManager::CommandsMenu(int ModalType, int StartPos, const wchar_t *Hist
 								PluginList.Show();
 							}
 						}
-
 						break;
-					case KEY_ALTSHIFTF9: {
+					case KEY_ALTSHIFTF9:
 						PluginList.Hide();
 						NeedUpdateItems = TRUE;
 						StartPos = SelPos;
@@ -1307,9 +1317,8 @@ int PluginManager::CommandsMenu(int ModalType, int StartPos, const wchar_t *Hist
 						Configure();
 						PluginList.Show();
 						break;
-					}
-					case KEY_SHIFTF9: {
-						if (PluginList.GetItemCount() > 0 && SelPos < MenuItemNumber) {
+					case KEY_SHIFTF9:
+						if (item && PluginList.GetItemCount() > 0 && SelPos < MenuItemNumber) {
 							NeedUpdateItems = TRUE;
 							StartPos = SelPos;
 
@@ -1319,9 +1328,7 @@ int PluginManager::CommandsMenu(int ModalType, int StartPos, const wchar_t *Hist
 							PluginList.SetExitCode(SelPos);
 							PluginList.Show();
 						}
-
 						break;
-					}
 					default:
 						PluginList.ProcessInput();
 						break;
@@ -1655,7 +1662,7 @@ int PluginManager::ProcessCommandLine(const wchar_t *CommandParam, Panel *Target
 	return TRUE;
 }
 
-void PluginManager::ReadUserBackgound(SaveScreen *SaveScr)
+void PluginManager::ReadUserBackground(SaveScreen *SaveScr)
 {
 	FilePanels *FPanel = CtrlObject->Cp();
 	FPanel->LeftPanel->ProcessingPluginCommand++;
@@ -1744,7 +1751,9 @@ Plugin *PluginManager::FindPlugin(DWORD SysID)
 
 HANDLE PluginManager::OpenPlugin(Plugin *pPlugin, int OpenFrom, INT_PTR Item)
 {
+	Flags.Set(PSIF_ENTERTOOPENPLUGIN);
 	HANDLE hPlugin = pPlugin->OpenPlugin(OpenFrom, Item);
+	Flags.Clear(PSIF_ENTERTOOPENPLUGIN);
 
 	if (hPlugin != INVALID_HANDLE_VALUE) {
 		PluginHandle *handle = new PluginHandle;
@@ -1796,30 +1805,30 @@ static void OnBackgroundTasksChangedSynched()
 		FrameManager->RefreshFrame();
 }
 
-void PluginManager::BackroundTaskStarted(const wchar_t *Info)
+void PluginManager::BackgroundTaskStarted(const wchar_t *Info)
 {
 	{
 		std::lock_guard<std::mutex> lock(BgTasks);
 		auto ir = BgTasks.emplace(Info, 0);
 		ir.first->second++;
-		fprintf(stderr, "PluginManager::BackroundTaskStarted('%ls') - count=%d\n", Info, ir.first->second);
+		fprintf(stderr, "PluginManager::BackgroundTaskStarted('%ls') - count=%d\n", Info, ir.first->second);
 	}
 
 	InterThreadCallAsync(std::bind(OnBackgroundTasksChangedSynched));
 }
 
-void PluginManager::BackroundTaskFinished(const wchar_t *Info)
+void PluginManager::BackgroundTaskFinished(const wchar_t *Info)
 {
 	{
 		std::lock_guard<std::mutex> lock(BgTasks);
 		auto it = BgTasks.find(Info);
 		if (it == BgTasks.end()) {
-			fprintf(stderr, "PluginManager::BackroundTaskFinished('%ls') - no such task!\n", Info);
+			fprintf(stderr, "PluginManager::BackgroundTaskFinished('%ls') - no such task!\n", Info);
 			return;
 		}
 
 		it->second--;
-		fprintf(stderr, "PluginManager::BackroundTaskFinished('%ls') - count=%d\n", Info, it->second);
+		fprintf(stderr, "PluginManager::BackgroundTaskFinished('%ls') - count=%d\n", Info, it->second);
 		if (it->second == 0)
 			BgTasks.erase(it);
 	}

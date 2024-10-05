@@ -98,6 +98,10 @@ void SaveScreen::SaveArea(int X1, int Y1, int X2, int Y2)
 	SaveScreen::Y1 = Y1;
 	SaveScreen::X2 = X2;
 	SaveScreen::Y2 = Y2;
+
+	SaveScreen::W = (X2 - X1) + 1;
+	SaveScreen::H = (Y2 - Y1) + 1;
+
 	ScreenBuf = new (std::nothrow) CHAR_INFO[ScreenBufCharCount()];
 
 	if (!ScreenBuf)
@@ -275,7 +279,7 @@ void SaveScreen::CharCopy(PCHAR_INFO ToBuffer, PCHAR_INFO FromBuffer, int Count)
 
 void SaveScreen::CleanupBuffer(PCHAR_INFO Buffer, size_t BufSize)
 {
-	WORD Attr = FarColorToReal(COL_COMMANDLINEUSERSCREEN);
+	uint64_t Attr = FarColorToReal(COL_COMMANDLINEUSERSCREEN);
 
 	for (size_t i = 0; i < BufSize; i++) {
 		Buffer[i].Attributes = Attr;

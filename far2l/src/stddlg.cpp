@@ -121,8 +121,7 @@ int WINAPI GetSearchReplaceString(int IsReplaceMode, FARString *pSearchStr, FARS
 			ReplaceDlg[6].Selected = *Case;
 		else {
 			DeltaCol1++;
-			ReplaceDlg[0].Y2--;
-			ReplaceDlg[6].Type = DI_TEXT;
+			ReplaceDlg[6].Flags |= DIF_HIDDEN;
 
 			for (I = 7; I <= COL1_HIGH; ++I) {
 				ReplaceDlg[I].Y1--;
@@ -134,8 +133,7 @@ int WINAPI GetSearchReplaceString(int IsReplaceMode, FARString *pSearchStr, FARS
 			ReplaceDlg[7].Selected = *WholeWords;
 		else {
 			DeltaCol1++;
-			ReplaceDlg[0].Y2--;
-			ReplaceDlg[7].Type = DI_TEXT;
+			ReplaceDlg[7].Flags |= DIF_HIDDEN;
 
 			for (I = 8; I <= COL1_HIGH; ++I) {
 				ReplaceDlg[I].Y1--;
@@ -147,8 +145,7 @@ int WINAPI GetSearchReplaceString(int IsReplaceMode, FARString *pSearchStr, FARS
 			ReplaceDlg[8].Selected = *Reverse;
 		else {
 			DeltaCol1++;
-			ReplaceDlg[0].Y2--;
-			ReplaceDlg[8].Type = DI_TEXT;
+			ReplaceDlg[8].Flags |= DIF_HIDDEN;
 
 			for (I = 9; I <= COL1_HIGH; ++I) {
 				ReplaceDlg[I].Y1--;
@@ -160,8 +157,7 @@ int WINAPI GetSearchReplaceString(int IsReplaceMode, FARString *pSearchStr, FARS
 			ReplaceDlg[9].Selected = *Regexp;
 		else {
 			DeltaCol2++;
-			ReplaceDlg[0].Y2--;
-			ReplaceDlg[9].Type = DI_TEXT;
+			ReplaceDlg[9].Flags |= DIF_HIDDEN;
 
 			for (I = 10; I <= COL2_HIGH; ++I) {
 				ReplaceDlg[I].Y1--;
@@ -173,6 +169,7 @@ int WINAPI GetSearchReplaceString(int IsReplaceMode, FARString *pSearchStr, FARS
 		DeltaCol = (DeltaCol1 < DeltaCol2) ? DeltaCol1 : DeltaCol2;
 
 		if (DeltaCol > 0) {
+			ReplaceDlg[0].Y2-= DeltaCol;
 			HeightDialog-= DeltaCol;
 
 			for (I = 10; I < (int)ARRAYSIZE(ReplaceDlgData); ++I) {
@@ -270,8 +267,7 @@ int WINAPI GetSearchReplaceString(int IsReplaceMode, FARString *pSearchStr, FARS
 			SearchDlg[4].Selected = *Case;
 		else {
 			DeltaCol1++;
-			SearchDlg[0].Y2--;
-			SearchDlg[4].Type = DI_TEXT;
+			SearchDlg[4].Flags |= DIF_HIDDEN;
 
 			for (I = 5; I <= COL1_HIGH; ++I) {
 				SearchDlg[I].Y1--;
@@ -283,8 +279,7 @@ int WINAPI GetSearchReplaceString(int IsReplaceMode, FARString *pSearchStr, FARS
 			SearchDlg[5].Selected = *WholeWords;
 		else {
 			DeltaCol1++;
-			SearchDlg[0].Y2--;
-			SearchDlg[5].Type = DI_TEXT;
+			SearchDlg[5].Flags |= DIF_HIDDEN;
 
 			for (I = 6; I <= COL1_HIGH; ++I) {
 				SearchDlg[I].Y1--;
@@ -296,8 +291,7 @@ int WINAPI GetSearchReplaceString(int IsReplaceMode, FARString *pSearchStr, FARS
 			SearchDlg[6].Selected = *Reverse;
 		else {
 			DeltaCol1++;
-			SearchDlg[0].Y2--;
-			SearchDlg[6].Type = DI_TEXT;
+			SearchDlg[6].Flags |= DIF_HIDDEN;
 
 			for (I = 7; I <= COL1_HIGH; ++I) {
 				SearchDlg[I].Y1--;
@@ -309,8 +303,7 @@ int WINAPI GetSearchReplaceString(int IsReplaceMode, FARString *pSearchStr, FARS
 			SearchDlg[7].Selected = *Regexp;
 		else {
 			DeltaCol2++;
-			SearchDlg[0].Y2--;
-			SearchDlg[7].Type = DI_TEXT;
+			SearchDlg[7].Flags |= DIF_HIDDEN;
 
 			for (I = 8; I <= COL2_HIGH; ++I) {
 				SearchDlg[I].Y1--;
@@ -322,8 +315,7 @@ int WINAPI GetSearchReplaceString(int IsReplaceMode, FARString *pSearchStr, FARS
 			SearchDlg[8].Selected = *SelectFound;
 		else {
 			DeltaCol2++;
-			SearchDlg[0].Y2--;
-			SearchDlg[8].Type = DI_TEXT;
+			SearchDlg[8].Flags |= DIF_HIDDEN;
 
 			for (I = 9; I <= COL2_HIGH; ++I) {
 				SearchDlg[I].Y1--;
@@ -331,13 +323,14 @@ int WINAPI GetSearchReplaceString(int IsReplaceMode, FARString *pSearchStr, FARS
 			}
 		}
 
-		// сдвигаем кнопки
+		// сдвигаем нижнюю разделительную и кнопки
 		DeltaCol = (DeltaCol1 < DeltaCol2) ? DeltaCol1 : DeltaCol2;
 
 		if (DeltaCol > 0) {
+			SearchDlg[0].Y2-= DeltaCol;
 			HeightDialog-= DeltaCol;
 
-			for (I = 10; I < (int)ARRAYSIZE(SearchDlgData); ++I) {
+			for (I = 9; I < (int)ARRAYSIZE(SearchDlgData); ++I) {
 				SearchDlg[I].Y1-= DeltaCol;
 				SearchDlg[I].Y2-= DeltaCol;
 			}
@@ -413,7 +406,7 @@ int WINAPI GetString(const wchar_t *Title, const wchar_t *Prompt, const wchar_t 
 		const wchar_t *SrcText, FARString &strDestText, const wchar_t *HelpTopic, DWORD Flags,
 		int *CheckBoxValue, const wchar_t *CheckBoxText)
 {
-	int Substract = 5;	// дополнительная величина :-)
+	int Subtract = 5;	// дополнительная величина :-)
 	int ExitCode;
 	bool addCheckBox = Flags & FIB_CHECKBOX && CheckBoxValue && CheckBoxText;
 	int offset = addCheckBox ? 2 : 0;
@@ -430,14 +423,14 @@ int WINAPI GetString(const wchar_t *Title, const wchar_t *Prompt, const wchar_t 
 	MakeDialogItemsEx(StrDlgData, StrDlg);
 
 	if (addCheckBox) {
-		Substract-= 2;
+		Subtract-= 2;
 		StrDlg[0].Y2+= 2;
 		StrDlg[4].Selected = (*CheckBoxValue) ? TRUE : FALSE;
 		StrDlg[4].strData = CheckBoxText;
 	}
 
 	if (Flags & FIB_BUTTONS) {
-		Substract-= 3;
+		Subtract-= 3;
 		StrDlg[0].Y2+= 2;
 		StrDlg[2].DefaultButton = FALSE;
 		StrDlg[5 + offset].Y1 = StrDlg[4 + offset].Y1 = 5 + offset;
@@ -479,7 +472,7 @@ int WINAPI GetString(const wchar_t *Title, const wchar_t *Prompt, const wchar_t 
 		StrDlg[2].strData = SrcText;
 
 	{
-		Dialog Dlg(StrDlg, ARRAYSIZE(StrDlg) - Substract, GetStringDlgProc);
+		Dialog Dlg(StrDlg, ARRAYSIZE(StrDlg) - Subtract, GetStringDlgProc);
 		Dlg.SetPosition(-1, -1, 76, offset + ((Flags & FIB_BUTTONS) ? 8 : 6));
 
 		if (HelpTopic)

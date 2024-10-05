@@ -8,12 +8,20 @@
 ///   Something changed in code below.
 ///   "WinCompat.h" changed in a way affecting code below.
 ///   Behavior of backend's code changed in incompatible way.
-#define FAR2L_BACKEND_ABI_VERSION	0x06
+#define FAR2L_BACKEND_ABI_VERSION	0x0B
+
+#define NODETECT_NONE   0x0000
+#define NODETECT_XI     0x0001
+#define NODETECT_X      0x0002
+#define NODETECT_F      0x0004
+#define NODETECT_W      0x0008
+#define NODETECT_A      0x0010
+#define NODETECT_K      0x0020
 
 class IConsoleOutputBackend
 {
 protected:
-	virtual ~IConsoleOutputBackend() {};
+	virtual ~IConsoleOutputBackend() {}
 
 public:
 	virtual void OnConsoleOutputUpdated(const SMALL_RECT *areas, size_t count) = 0;
@@ -32,14 +40,17 @@ public:
 	virtual bool OnConsoleBackgroundMode(bool TryEnterBackgroundMode) = 0;
 	virtual bool OnConsoleSetFKeyTitles(const char **titles) = 0;
 	virtual BYTE OnConsoleGetColorPalette() = 0;
+	virtual void OnConsoleGetBasePalette(void *pbuff) = 0;
+	virtual bool OnConsoleSetBasePalette(void *pbuff) = 0;
 	virtual void OnConsoleOverrideColor(DWORD Index, DWORD *ColorFG, DWORD *ColorBK) = 0;
+	virtual void OnConsoleSetCursorBlinkTime(DWORD interval) = 0;
 };
 
 class IClipboardBackend
 {
 protected:
 	friend class ClipboardBackendSetter;
-	virtual ~IClipboardBackend() {};
+	virtual ~IClipboardBackend() {}
 
 public:
 	virtual bool OnClipboardOpen() = 0;
@@ -91,9 +102,12 @@ public:
 class IConsoleInput
 {
 protected:
-	virtual ~IConsoleInput() {};
+	virtual ~IConsoleInput() {}
 
 public:
+	virtual IConsoleInput *ForkConsoleInput(HANDLE con_handle) = 0;
+	virtual void JoinConsoleInput(IConsoleInput *con_in) = 0;
+
 	virtual void Enqueue(const INPUT_RECORD *data, DWORD size) = 0;
 	virtual DWORD Peek(INPUT_RECORD *data, DWORD size, unsigned int requestor_priority = 0) = 0;
 	virtual DWORD Dequeue(INPUT_RECORD *data, DWORD size, unsigned int requestor_priority = 0) = 0;
@@ -132,7 +146,7 @@ class ConsoleInputPriority
 class IConsoleOutput
 {
 protected:
-	virtual ~IConsoleOutput() {};
+	virtual ~IConsoleOutput() {}
 
 	friend class DirectLineAccess;
 
@@ -141,10 +155,17 @@ protected:
 	virtual void Unlock() = 0;
 
 public:
+	virtual unsigned int WaitForChange(unsigned int prev_change_id, unsigned int timeout_msec = -1) = 0;
+
+	virtual IConsoleOutput *ForkConsoleOutput(HANDLE con_handle) = 0;
+	virtual void JoinConsoleOutput(IConsoleOutput *con_out) = 0;
+
 	virtual void SetBackend(IConsoleOutputBackend *listener) = 0;
 
 	virtual void SetAttributes(DWORD64 attributes) = 0;
 	virtual DWORD64 GetAttributes() = 0;
+
+	virtual void SetCursorBlinkTime(DWORD interval) = 0;
 	virtual void SetCursor(COORD pos) = 0;
 	virtual void SetCursor(UCHAR height, bool visible) = 0;
 	virtual COORD GetCursor() = 0;
@@ -188,6 +209,8 @@ public:
 	virtual bool ConsoleBackgroundMode(bool TryEnterBackgroundMode) = 0;
 	virtual bool SetFKeyTitles(const CHAR **titles) = 0;
 	virtual BYTE GetColorPalette() = 0;
+	virtual void GetBasePalette(void *p) = 0;
+	virtual bool SetBasePalette(void *p) = 0;
 	virtual void OverrideColor(DWORD Index, DWORD *ColorFG, DWORD *ColorBK) = 0;
 	virtual void RepaintsDeferStart() = 0;
 	virtual void RepaintsDeferFinish() = 0;

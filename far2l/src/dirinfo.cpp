@@ -54,6 +54,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static void DrawGetDirInfoMsg(const wchar_t *Title, const wchar_t *Name, const UINT64 Size)
 {
+	if (Title == nullptr || Name == nullptr) {
+		return;
+	}
+
 	FARString strSize;
 	FileSizeToStr(strSize, Size, 8, COLUMN_FLOATSIZE | COLUMN_COMMAS);
 	RemoveLeadingSpaces(strSize);
@@ -125,7 +129,7 @@ int GetDirInfo(const wchar_t *Title, const wchar_t *DirName, uint32_t &DirCount,
 	}
 
 	while (ScTree.GetNextName(&FindData, strFullName)) {
-		if (!CtrlObject->Macro.IsExecuting()) {
+		if (!CtrlObject->Macro.IsExecuting() && !WinPortTesting()) {
 			INPUT_RECORD rec;
 
 			switch (PeekInputRecord(&rec)) {

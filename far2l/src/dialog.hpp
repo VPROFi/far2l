@@ -126,7 +126,10 @@ struct DialogItemEx
 	};
 	FARString strHistory;
 	FARString strMask;
-	std::unique_ptr<DialogItemTrueColors> TrueColors;
+
+//	std::unique_ptr<DialogItemTrueColors> TrueColors;
+	uint64_t customItemColor[4];
+
 	DWORD Flags;
 	int DefaultButton;
 
@@ -149,7 +152,11 @@ struct DialogItemEx
 
 	void Clear()
 	{
-		TrueColors.reset();
+//		TrueColors.reset();
+		customItemColor[0] = 0;
+		customItemColor[1] = 0;
+		customItemColor[2] = 0;
+		customItemColor[3] = 0;
 		Type = 0;
 		X1 = 0;
 		Y1 = 0;
@@ -182,6 +189,11 @@ struct DialogItemEx
 		X2 = Other.X2;
 		Y1 = Other.Y1;
 		Y2 = Other.Y2;
+		customItemColor[0] = Other.customItemColor[0];
+		customItemColor[1] = Other.customItemColor[1];
+		customItemColor[2] = Other.customItemColor[2];
+		customItemColor[3] = Other.customItemColor[3];
+
 		Focus = Other.Focus;
 		Reserved = Other.Reserved;
 		Flags = Other.Flags;
@@ -307,7 +319,7 @@ private:
 
 	void ShowDialog(unsigned ID = (unsigned)-1);	// ID=-1 - отрисовать весь диалог
 
-	DWORD CtlColorDlgItem(int ItemPos, const DialogItemEx *CurItem);
+	DWORD CtlColorDlgItem(int ItemPos, const DialogItemEx *CurItem, uint64_t *ItemColor);
 	/*
 		$ 28.07.2000 SVS
 		+ Изменяет фокус ввода между двумя элементами.
@@ -323,7 +335,7 @@ private:
 
 	void ProcessLastHistory(DialogItemEx *CurItem, int MsgIndex);	// обработка DIF_USELASTHISTORY
 
-	int ProcessHighlighting(int Key, unsigned FocusPos, int Translate);
+	int ProcessHighlighting(FarKey Key, unsigned FocusPos, int Translate);
 	int CheckHighlights(WORD Chr, int StartPos = 0);
 
 	void SelectOnEntry(unsigned Pos, BOOL Selected);
@@ -355,13 +367,23 @@ private:
 
 	int Do_ProcessTab(int Next);
 	int Do_ProcessNextCtrl(int Next, BOOL IsRedraw = TRUE);
+
+	/**
+	 * move focus to right or left dialog item.
+	*/
+	int MoveToCtrlHorizontal(int right);
+	/**
+	 * move focus to up or down dialog item.
+	*/
+	int MoveToCtrlVertical(int up);
+
 	int Do_ProcessFirstCtrl();
 	int Do_ProcessSpace();
 	void SetComboBoxPos(DialogItemEx *Item = nullptr);
 
 	LONG_PTR CallDlgProc(int nMsg, int nParam1, LONG_PTR nParam2);
 
-	void ProcessKey(int Key, unsigned ItemPos);
+	void ProcessKey(FarKey Key, unsigned ItemPos);
 
 public:
 	Dialog(DialogItemEx *SrcItem, unsigned SrcItemCount, FARWINDOWPROC DlgProc = nullptr,
@@ -371,9 +393,9 @@ public:
 	virtual ~Dialog();
 
 public:
-	virtual int ProcessKey(int Key);
+	virtual int ProcessKey(FarKey Key);
 	virtual int ProcessMouse(MOUSE_EVENT_RECORD *MouseEvent);
-	virtual int64_t VMProcess(int OpCode, void *vParam = nullptr, int64_t iParam = 0);
+	virtual int64_t VMProcess(MacroOpcode OpCode, void *vParam = nullptr, int64_t iParam = 0);
 	virtual void Show();
 	virtual void Hide();
 	void FastShow() { ShowDialog(); }
@@ -442,7 +464,7 @@ LONG_PTR WINAPI SendDlgMessage(HANDLE hDlg, int Msg, int Param1, LONG_PTR Param2
 
 LONG_PTR WINAPI DefDlgProc(HANDLE hDlg, int Msg, int Param1, LONG_PTR Param2);
 
-bool IsKeyHighlighted(const wchar_t *Str, int Key, int Translate, int AmpPos = -1);
+bool IsKeyHighlighted(const wchar_t *Str, FarKey Key, int Translate, int AmpPos = -1);
 
 void DataToItemEx(const DialogDataEx *Data, DialogItemEx *Item, int Count);
 

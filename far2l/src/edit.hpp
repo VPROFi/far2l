@@ -35,6 +35,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "scrobj.hpp"
 #include "colors.hpp"
+#include "palette.hpp"
 #include "bitflags.hpp"
 #include "FilesSuggestor.hpp"
 #include <memory>
@@ -147,9 +148,9 @@ private:
 
 	std::vector<ColorItem> ColorList;
 
-	int Color;
-	int SelColor;
-	int ColorUnChanged;		// 28.07.2000 SVS - для диалога
+	uint64_t Color;
+	uint64_t SelColor;
+	uint64_t ColorUnChanged;		// 28.07.2000 SVS - для диалога
 
 	int LeftPos;
 	int CurPos;
@@ -177,20 +178,20 @@ private:
 
 private:
 	virtual void DisplayObject();
-	int InsertKey(int Key);
-	int RecurseProcessKey(int Key);
+	int InsertKey(FarKey Key);
+	int RecurseProcessKey(FarKey Key);
 	void DeleteBlock();
 	void ApplyColor();
 	int GetNextCursorPos(int Position, int Where);
 	void RefreshStrByMask(int InitMode = FALSE);
-	int KeyMatchedMask(int Key);
+	int KeyMatchedMask(FarKey Key);
 
 	int ProcessCtrlQ();
 	int ProcessInsDate(const wchar_t *Str);
 	int ProcessInsPlainText(const wchar_t *Str);
 
 	int CheckCharMask(wchar_t Chr);
-	int ProcessInsPath(int Key, int PrevSelStart = -1, int PrevSelEnd = 0);
+	int ProcessInsPath(FarKey Key, int PrevSelStart = -1, int PrevSelEnd = 0);
 
 	int RealPosToCell(int PrevLength, int PrevPos, int Pos, int *CorrectPos);
 	void SanitizeSelectionRange();
@@ -214,12 +215,12 @@ public:
 	UINT GetCodePage();					// BUGBUG
 
 	virtual void FastShow();
-	virtual int ProcessKey(int Key);
+	virtual int ProcessKey(FarKey Key);
 	virtual int ProcessMouse(MOUSE_EVENT_RECORD *MouseEvent);
-	virtual int64_t VMProcess(int OpCode, void *vParam = nullptr, int64_t iParam = 0);
+	virtual int64_t VMProcess(MacroOpcode OpCode, void *vParam = nullptr, int64_t iParam = 0);
 
 	// ! Функция установки текущих Color,SelColor и ColorUnChanged!
-	void SetObjectColor(int Color, int SelColor = 0xf, int ColorUnChanged = COL_DIALOGEDITUNCHANGED);
+	void SetObjectColor(uint64_t Color, uint64_t SelColor = 0xf, uint64_t ColorUnChanged = FarColorToReal(COL_DIALOGEDITUNCHANGED));
 	// + Функция получения текущих Color,SelColor
 	long GetObjectColor() { return MAKELONG(Color, SelColor); }
 	int GetObjectColorUnChanged() { return ColorUnChanged; }
@@ -336,16 +337,17 @@ class EditControl : public Edit
 	bool ACState;
 
 	void SetMenuPos(VMenu &menu);
-	void AutoCompleteProcMenu(int &Result, bool Manual, bool DelBlock, int &BackKey);
-	int AutoCompleteProc(bool Manual, bool DelBlock, int &BackKey);
+	void AutoCompleteProcMenu(bool &Result, bool Manual, bool DelBlock, FarKey &BackKey);
+	bool AutoCompleteProc(bool Manual, bool DelBlock, FarKey &BackKey);
 	void PopulateCompletionMenu(VMenu &ComplMenu, const FARString &strFilter);
 	void RemoveSelectedCompletionMenuItem(VMenu &ComplMenu);
 
 public:
 	enum ECFLAGS
 	{
-		EC_ENABLEAUTOCOMPLETE = 0x1,
-		EC_ENABLEFNCOMPLETE   = 0x2,
+		EC_ENABLEAUTOCOMPLETE       = 0x1,
+		EC_ENABLEFNCOMPLETE         = 0x2,
+		EC_ENABLEFNCOMPLETE_ESCAPED = 0x4,
 	};
 
 	EditControl(ScreenObject *pOwner = nullptr, Callback *aCallback = nullptr, bool bAllocateData = true,

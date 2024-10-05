@@ -1,6 +1,10 @@
 #pragma once
 #include <string>
+#include <memory>
+#include <map>
 #include "IVTShell.h"
+
+struct VTAnsiContext;
 
 class VTAnsi
 {
@@ -9,8 +13,18 @@ class VTAnsi
 	} _incomplete;
 
 	std::wstring _ws, _saved_title;
+	std::unique_ptr<VTAnsiContext> _ctx;
+	struct DetachedState
+	{
+		SHORT scrl_top{0}, scrl_bottom{MAXSHORT};
+		std::map<DWORD, std::pair<DWORD, DWORD> > palette;
+	} _detached_state;
+
+
+	void RevertConsoleState(HANDLE con_hnd);
+
 	public:
-	VTAnsi(IVTShell *vt_shell);
+	VTAnsi(IVTShell *vtsh);
 	~VTAnsi();
 
 	void DisableOutput();
@@ -23,6 +37,9 @@ class VTAnsi
 
 	void OnStart();
 	void OnStop();
+	void OnDetached();
+	void OnReattached();
+	std::string GetTitle();
 };
 
 class VTAnsiSuspend

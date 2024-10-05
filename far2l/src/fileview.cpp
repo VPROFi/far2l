@@ -35,6 +35,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <limits>
 #include "fileview.hpp"
+#include "codepage.hpp"
 #include "lang.hpp"
 #include "keys.hpp"
 #include "ctrlobj.hpp"
@@ -54,6 +55,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "mix.hpp"
 #include "fileholder.hpp"
 #include "GrepFile.hpp"
+#include "exitcode.hpp"
 
 FileViewer::FileViewer(FileHolderPtr NewFileHolder, int EnableSwitch, int DisableHistory, int DisableEdit,
 		long ViewStartPos, const wchar_t *PluginData, NamesList *ViewNamesList, int ToSaveAs, UINT aCodePage)
@@ -208,12 +210,12 @@ void FileViewer::DisplayObject()
 	View.Show();
 }
 
-int64_t FileViewer::VMProcess(int OpCode, void *vParam, int64_t iParam)
+int64_t FileViewer::VMProcess(MacroOpcode OpCode, void *vParam, int64_t iParam)
 {
 	return View.VMProcess(OpCode, vParam, iParam);
 }
 
-int FileViewer::ProcessKey(int Key)
+int FileViewer::ProcessKey(FarKey Key)
 {
 	if (RedrawTitle
 			&& (((unsigned int)Key & 0x00ffffff) < KEY_END_FKEY
@@ -328,11 +330,19 @@ int FileViewer::ProcessKey(int Key)
 								| (SaveToSaveAs ? FFILEEDIT_SAVETOSAVEAS : 0)
 								| (DisableHistory ? FFILEEDIT_DISABLEHISTORY : 0),
 						-2, static_cast<int>(FilePos), strPluginData);
-				ShellEditor->SetEnableF6(TRUE);
-				/* $ 07.05.2001 DJ сохраняем NamesList */
-				ShellEditor->SetNamesList(View.GetNamesList());
-				FrameManager->DeleteFrame(this);	// Insert уже есть внутри конструктора
-				ShowTime(2);
+				int load = ShellEditor->GetExitCode();
+				if (load == XC_LOADING_INTERRUPTED || load == XC_OPEN_ERROR)
+				{
+					delete ShellEditor;
+				}
+				else
+				{
+					ShellEditor->SetEnableF6(TRUE);
+					/* $ 07.05.2001 DJ сохраняем NamesList */
+					ShellEditor->SetNamesList(View.GetNamesList());
+					FrameManager->DeleteFrame(this);	// Insert уже есть внутри конструктора
+					ShowTime(2);
+				}
 			}
 
 			return TRUE;
@@ -516,16 +526,22 @@ void FileViewer::ShowStatus()
 		NameLength = 20;
 
 	TruncPathStr(strName, NameLength);
-	strStatus.Format(L"%-*ls %5u %13llu %7.7ls %-4lld %ls%3d%%", NameLength, strName.CPtr(), View.VM.CodePage,
+	FARString str_codepage;
+	ShortReadableCodepageName(View.VM.CodePage,str_codepage);
+	strStatus.Format(L"%-*ls %5ls %13llu %7.7ls %-4lld %ls%3d%%", NameLength, strName.CPtr(), str_codepage.CPtr(),
 			View.FileSize, Msg::ViewerStatusCol.CPtr(), View.LeftPos, Opt.ViewerEditorClock ? L"" : L" ",
 			(View.LastPage ? 100 : ToPercent64(View.FilePos, View.FileSize)));
-	SetColor(COL_VIEWERSTATUS);
+	SetFarColor(COL_VIEWERSTATUS);
 	GotoXY(X1, Y1);
 	FS << fmt::Cells() << fmt::LeftAlign() << fmt::Size(View.Width + (View.ViOpt.ShowScrollbar ? 1 : 0))
 		<< strStatus;
 
-	if (Opt.ViewerEditorClock && IsFullScreen())
+	if (Opt.ViewerEditorClock && IsFullScreen()) {
+		if (X2 > 5) {
+			Text(X2 - 5, Y1, FarColorToReal(COL_VIEWERTEXT), L" ");
+		}
 		ShowTime(FALSE);
+	}
 }
 
 void FileViewer::OnChangeFocus(int focus)
@@ -547,9 +563,9 @@ void ModalViewFile(const std::string &pathname)
 		fprintf(stderr, "%s: viewer error %d for '%s'\n", __FUNCTION__, r, pathname.c_str());
 }
 
-void ViewConsoleHistory(bool modal, bool autoclose)
+void ViewConsoleHistory(HANDLE con_hnd, bool modal, bool autoclose)
 {
-	FARString histfile(CtrlObject->CmdLine->GetConsoleLog(true));
+	FARString histfile(CtrlObject->CmdLine->GetConsoleLog(con_hnd, true));
 	if (histfile.IsEmpty())
 		return;
 

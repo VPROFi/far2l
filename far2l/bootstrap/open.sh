@@ -17,13 +17,16 @@ shift
 
 # Define EXEC_TERM here to allow overriding its from ~/.config/far2l/open.sh
 EXEC_TERM=xterm
+if [ ! -z "$DESKTOP_SESSION" ] && [ -x /etc/alternatives/x-terminal-emulator ] ; then
+	EXEC_TERM=/etc/alternatives/x-terminal-emulator
+fi
 
 if [ -x ~/.config/far2l/open.sh ]; then
 . ~/.config/far2l/open.sh
 fi
 
 if [ "$what" = "exec" ] ; then
-	if ( [ -f "$1" ] && [ -x "$1" ] ) || command -v "$1" >/dev/null 2>/dev/null ; then
+	if { [ -f "$1" ] && [ -x "$1" ]; } || command -v "$1" >/dev/null 2>/dev/null ; then
 		if command -v $EXEC_TERM >/dev/null 2>/dev/null ; then
 			$EXEC_TERM -e "$@" >/dev/null 2>/dev/null &
 			exit 0

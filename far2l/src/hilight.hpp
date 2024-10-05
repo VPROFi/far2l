@@ -36,6 +36,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "CFileMask.hpp"
 #include "array.hpp"
 
+#define	HIGHLIGHT_MAX_MARK_LENGTH	8
+
 class VMenu;
 class FileFilterParams;
 struct FileListItem;
@@ -48,15 +50,22 @@ enum enumHighlightDataColor
 	HIGHLIGHTCOLOR_SELECTEDUNDERCURSOR,
 
 	HIGHLIGHTCOLORTYPE_FILE     = 0,
-	HIGHLIGHTCOLORTYPE_MARKCHAR = 1,
+	HIGHLIGHTCOLORTYPE_MARKSTR  = 1,
+};
+
+enum HIGHLIGHT_FLAGS
+{
+	HL_FLAGS_MARK_INHERIT = 1,
 };
 
 struct HighlightDataColor
 {
-	DWORD64 Color[2][4];	// [0=file, 1=mark][0=normal,1=selected,2=undercursor,3=selectedundercursor];
-							// if HIBYTE == 0xFF then transparent
+	uint64_t Color[2][4];	// [0=file, 1=mark][0=normal,1=selected,2=undercursor,3=selectedundercursor];
 							// nonzero upper 3 bytes meaning foreground RGB, nonzero lower 3 bytes meaning background RGB
-	DWORD MarkChar;
+	uint64_t Mask[2][4];	// transparency mask, 0 = fully transparent
+	uint32_t Flags;
+	uint32_t MarkLen;
+	wchar_t	 Mark[HIGHLIGHT_MAX_MARK_LENGTH + 1]; 	// + null terminator
 };
 
 class HighlightFiles
@@ -80,7 +89,7 @@ public:
 
 public:
 	void UpdateCurrentTime();
-	void GetHiColor(FileListItem **FileItem, int FileCount, bool UseAttrHighlighting = false);
+	void GetHiColor(FileListItem **FileItem, size_t FileCount, bool UseAttrHighlighting, size_t *MarkLM);
 	int GetGroup(const FileListItem *fli);
 	void HiEdit(int MenuPos);
 

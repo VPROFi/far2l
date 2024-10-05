@@ -56,6 +56,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "scrbuf.hpp"
 #include "console.hpp"
 #include "InterThreadCall.hpp"
+#include "vt/vtshell.h"
+#include "execute.hpp"
+#include "fileview.hpp"
 
 Manager *FrameManager;
 
@@ -345,12 +348,84 @@ int Manager::CountFramesWithName(const wchar_t *Name, BOOL IgnoreCase)
 	return Counter;
 }
 
+static FARString FrameMenuNumTextPrefix(int i)
+{
+	FARString out;
+	if (i < 10)
+		out.Format(L"&%d ", i);
+	else if (i - 10 < 'Z' - 'A')
+		out.Format(L"&%c ", char(i - 10 + 'A'));
+	else
+		out.Format(L"&  ");
+	return out;
+}
+
 /*!
 	\return Возвращает nullptr если нажат "отказ" или если нажат текущий фрейм.
 	Другими словами, если немодальный фрейм не поменялся.
 	Если же фрейм поменялся, то тогда функция должна возвратить
 	указатель на предыдущий фрейм.
 */
+
+class FramesMenu : public VMenu 
+{
+	VTInfos _vts;
+	int _vts_base_index{-1};
+
+public:
+	FramesMenu() : VMenu (Msg::ScreensTitle, nullptr, 0, ScrY - 4)
+	{
+		VTShell_Enum(_vts);
+	}
+
+	virtual int ProcessKey(FarKey Key)
+	{
+		if (Key == KEY_F3 && _vts_base_index >= 0
+				&& _vts_base_index <= GetSelectPos()
+				&& _vts_base_index + int(_vts.size()) > GetSelectPos() ) {
+			ViewConsoleHistory(_vts[GetSelectPos() - _vts_base_index].con_hnd, true, false);
+			return TRUE;
+		}
+		return VMenu::ProcessKey(Key);
+	}
+
+	void AddVTSItems(int FramePos)
+	{
+		if (_vts.empty()) {
+			_vts_base_index = -1;
+			return;
+		}
+		_vts_base_index = GetItemCount() + 1;
+		MenuItemEx mi;
+		mi.Clear();
+		mi.strName = Msg::BackgroundCommands;
+		mi.Flags = LIF_SEPARATOR;
+		AddItem(&mi);
+		for (const auto &vt : _vts) {
+			mi.Clear();
+			mi.strName = vt.title;
+			ReplaceStrings(mi.strName, L"&", L"&&", -1);
+			mi.strName.Insert(0, FrameMenuNumTextPrefix(GetItemCount() - 1) );
+			mi.SetSelect(GetItemCount() == FramePos);
+			if (vt.done)
+				mi.SetCheck(vt.exit_code ? L'!' : L'#');
+
+			AddItem(&mi);
+		}
+	}
+
+	int Do()
+	{
+		VMenu::Process();
+		int r = Modal::GetExitCode();
+		if (_vts_base_index >= 0 && r >= _vts_base_index && r < GetItemCount()) {
+			CtrlObject->CmdLine->SwitchToBackgroundTerminal(r - _vts_base_index);
+			return -1;
+		}
+		return r;
+	}
+};
+
 Frame *Manager::FrameMenu()
 {
 	/*
@@ -366,7 +441,8 @@ Frame *Manager::FrameMenu()
 	int ExitCode, CheckCanLoseFocus = CurrentFrame->GetCanLoseFocus();
 	{
 		MenuItemEx ModalMenuItem;
-		VMenu ModalMenu(Msg::ScreensTitle, nullptr, 0, ScrY - 4);
+		FramesMenu ModalMenu;
+
 		ModalMenu.SetHelp(L"ScrSwitch");
 		ModalMenu.SetFlags(VMENU_WRAPMODE);
 		ModalMenu.SetPosition(-1, -1, 0, 0);
@@ -374,35 +450,34 @@ Frame *Manager::FrameMenu()
 		if (!CheckCanLoseFocus)
 			ModalMenuItem.SetDisable(TRUE);
 
-		for (int I = 0; I < FrameCount; I++) {
-			FARString strType, strName, strNumText;
+		int I = 0;
+		for (; I < FrameCount; I++) {
+			/* "*" если файл изменен */
+			FARString strNumText = FrameMenuNumTextPrefix(I);
+			FARString strType, strName;
 			FrameList[I]->GetTypeAndName(strType, strName);
 			ModalMenuItem.Clear();
 
-			if (I < 10)
-				strNumText.Format(L"&%d. ", I);
-			else if (I < 36)
-				strNumText.Format(L"&%lc. ", I + 55);	// 55='A'-10
-			else
-				strNumText = L"&   ";
-
 			// TruncPathStr(strName,ScrX-24);
 			ReplaceStrings(strName, L"&", L"&&", -1);
-			/* добавляется "*" если файл изменен */
-			ModalMenuItem.strName.Format(L"%ls%-10.10ls %lc %ls", strNumText.CPtr(), strType.CPtr(),
-					(FrameList[I]->IsFileModified() ? L'*' : L' '), strName.CPtr());
+			ModalMenuItem.strName.Format(L"%ls%-10.10ls %ls", strNumText.CPtr(), strType.CPtr(), strName.CPtr());
 			ModalMenuItem.SetSelect(I == FramePos);
+			if (FrameList[I]->IsFileModified())
+				ModalMenuItem.SetCheck(L'*');
+
 			ModalMenu.AddItem(&ModalMenuItem);
 		}
 
+		ModalMenu.AddVTSItems(FramePos);
+
 		AlreadyShown = TRUE;
-		ModalMenu.Process();
+		ExitCode = ModalMenu.Do();
 		AlreadyShown = FALSE;
-		ExitCode = ModalMenu.Modal::GetExitCode();
+//		ExitCode = ModalMenu.Modal::GetExitCode();
 	}
 
 	if (CheckCanLoseFocus) {
-		if (ExitCode >= 0) {
+		if (ExitCode >= 0 && ExitCode < FrameCount) {
 			ActivateFrame(ExitCode);
 			return (ActivatedFrame == CurrentFrame || !CurrentFrame->GetCanLoseFocus()
 							? nullptr
@@ -652,7 +727,7 @@ void Manager::ProcessMainLoop()
 		WaitInMainLoop =
 				IsPanelsActive() && ((FilePanels *)CurrentFrame)->ActivePanel->GetType() != QVIEW_PANEL;
 		// WaitInFastFind++;
-		int Key = GetInputRecord(&LastInputRecord);
+		FarKey Key = GetInputRecord(&LastInputRecord);
 		// WaitInFastFind--;
 		WaitInMainLoop = FALSE;
 
@@ -668,17 +743,24 @@ void Manager::ProcessMainLoop()
 	}
 }
 
-static bool ConfirmExit()
+static bool ConfirmExit(size_t vts_cnt)
 {
 	int r;
+	ExMessager m(Msg::Quit);
+	m.Add(Msg::AskQuit);
+	if (vts_cnt) {
+		m.AddFormat(Msg::AskQuitVTS, (unsigned int)vts_cnt);
+	}
+	m.Add(Msg::Yes);
+	m.Add(Msg::No);
 	if (WINPORT(ConsoleBackgroundMode)(FALSE)) {
-		r = Message(0, 3, Msg::Quit, Msg::AskQuit, Msg::Yes, Msg::No, Msg::Background);
+		m.Add(Msg::Background);
+		r = m.Show(vts_cnt ? MSG_WARNING : 0, 3);
 		if (r == 2) {
 			WINPORT(ConsoleBackgroundMode)(TRUE);
 		}
-
 	} else {
-		r = Message(0, 2, Msg::Quit, Msg::AskQuit, Msg::Yes, Msg::No);
+		r = m.Show(vts_cnt ? MSG_WARNING : 0, 2);
 	}
 
 	return r == 0;
@@ -691,7 +773,9 @@ void Manager::ExitMainLoop(int Ask)
 		CloseFARMenu = TRUE;
 	};
 
-	if (!Ask || ((!Opt.Confirm.ExitEffective() || ConfirmExit()) && CtrlObject->Plugins.MayExitFar())) {
+
+	size_t vts_cnt = VTShell_Count();
+	if (!Ask || (((!Opt.Confirm.ExitEffective() && !vts_cnt) || ConfirmExit(vts_cnt)) && CtrlObject->Plugins.MayExitFar())) {
 		/*
 			$ 29.12.2000 IS
 			+ Проверяем, сохранены ли все измененные файлы. Если нет, то не выходим
@@ -850,7 +934,6 @@ int Manager::ProcessKey(DWORD Key)
 						//_MANAGER(SysLog(-1));
 						return TRUE;
 					}
-
 					break;	// отдадим F12 дальше по цепочке
 				}
 
@@ -1352,10 +1435,9 @@ void Manager::RefreshCommit()
 		CtrlObject->Macro.SetMode(RefreshedFrame->GetMacroMode());
 	}
 
-	if ((Opt.ViewerEditorClock
-				&& (RefreshedFrame->GetType() == MODALTYPE_EDITOR
-						|| RefreshedFrame->GetType() == MODALTYPE_VIEWER))
-			|| (WaitInMainLoop && Opt.Clock))
+	if ((RefreshedFrame->GetType() == MODALTYPE_EDITOR || RefreshedFrame->GetType() == MODALTYPE_VIEWER)
+			? Opt.ViewerEditorClock
+			: (WaitInMainLoop && Opt.Clock))
 		ShowTime(1);
 }
 

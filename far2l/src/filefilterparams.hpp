@@ -59,10 +59,11 @@ enum enumFileFilterFlagsType
 
 enum enumFileFilterFlags
 {
-	FFF_NONE    = 0x00000000,
-	FFF_INCLUDE = 0x00000001,
-	FFF_EXCLUDE = 0x00000002,
-	FFF_STRONG  = 0x10000000
+	FFF_NONE     = 0x00000000,
+	FFF_INCLUDE  = 0x00000001,
+	FFF_EXCLUDE  = 0x00000002,
+	FFF_DISABLED = 0x00000004,
+	FFF_STRONG   = 0x10000000
 };
 
 enum enumFDateType
@@ -87,6 +88,7 @@ private:
 		bool Used;
 		FARString strMask;
 		CFileMask FilterMask;	// Хранилище скомпилированной маски.
+		bool IgnoreCase;
 	} FMask;
 
 	struct
@@ -130,10 +132,14 @@ private:
 public:
 	FileFilterParams();
 
+	inline FileFilterParams(const FileFilterParams &FF)
+	{
+		operator=(FF);
+	}
 	const FileFilterParams &operator=(const FileFilterParams &FF);
 
 	void SetTitle(const wchar_t *Title);
-	void SetMask(bool Used, const wchar_t *Mask);
+	void SetMask(bool Used, const wchar_t *Mask, bool IgnoreCase = true);
 	void SetDate(bool Used, DWORD DateType, FILETIME DateAfter, FILETIME DateBefore, bool bRelative);
 	void SetSize(bool Used, const wchar_t *SizeAbove, const wchar_t *SizeBelow);
 	void SetAttr(bool Used, DWORD AttrSet, DWORD AttrClear);
@@ -148,11 +154,12 @@ public:
 
 	const wchar_t *GetTitle() const;
 	bool GetMask(const wchar_t **Mask) const;
+	bool GetMaskIgnoreCase() const;
 	bool GetDate(DWORD *DateType, FILETIME *DateAfter, FILETIME *DateBefore, bool *bRelative) const;
 	bool GetSize(const wchar_t **SizeAbove, const wchar_t **SizeBelow) const;
 	bool GetAttr(DWORD *AttrSet, DWORD *AttrClear) const;
 	void GetColors(HighlightDataColor *Colors) const;
-	wchar_t GetMarkChar() const;
+
 	int GetSortGroup() const { return FHighlight.SortGroup; }
 	bool GetContinueProcessing() const { return FHighlight.bContinueProcessing; }
 	DWORD GetFlags(enumFileFilterFlagsType FType) const { return FFlags[FType]; }

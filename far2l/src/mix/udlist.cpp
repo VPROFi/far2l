@@ -46,7 +46,7 @@ UserDefinedListItem::~UserDefinedListItem()
 
 bool UserDefinedListItem::operator==(const UserDefinedListItem &rhs) const
 {
-	return (Str && rhs.Str) ? (!StrCmpI(Str, rhs.Str)) : false;
+	return (Str && rhs.Str) ? (!StrCmp(Str, rhs.Str)) : false;
 }
 
 int UserDefinedListItem::operator<(const UserDefinedListItem &rhs) const
@@ -56,7 +56,7 @@ int UserDefinedListItem::operator<(const UserDefinedListItem &rhs) const
 	else if (!rhs.Str)
 		return -1;
 	else
-		return StrCmpI(Str, rhs.Str) < 0;
+		return StrCmp(Str, rhs.Str) < 0;
 }
 
 const UserDefinedListItem &UserDefinedListItem::operator=(const UserDefinedListItem &rhs)
@@ -315,9 +315,9 @@ const wchar_t *UserDefinedList::Skip(const wchar_t *Str, int &Length, int &RealL
 		return nullptr;
 
 	const wchar_t *cur = Str;
-	bool InBrackets = false, InQoutes = (*cur == L'\"');
+	bool InBrackets = false, InQuotes = (*cur == L'\"');
 
-	if (!InQoutes)		// если мы в кавычках, то обработка будет позже и чуть сложнее
+	if (!InQuotes)		// если мы в кавычках, то обработка будет позже и чуть сложнее
 		while (*cur)	// важно! проверка *cur должна стоять первой
 		{
 			if (ProcessBrackets) {
@@ -334,7 +334,7 @@ const wchar_t *UserDefinedList::Skip(const wchar_t *Str, int &Length, int &RealL
 			++cur;
 		}
 
-	if (!InQoutes || !*cur) {
+	if (!InQuotes || !*cur) {
 		RealLength = Length = (int)(cur - Str);
 		--cur;
 

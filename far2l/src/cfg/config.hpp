@@ -276,6 +276,7 @@ struct VMenuOptions
 	int LBtnClick;
 	int RBtnClick;
 	int MBtnClick;
+	bool MenuLoopScroll;
 };
 
 struct CommandLineOptions
@@ -312,7 +313,7 @@ struct LoadPluginsOptions
 {
 	//  DWORD TypeLoadPlugins;       // see TYPELOADPLUGINSOPTIONS
 	int MainPluginDir;		// TRUE - использовать стандартный путь к основным плагинам
-	int PluginsCacheOnly;	// seting by '/co' switch, not saved in registry
+	int PluginsCacheOnly;	// setting by '/co' switch, not saved in registry
 	int PluginsPersonal;
 
 	FARString strCustomPluginsPath;		// путь для поиска плагинов, указанный в /p
@@ -326,6 +327,7 @@ struct FindFileOptions
 	int FileSearchMode;
 	bool FindFolders;
 	bool FindSymLinks;
+	bool FindCaseSensitiveFileMask;
 	bool CollectFiles;
 	bool UseFilter;
 	bool FindAlternateStreams;
@@ -396,7 +398,13 @@ struct Options
 	int InactivityExit;
 	int InactivityExitTime;
 	int ShowHidden;
+
+	int ShowFilenameMarks;
+	int FilenameMarksAlign;
+	DWORD MinFilenameIndentation, MaxFilenameIndentation;
+
 	int Highlight;
+	int CursorBlinkTime;
 
 	FARString strLeftFolder;
 	FARString strRightFolder;
@@ -407,6 +415,7 @@ struct Options
 	int RightSelectedFirst;
 	int LeftSelectedFirst;
 	int SelectFolders;
+	int PanelCaseSensitiveCompareSelect;
 	int ReverseSort;
 	int SortFolderExt;
 	int DeleteToRecycleBin;				// удалять в корзину?
@@ -417,6 +426,8 @@ struct Options
 	int SudoPasswordExpiration;
 
 	CopyMoveOptions CMOpt;
+
+	int MakeLinkSuggestSymlinkAlways;	// по Alt-F6 предлагать всегда symlink или hardink/symlink в зависимости от того среди выбранных только файлы или и каталоги
 
 	DeleteOptions DelOpt;
 
@@ -448,7 +459,7 @@ struct Options
 	int AutoSaveSetup;
 	int SetupArgv;	// количество каталогов в ком.строке ФАРа
 	int ChangeDriveMode;
-	int ChangeDriveDisconnetMode;
+	int ChangeDriveDisconnectMode;
 	FARString ChangeDriveExceptions;
 	FARString ChangeDriveColumn2, ChangeDriveColumn3;
 
@@ -458,8 +469,11 @@ struct Options
 	int SavePluginFoldersHistory;
 	int FoldersHistoryCount;
 	int DialogsHistoryCount;
+	int HistoryRemoveDupsRule;
+	int AutoHighlightHistory;
 
 	BYTE HistoryShowTimes[8];
+	DWORD HistoryDirsPrefixLen;
 
 	FindFileOptions FindOpt;
 
@@ -613,7 +627,14 @@ struct Options
 	bool IsUserAdmin;
 	FARString strWindowTitle;
 
+	int DateFormat;
+	FARString strDateSeparator;
+	FARString strTimeSeparator;
+	FARString strDecimalSeparator;
+
 	bool IsFirstStart;
+
+	std::vector<std::wstring> CmdLineStrings;
 };
 
 extern Options Opt;

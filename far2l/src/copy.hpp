@@ -65,7 +65,7 @@ struct COPY_FLAGS
 {
 	inline COPY_FLAGS() { memset(this, 0, sizeof(*this)); }
 
-	bool CURRENTONLY    : 1;		// Только текщий?
+	bool CURRENTONLY    : 1;		// Только текущий?
 	bool ONLYNEWERFILES : 1;		// Copy only newer files
 	bool OVERWRITENEXT  : 1;		// Overwrite all
 	bool LINK           : 1;		// создание линков
@@ -75,7 +75,7 @@ struct COPY_FLAGS
 	bool WRITETHROUGH   : 1;		// disable write cache
 	bool COPYXATTR      : 1;		// copy extended attributes
 	bool SPARSEFILES    : 1;		// allow producing sparse files
-	bool USECOW         : 1;		// enable COW funcionality if FS supports it
+	bool USECOW         : 1;		// enable COW functionality if FS supports it
 	bool COPYLASTTIME   : 1;		// При копировании в несколько каталогов устанавливается для последнего.
 	bool UPDATEPPANEL   : 1;		// необходимо обновить пассивную панель
 	COPY_SYMLINK SYMLINK : 2;
@@ -119,7 +119,7 @@ class ShellFileTransfer
 	clock_t _Stopwatch = 0;
 	int64_t _AppendPos = -1;
 	DWORD _DstFlags    = 0;
-	DWORD _ModeToCreateWith;
+	DWORD _ModeToCreateWith = 0;
 
 	File _SrcFile, _DestFile;
 	bool _LastWriteWasHole = false;
@@ -162,6 +162,7 @@ class ShellCopy
 	// в остальных случаях - RP_EXACTCOPY - как у источника
 	ReparsePointTypes RPT;
 	ShellCopyBuffer CopyBuffer;
+	bool CaseInsensitiveFS{false};
 
 	std::vector<FARString> SelectedPanelItems;
 	struct CopiedDirectory
@@ -190,14 +191,15 @@ class ShellCopy
 	int DeleteAfterMove(const wchar_t *Name, DWORD Attr);
 	void SetDestDizPath(const wchar_t *DestPath);
 	int AskOverwrite(const FAR_FIND_DATA_EX &SrcData, const wchar_t *SrcName, const wchar_t *DestName,
-			DWORD DestAttr, int SameName, int Rename, int AskAppend, int &Append, FARString &strNewName,
+			DWORD DestAttr, bool SameName, bool Rename, bool AskAppend, bool &Append, FARString &strNewName,
 			int &RetCode);
 	bool CalcTotalSize();
 
-	COPY_CODES
-	CreateSymLink(const char *ExistingName, const wchar_t *NewName, const FAR_FIND_DATA_EX &SrcData);
-	COPY_CODES
-	CopySymLink(const wchar_t *ExistingName, const wchar_t *NewName, const FAR_FIND_DATA_EX &SrcData);
+	bool CmpFullNames(const wchar_t *Src, const wchar_t *Dest) const;
+	bool CmpNames(const wchar_t *Src, const wchar_t *Dest) const;
+
+	COPY_CODES CreateSymLink(const char *ExistingName, const wchar_t *NewName, const FAR_FIND_DATA_EX &SrcData);
+	COPY_CODES CopySymLink(const wchar_t *ExistingName, const wchar_t *NewName, const FAR_FIND_DATA_EX &SrcData);
 
 public:
 	ShellCopy(Panel *SrcPanel, int Move, int Link, int CurrentOnly, int Ask, int &ToPlugin,

@@ -551,7 +551,7 @@ KeyFileReadSection::KeyFileReadSection(const std::string &filename, const std::s
 KeyFileReadHelper::KeyFileReadHelper(const std::string &filename, const char *load_only_section, bool case_insensitive)
 	: _kf(case_insensitive), _case_insensitive(case_insensitive)
 {
-	// intentially comparing pointer values
+	// intentionally comparing pointer values
 	if (load_only_section == &sDontLoadLiteral[0]) {
 		return;
 	}
@@ -898,23 +898,17 @@ void KeyFileHelper::SetString(const std::string &section, const std::string &nam
 
 void KeyFileHelper::SetInt(const std::string &section, const std::string &name, int value)
 {
-	char tmp[32];
-	sprintf(tmp, "%d", value);
-	SetString(section, name, tmp);
+	SetString(section, name, ToDec(value));
 }
 
 void KeyFileHelper::SetUInt(const std::string &section, const std::string &name, unsigned int value)
 {
-	char tmp[32];
-	sprintf(tmp, "0x%x", value);
-	SetString(section, name, tmp);
+	SetString(section, name, ToPrefixedHex(value));
 }
 
 void KeyFileHelper::SetULL(const std::string &section, const std::string &name, unsigned long long value)
 {
-	char tmp[64];
-	sprintf(tmp, "0x%llx", value);
-	SetString(section, name, tmp);
+	SetString(section, name, ToPrefixedHex(value));
 }
 
 void KeyFileHelper::SetBytes(const std::string &section,

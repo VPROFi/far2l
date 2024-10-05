@@ -35,7 +35,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <ctype.h>
 #include "keyboard.hpp"
-#include "keys.hpp"
 #include "farqueue.hpp"
 #include "lang.hpp"
 #include "ctrlobj.hpp"
@@ -80,7 +79,7 @@ bool BracketedPasteMode = false;
 // static WCHAR VKeyToASCII[0x200];
 
 static unsigned int AltValue = 0;
-static int KeyCodeForALT_LastPressed = 0;
+static FarKey KeyCodeForALT_LastPressed = 0;
 
 static MOUSE_EVENT_RECORD lastMOUSE_EVENT_RECORD;
 static int ShiftPressedLast = FALSE, AltPressedLast = FALSE, CtrlPressedLast = FALSE;
@@ -93,12 +92,20 @@ static clock_t PressedLastTime, KeyPressedLastTime;
 static int ShiftState = 0;
 static int LastShiftEnterPressed = FALSE;
 
+static auto was_repeat = false;
+static auto last_pressed_keycode = static_cast<WORD>(-1);
+
+bool IsRepeatedKey()
+{
+	return was_repeat;
+}
+
 /* ----------------------------------------------------------------- */
 static struct TTable_KeyToVK
 {
-	int Key;
+	FarKey Key;
 	int VK;
-} Table_KeyToVK[] = {
+} const Table_KeyToVK[] = {
 		//   {KEY_PGUP,          VK_PRIOR},
 		//   {KEY_PGDN,          VK_NEXT},
 		//   {KEY_END,           VK_END},
@@ -140,13 +147,13 @@ static struct TTable_KeyToVK
 
 struct TFKey3
 {
-	DWORD Key;
+	FarKey Key;
 	int Len;
 	const wchar_t *Name;
 	const wchar_t *UName;
 };
 
-static TFKey3 FKeys1[] = {
+static const TFKey3 FKeys1[] = {
 		{KEY_RCTRLALTSHIFTRELEASE, 24, L"RightCtrlAltShiftRelease", L"RIGHTCTRLALTSHIFTRELEASE"},
 		{KEY_RCTRLALTSHIFTPRESS,   22, L"RightCtrlAltShiftPress",   L"RIGHTCTRLALTSHIFTPRESS"  },
 		{KEY_CTRLALTSHIFTRELEASE,  19, L"CtrlAltShiftRelease",      L"CTRLALTSHIFTRELEASE"     },
@@ -256,7 +263,7 @@ static TFKey3 FKeys1[] = {
 		{KEY_COMMA,                1,  L",",                        L","                       },
 };
 
-static TFKey3 ModifKeyName[] = {
+static const TFKey3 ModifKeyName[] = {
 		{KEY_RCTRL,  5, L"RCtrl", L"RCTRL"},
 		{KEY_SHIFT,  5, L"Shift", L"SHIFT"},
 		{KEY_CTRL,   4, L"Ctrl",  L"CTRL" },
@@ -267,7 +274,7 @@ static TFKey3 ModifKeyName[] = {
 };
 
 #if defined(SYSLOG)
-static TFKey3 SpecKeyName[] = {
+static const TFKey3 SpecKeyName[] = {
 		{KEY_CONSOLE_BUFFER_RESIZE, 19, L"ConsoleBufferResize", L"CONSOLEBUFFERRESIZE"},
 		{KEY_OP_SELWORD,            10, L"OP_SelWord",          L"OP_SELWORD"         },
 		{KEY_KILLFOCUS,             9,  L"KillFocus",           L"KILLFOCUS"          },
@@ -351,18 +358,18 @@ void InitKeysArray()
 }
 
 // Сравнивает если Key и CompareKey это одна и та же клавиша в разных раскладках
-bool KeyToKeyLayoutCompare(int Key, int CompareKey)
+bool KeyToKeyLayoutCompare(FarKey Key, FarKey CompareKey)
 {
 	_KEYMACRO(CleverSysLog Clev(L"KeyToKeyLayoutCompare()"));
 	_KEYMACRO(SysLog(L"Param: Key=%08X", Key));
 	//	Key = KeyToVKey[Key&0xFFFF]&0xFF;
 	//	CompareKey = KeyToVKey[CompareKey&0xFFFF]&0xFF;
 
-	return (Key && (Key == CompareKey || Xlator(0).Transcode(Key) == CompareKey));
+	return (Key && (Key == CompareKey || Xlator(0).Transcode((wchar_t)Key) == (wchar_t)CompareKey));
 }
 
 // Должно вернуть клавишный Eng эквивалент Key
-int KeyToKeyLayout(int Key)
+FarKey KeyToKeyLayout(FarKey Key)
 {
 	_KEYMACRO(CleverSysLog Clev(L"KeyToKeyLayout()"));
 	_KEYMACRO(SysLog(L"Param: Key=%08X", Key));
@@ -422,12 +429,12 @@ int SetFLockState(UINT vkKey, int State)
 	return (int)(WORD)oldState;*/
 }
 
-int WINAPI InputRecordToKey(const INPUT_RECORD *r)
+unsigned int WINAPI InputRecordToKey(const INPUT_RECORD *r)
 {
 	if (r) {
 		INPUT_RECORD Rec = *r;	// НАДО!, т.к. внутри CalcKeyCode
 		//   структура INPUT_RECORD модифицируется!
-		return (int)CalcKeyCode(&Rec, FALSE);
+		return CalcKeyCode(&Rec, FALSE);
 	}
 
 	return KEY_NONE;
@@ -442,7 +449,7 @@ DWORD IsMouseButtonPressed()
 	}
 	// IsMouseButtonPressed used within loops, so lets sleep to avoid CPU hogging in that loops
 	// it would be nicer to sleep inside of that loops instead, but keep to original code for now
-	WINPORT(WaitConsoleInput)(10);
+	WINPORT(WaitConsoleInput)(NULL, 10);
 	return MouseButtonState;
 }
 
@@ -613,6 +620,8 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 							|| rec->Event.KeyEvent.wVirtualKeyCode == VK_CAPITAL
 							|| rec->Event.KeyEvent.wVirtualKeyCode == VK_SCROLL)) {
 				INPUT_RECORD pinp;
+				was_repeat = false;
+				last_pressed_keycode = static_cast<WORD>(-1);
 				Console.ReadInput(pinp);
 				continue;
 			}
@@ -669,7 +678,7 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 		}
 
 		ScrBuf.Flush();
-		WINPORT(WaitConsoleInput)(160);
+		WINPORT(WaitConsoleInput)(NULL, 160);
 
 		// Позволяет избежать ситуации блокирования мыши
 		if (Opt.Mouse)	// А нужно ли это условие???
@@ -710,7 +719,7 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 					if (!X && Y == ScrY && CtrlObject->CmdLine->IsVisible()) {
 						for (;;) {
 							INPUT_RECORD tmprec;
-							int Key = GetInputRecord(&tmprec);
+							FarKey Key = GetInputRecord(&tmprec);
 
 							if ((DWORD)Key == KEY_NONE
 									|| ((DWORD)Key != KEY_SHIFT && tmprec.Event.KeyEvent.bKeyDown))
@@ -915,15 +924,14 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 	if (EnableShowTime)
 		ShowTime(1);
 
-	bool SizeChanged = false;
 	/*& 17.05.2001 OT Изменился размер консоли, генерим клавишу*/
-	if (rec->EventType == WINDOW_BUFFER_SIZE_EVENT || SizeChanged) {
+	if (rec->EventType == WINDOW_BUFFER_SIZE_EVENT) {
 		int PScrX = ScrX;
 		int PScrY = ScrY;
 		//// // _SVS(SysLog(1,"GetInputRecord(WINDOW_BUFFER_SIZE_EVENT)"));
 		WINPORT(Sleep)(10);
 		GetVideoMode(CurSize);
-		if (PScrX + 1 == CurSize.X && PScrY + 1 == CurSize.Y) {
+		if (!rec->Event.WindowBufferSizeEvent.bDamaged && (PScrX + 1 == CurSize.X && PScrY + 1 == CurSize.Y)) {
 			return KEY_NONE;
 		} else {
 			PrevScrX = PScrX;
@@ -962,6 +970,18 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 		AltPressed = (CtrlState & (LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED));
 		RightCtrlPressed = (CtrlState & RIGHT_CTRL_PRESSED);
 		RightAltPressed = (CtrlState & RIGHT_ALT_PRESSED);
+
+		if (!rec->Event.KeyEvent.bKeyDown)
+		{
+			was_repeat = false;
+			last_pressed_keycode = static_cast<WORD>(-1);
+		}
+		else
+		{
+			was_repeat = (last_pressed_keycode == rec->Event.KeyEvent.wVirtualKeyCode);
+			last_pressed_keycode = rec->Event.KeyEvent.wVirtualKeyCode;
+
+		}
 
 		// Для NumPad!
 		if ((CalcKey & (KEY_CTRL | KEY_SHIFT | KEY_ALT | KEY_RCTRL | KEY_RALT)) == KEY_SHIFT
@@ -1280,7 +1300,7 @@ DWORD PeekInputRecord(INPUT_RECORD *rec, bool ExcludeMacro)
 	+ Пераметр у фунции WaitKey - возможность ожидать конкретную клавишу
 	Если KeyWait = -1 - как и раньше
 */
-DWORD WaitKey(DWORD KeyWait, DWORD delayMS, bool ExcludeMacro)
+FarKey WaitKey(DWORD KeyWait, DWORD delayMS, bool ExcludeMacro)
 {
 	bool Visible = false;
 	bool AdHocQuickEdit = ((KeyWait & (~KEY_CTRLMASK)) != KEY_MSLCLICK);
@@ -1292,7 +1312,7 @@ DWORD WaitKey(DWORD KeyWait, DWORD delayMS, bool ExcludeMacro)
 	}
 
 	const clock_t CheckTime = GetProcessUptimeMSec() + delayMS;
-	DWORD Key;
+	FarKey Key;
 
 	for (;;) {
 		INPUT_RECORD rec;
@@ -1324,7 +1344,7 @@ DWORD WaitKey(DWORD KeyWait, DWORD delayMS, bool ExcludeMacro)
 				WaitExpiration = CheckTime - CurTime;
 		}
 
-		WINPORT(WaitConsoleInput)(WaitExpiration);
+		WINPORT(WaitConsoleInput)(NULL, WaitExpiration);
 	}
 
 	if (KeyWait == KEY_CTRLALTSHIFTRELEASE || KeyWait == KEY_RCTRLALTSHIFTRELEASE)
@@ -1333,7 +1353,7 @@ DWORD WaitKey(DWORD KeyWait, DWORD delayMS, bool ExcludeMacro)
 	return Key;
 }
 
-int WriteInput(int Key, DWORD Flags)
+int WriteInput(wchar_t Key, DWORD Flags)
 {
 	if (Flags & (SKEY_VK_KEYS | SKEY_IDLE)) {
 		INPUT_RECORD Rec;
@@ -1364,11 +1384,11 @@ int WriteInput(int Key, DWORD Flags)
 		return 0;
 }
 
-int CheckForEscSilent()
+bool CheckForEscSilent()
 {
 	INPUT_RECORD rec;
-	int Key;
-	BOOL Processed = TRUE;
+	FarKey Key;
+	bool Processed = WinPortTesting() == FALSE;
 	/*
 		TODO: Здесь, в общем то - ХЗ, т.к.
 			по хорошему нужно проверять CtrlObject->Macro.PeekKey() на ESC или BREAK
@@ -1376,7 +1396,7 @@ int CheckForEscSilent()
 	*/
 
 	// если в "макросе"...
-	if (CtrlObject->Macro.IsExecuting() != MACROMODE_NOMACRO && FrameManager->GetCurrentFrame()) {
+	if (Processed && CtrlObject->Macro.IsExecuting() != MACROMODE_NOMACRO && FrameManager->GetCurrentFrame()) {
 #if 0
 
 		// ...но ЭТО конец последовательности (не Op-код)...
@@ -1388,7 +1408,7 @@ int CheckForEscSilent()
 #else
 
 		if (CtrlObject->Macro.IsDsableOutput())
-			Processed = FALSE;
+			Processed = false;
 
 #endif
 	}
@@ -1416,7 +1436,7 @@ int CheckForEscSilent()
 		else
 		*/
 		if (Key == KEY_ESC || Key == KEY_BREAK)
-			return TRUE;
+			return true;
 		else if (Key == KEY_ALTF9)
 			FrameManager->ProcessKey(KEY_ALTF9);
 	}
@@ -1424,25 +1444,25 @@ int CheckForEscSilent()
 	if (!Processed && CtrlObject->Macro.IsExecuting() != MACROMODE_NOMACRO)
 		ScrBuf.Flush();
 
-	return FALSE;
+	return false;
 }
 
-int ConfirmAbortOp()
+bool ConfirmAbortOp()
 {
-	return Opt.Confirm.Esc ? AbortMessage() : TRUE;
+	return Opt.Confirm.Esc ? AbortMessage() : true;
 }
 
 /*
 	$ 09.02.2001 IS
 	Подтверждение нажатия Esc
 */
-int CheckForEsc()
+bool CheckForEsc()
 {
 	if (!CheckForEscSilent())
-		return FALSE;
+		return false;
 
 	if (!Opt.Confirm.Esc)
-		return TRUE;
+		return true;
 
 	INPUT_RECORD rec;
 	// purge all pending input events to avoid closing confirmation dialog by second Esc thats very annoying
@@ -1508,12 +1528,12 @@ static FARString &GetShiftKeyName(FARString &strName, DWORD Key, int &Len)
 	5. "Oem" и 5 десятичных цифр (с ведущими нулями)
 	6. только модификаторы (Alt/RAlt/Ctrl/RCtrl/Shift)
 */
-uint32_t KeyNameToKey(const wchar_t *Name)
+FarKey KeyNameToKey(const wchar_t *Name)
 {
 	if (!Name || !*Name)
 		return KEY_INVALID;
 
-	uint32_t Key = 0;
+	FarKey Key = 0;
 	// _SVS(SysLog(L"KeyNameToKey('%ls')",Name));
 
 	// Это макроклавиша?
@@ -1618,18 +1638,18 @@ uint32_t KeyNameToKey(const wchar_t *Name)
 	return (!Key || Pos < Len) ? KEY_INVALID : Key;
 }
 
-uint32_t KeyNameToKey(const wchar_t *Name, uint32_t Default)
+FarKey KeyNameToKey(const wchar_t *Name, uint32_t Default)
 {
-	const uint32_t Key = KeyNameToKey(Name);
+	const FarKey Key = KeyNameToKey(Name);
 	return (Key == KEY_INVALID) ? Default : Key;
 }
 
-BOOL WINAPI KeyToText(uint32_t Key0, FARString &strKeyText0)
+BOOL WINAPI KeyToText(FarKey Key0, FARString &strKeyText0)
 {
 	FARString strKeyText;
 	FARString strKeyTemp;
 	int I, Len;
-	DWORD Key = Key0, FKey = Key0 & 0xFFFFFF;
+	DWORD Key = Key0, FKey = STRIP_KEY_CODE(Key0);
 	// if(Key >= KEY_MACRO_BASE && Key <= KEY_MACRO_ENDBASE)
 	//	return KeyMacroToText(Key0, strKeyText0);
 
@@ -1692,10 +1712,10 @@ BOOL WINAPI KeyToText(uint32_t Key0, FARString &strKeyText0)
 	return TRUE;
 }
 
-int TranslateKeyToVK(int Key, int &VirtKey, int &ControlState, INPUT_RECORD *Rec)
+int TranslateKeyToVK(FarKey Key, int &VirtKey, int &ControlState, INPUT_RECORD *Rec)
 {
-	int FKey = Key & 0x0003FFFF;
-	int FShift = Key & 0x7F000000;	// старший бит используется в других целях!
+	const auto FKey = Key & KEY_MASKF;
+	const auto FShift = Key & KEY_CTRLMASK;	// старший бит используется в других целях!
 	VirtKey = 0;
 	ControlState = (FShift & KEY_SHIFT ? PKF_SHIFT : 0) | (FShift & KEY_ALT ? PKF_ALT : 0)
 			| (FShift & KEY_CTRL ? PKF_CONTROL : 0);
@@ -1739,7 +1759,7 @@ int TranslateKeyToVK(int Key, int &VirtKey, int &ControlState, INPUT_RECORD *Rec
 	return VirtKey;
 }
 
-int IsNavKey(DWORD Key)
+bool IsNavKey(DWORD Key)
 {
 	static DWORD NavKeys[][2] = {
 			{0, KEY_CTRLC}, {0, KEY_INS}, {0, KEY_NUMPAD0}, {0, KEY_CTRLINS}, {0, KEY_CTRLNUMPAD0},
@@ -1753,91 +1773,89 @@ int IsNavKey(DWORD Key)
 	for (int I = 0; I < int(ARRAYSIZE(NavKeys)); I++)
 		if ((!NavKeys[I][0] && Key == NavKeys[I][1])
 				|| (NavKeys[I][0] && (Key & 0x00FFFFFF) == (NavKeys[I][1] & 0x00FFFFFF)))
-			return TRUE;
+			return true;
 
-	return FALSE;
+	return false;
 }
 
-int IsShiftKey(DWORD Key)
+bool IsShiftKey(DWORD Key)
 {
-	static DWORD ShiftKeys[] = {
-			KEY_SHIFTLEFT,
-			KEY_SHIFTNUMPAD4,
-			KEY_SHIFTRIGHT,
-			KEY_SHIFTNUMPAD6,
-			KEY_SHIFTHOME,
-			KEY_SHIFTNUMPAD7,
-			KEY_SHIFTEND,
-			KEY_SHIFTNUMPAD1,
-			KEY_SHIFTUP,
-			KEY_SHIFTNUMPAD8,
-			KEY_SHIFTDOWN,
-			KEY_SHIFTNUMPAD2,
-			KEY_SHIFTPGUP,
-			KEY_SHIFTNUMPAD9,
-			KEY_SHIFTPGDN,
-			KEY_SHIFTNUMPAD3,
-			KEY_CTRLSHIFTHOME,
-			KEY_CTRLSHIFTNUMPAD7,
-			KEY_CTRLSHIFTPGUP,
-			KEY_CTRLSHIFTNUMPAD9,
-			KEY_CTRLSHIFTEND,
-			KEY_CTRLSHIFTNUMPAD1,
-			KEY_CTRLSHIFTPGDN,
-			KEY_CTRLSHIFTNUMPAD3,
-			KEY_CTRLSHIFTLEFT,
-			KEY_CTRLSHIFTNUMPAD4,
-			KEY_CTRLSHIFTRIGHT,
-			KEY_CTRLSHIFTNUMPAD6,
-			KEY_ALTSHIFTDOWN,
-			KEY_ALTSHIFTNUMPAD2,
-			KEY_ALTSHIFTLEFT,
-			KEY_ALTSHIFTNUMPAD4,
-			KEY_ALTSHIFTRIGHT,
-			KEY_ALTSHIFTNUMPAD6,
-			KEY_ALTSHIFTUP,
-			KEY_ALTSHIFTNUMPAD8,
-			KEY_ALTSHIFTEND,
-			KEY_ALTSHIFTNUMPAD1,
-			KEY_ALTSHIFTHOME,
-			KEY_ALTSHIFTNUMPAD7,
-			KEY_ALTSHIFTPGDN,
-			KEY_ALTSHIFTNUMPAD3,
-			KEY_ALTSHIFTPGUP,
-			KEY_ALTSHIFTNUMPAD9,
-			KEY_CTRLALTPGUP,
-			KEY_CTRLALTNUMPAD9,
-			KEY_CTRLALTHOME,
-			KEY_CTRLALTNUMPAD7,
-			KEY_CTRLALTPGDN,
-			KEY_CTRLALTNUMPAD2,
-			KEY_CTRLALTEND,
-			KEY_CTRLALTNUMPAD1,
-			KEY_CTRLALTLEFT,
-			KEY_CTRLALTNUMPAD4,
-			KEY_CTRLALTRIGHT,
-			KEY_CTRLALTNUMPAD6,
-			KEY_ALTUP,
-			KEY_ALTLEFT,
-			KEY_ALTDOWN,
-			KEY_ALTRIGHT,
-			KEY_ALTHOME,
-			KEY_ALTEND,
-			KEY_ALTPGUP,
-			KEY_ALTPGDN,
-			KEY_ALT,
-			KEY_CTRL,
-	};
+	switch (Key) {
+		case KEY_SHIFTLEFT:
+		case KEY_SHIFTNUMPAD4:
+		case KEY_SHIFTRIGHT:
+		case KEY_SHIFTNUMPAD6:
+		case KEY_SHIFTHOME:
+		case KEY_SHIFTNUMPAD7:
+		case KEY_SHIFTEND:
+		case KEY_SHIFTNUMPAD1:
+		case KEY_SHIFTUP:
+		case KEY_SHIFTNUMPAD8:
+		case KEY_SHIFTDOWN:
+		case KEY_SHIFTNUMPAD2:
+		case KEY_SHIFTPGUP:
+		case KEY_SHIFTNUMPAD9:
+		case KEY_SHIFTPGDN:
+		case KEY_SHIFTNUMPAD3:
+		case KEY_CTRLSHIFTHOME:
+		case KEY_CTRLSHIFTNUMPAD7:
+		case KEY_CTRLSHIFTPGUP:
+		case KEY_CTRLSHIFTNUMPAD9:
+		case KEY_CTRLSHIFTEND:
+		case KEY_CTRLSHIFTNUMPAD1:
+		case KEY_CTRLSHIFTPGDN:
+		case KEY_CTRLSHIFTNUMPAD3:
+		case KEY_CTRLSHIFTLEFT:
+		case KEY_CTRLSHIFTNUMPAD4:
+		case KEY_CTRLSHIFTRIGHT:
+		case KEY_CTRLSHIFTNUMPAD6:
+		case KEY_ALTSHIFTDOWN:
+		case KEY_ALTSHIFTNUMPAD2:
+		case KEY_ALTSHIFTLEFT:
+		case KEY_ALTSHIFTNUMPAD4:
+		case KEY_ALTSHIFTRIGHT:
+		case KEY_ALTSHIFTNUMPAD6:
+		case KEY_ALTSHIFTUP:
+		case KEY_ALTSHIFTNUMPAD8:
+		case KEY_ALTSHIFTEND:
+		case KEY_ALTSHIFTNUMPAD1:
+		case KEY_ALTSHIFTHOME:
+		case KEY_ALTSHIFTNUMPAD7:
+		case KEY_ALTSHIFTPGDN:
+		case KEY_ALTSHIFTNUMPAD3:
+		case KEY_ALTSHIFTPGUP:
+		case KEY_ALTSHIFTNUMPAD9:
+		case KEY_CTRLALTPGUP:
+		case KEY_CTRLALTNUMPAD9:
+		case KEY_CTRLALTHOME:
+		case KEY_CTRLALTNUMPAD7:
+		case KEY_CTRLALTPGDN:
+		case KEY_CTRLALTNUMPAD2:
+		case KEY_CTRLALTEND:
+		case KEY_CTRLALTNUMPAD1:
+		case KEY_CTRLALTLEFT:
+		case KEY_CTRLALTNUMPAD4:
+		case KEY_CTRLALTRIGHT:
+		case KEY_CTRLALTNUMPAD6:
+		case KEY_ALTUP:
+		case KEY_ALTLEFT:
+		case KEY_ALTDOWN:
+		case KEY_ALTRIGHT:
+		case KEY_ALTHOME:
+		case KEY_ALTEND:
+		case KEY_ALTPGUP:
+		case KEY_ALTPGDN:
+		case KEY_ALT:
+		case KEY_CTRL:
+			return true;
 
-	for (int I = 0; I < int(ARRAYSIZE(ShiftKeys)); I++)
-		if (Key == ShiftKeys[I])
-			return TRUE;
-
-	return FALSE;
+		default:
+			return false;
+	}
 }
 
 // GetAsyncKeyState(VK_RSHIFT)
-DWORD CalcKeyCode(INPUT_RECORD *rec, int RealKey, int *NotMacros)
+FarKey CalcKeyCode(INPUT_RECORD *rec, int RealKey, int *NotMacros)
 {
 	_SVS(CleverSysLog Clev(L"CalcKeyCode"));
 	_SVS(SysLog(L"CalcKeyCode -> %ls| RealKey=%d  *NotMacros=%d", _INPUT_RECORD_Dump(rec), RealKey,
@@ -1892,7 +1910,8 @@ DWORD CalcKeyCode(INPUT_RECORD *rec, int RealKey, int *NotMacros)
 		KeyCodeForALT_LastPressed = 0;
 
 		if (KeyCode == VK_MENU && AltValue) {
-			// FlushInputBuffer();//???
+			//if (!WinPortTesting())
+			//	FlushInputBuffer();//???
 			INPUT_RECORD TempRec;
 			Console.ReadInput(TempRec);
 			ReturnAltValue = TRUE;

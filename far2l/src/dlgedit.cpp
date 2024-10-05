@@ -102,7 +102,7 @@ DlgEdit::~DlgEdit()
 #endif
 }
 
-int DlgEdit::ProcessKey(int Key)
+int DlgEdit::ProcessKey(FarKey Key)
 {
 #if defined(PROJECT_DI_MEMOEDIT)
 
@@ -438,7 +438,7 @@ int DlgEdit::GetDelRemovesBlocks()
 		return lineEdit->GetDelRemovesBlocks();
 }
 
-void DlgEdit::SetObjectColor(int Color, int SelColor, int ColorUnChanged)
+void DlgEdit::SetObjectColor(uint64_t Color, uint64_t SelColor, uint64_t ColorUnChanged)
 {
 #if defined(PROJECT_DI_MEMOEDIT)
 
@@ -680,7 +680,7 @@ void DlgEdit::ResizeConsole()
 		lineEdit->ResizeConsole();
 }
 
-int64_t DlgEdit::VMProcess(int OpCode, void *vParam, int64_t iParam)
+int64_t DlgEdit::VMProcess(MacroOpcode OpCode, void *vParam, int64_t iParam)
 {
 #if defined(PROJECT_DI_MEMOEDIT)
 

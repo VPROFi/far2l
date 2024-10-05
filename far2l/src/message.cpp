@@ -69,8 +69,11 @@ LONG_PTR WINAPI MsgDlgProc(HANDLE hDlg, int Msg, int Param1, LONG_PTR Param2)
 			SendDlgMessage(hDlg, DM_GETDLGITEMSHORT, Param1, (LONG_PTR)&di);
 
 			if (di.Type == DI_EDIT) {
-				int Color = FarColorToReal(IsWarningStyle ? COL_WARNDIALOGTEXT : COL_DIALOGTEXT) & 0xFF;
-				return ((Param2 & 0xFF00FF00) | (Color << 16) | Color);
+				uint64_t *ItemColor = reinterpret_cast<uint64_t *>(Param2);
+				uint64_t color = FarColorToReal(IsWarningStyle ? COL_WARNDIALOGTEXT : COL_DIALOGTEXT);
+				ItemColor[0] = color;
+				ItemColor[2] = color;
+				return 1;
 			}
 		} break;
 		case DN_KEY: {
@@ -351,7 +354,8 @@ static int ShowMessageSynched(DWORD Flags, int Buttons, const wchar_t *Title, co
 			}
 
 			Dlg.SetDialogMode(DMODE_MSGINTERNAL);
-			FlushInputBuffer();
+			if (!WinPortTesting())
+				FlushInputBuffer();
 
 			if (Flags & MSG_KILLSAVESCREEN)
 				SendDlgMessage((HANDLE)&Dlg, DM_KILLSAVESCREEN, 0, 0);
@@ -369,14 +373,15 @@ static int ShowMessageSynched(DWORD Flags, int Buttons, const wchar_t *Title, co
 	SetCursorType(0, 0);
 
 	if (!(Flags & MSG_KEEPBACKGROUND)) {
-		SetScreen(X1, Y1, X2, Y2, L' ', (Flags & MSG_WARNING) ? COL_WARNDIALOGTEXT : COL_DIALOGTEXT);
-		MakeShadow(X1 + 2, Y2 + 1, X2 + 2, Y2 + 1);
+		SetScreen(X1, Y1, X2, Y2, L' ', FarColorToReal((Flags & MSG_WARNING) ? COL_WARNDIALOGTEXT : COL_DIALOGTEXT));
+		MakeShadow(X1 + 2, Y2 + 1, X2, Y2 + 1);
 		MakeShadow(X2 + 1, Y1 + 1, X2 + 2, Y2 + 1);
-		Box(X1 + 3, Y1 + 1, X2 - 3, Y2 - 1, (Flags & MSG_WARNING) ? COL_WARNDIALOGBOX : COL_DIALOGBOX,
+
+		Box(X1 + 3, Y1 + 1, X2 - 3, Y2 - 1, FarColorToReal((Flags & MSG_WARNING) ? COL_WARNDIALOGBOX : COL_DIALOGBOX),
 				DOUBLE_BOX);
 	}
 
-	SetColor((Flags & MSG_WARNING) ? COL_WARNDIALOGTEXT : COL_DIALOGTEXT);
+	SetFarColor((Flags & MSG_WARNING) ? COL_WARNDIALOGTEXT : COL_DIALOGTEXT);
 
 	if (Title && *Title) {
 		FARString strTempTitle = Title;
@@ -397,7 +402,7 @@ static int ShowMessageSynched(DWORD Flags, int Buttons, const wchar_t *Title, co
 			int Length = X2 - X1 - 5;
 
 			if (Length > 1) {
-				SetColor((Flags & MSG_WARNING) ? COL_WARNDIALOGBOX : COL_DIALOGBOX);
+				SetFarColor((Flags & MSG_WARNING) ? COL_WARNDIALOGBOX : COL_DIALOGBOX);
 				GotoXY(X1 + 3, Y1 + I + 2);
 				DrawLine(Length, (Chr == 2 ? 3 : 1));
 				CPtrStr++;
@@ -408,7 +413,7 @@ static int ShowMessageSynched(DWORD Flags, int Buttons, const wchar_t *Title, co
 					Text(CPtrStr);
 				}
 
-				SetColor((Flags & MSG_WARNING) ? COL_WARNDIALOGBOX : COL_DIALOGTEXT);
+				SetFarColor((Flags & MSG_WARNING) ? COL_WARNDIALOGBOX : COL_DIALOGTEXT);
 			}
 
 			continue;
@@ -512,6 +517,57 @@ int FN_NOINLINE Messager::Show(int Buttons)
 
 ///////////////////////////////////
 
+ExMessager::ExMessager(FarLangMsg title) : Messager(title)
+{
+}
+
+ExMessager::ExMessager(const wchar_t *title) : Messager(title)
+{
+}
+
+ExMessager::ExMessager()
+{
+}
+
+ExMessager::~ExMessager()
+{
+}
+
+Messager &FN_NOINLINE ExMessager::AddFormat(FarLangMsg fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	AddFormatV(fmt.CPtr(), args);
+	va_end(args);
+	return *this;
+}
+
+Messager &FN_NOINLINE ExMessager::AddFormat(const wchar_t *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	AddFormatV(fmt, args);
+	va_end(args);
+	return *this;
+}
+
+Messager &FN_NOINLINE ExMessager::AddFormatV(const wchar_t *fmt, va_list args)
+{
+	_owneds.emplace_back();
+	FARStringFmtV(_owneds.back(), false, fmt, args);
+	Add(_owneds.back().CPtr());
+	return *this;
+}
+
+Messager &FN_NOINLINE ExMessager::AddDup(const wchar_t *v)
+{
+	_owneds.emplace_back(v);
+	Add(_owneds.back().CPtr());
+	return *this;
+}
+
+///////////////////////////////////
+
 void GetMessagePosition(int &X1, int &Y1, int &X2, int &Y2)
 {
 	X1 = MessageX1;
@@ -558,7 +614,7 @@ void SetMessageHelp(const wchar_t *Topic)
 		FALSE - продолжить операцию
 		TRUE  - прервать операцию
 */
-int AbortMessage()
+bool AbortMessage()
 {
 	int Res = Message(MSG_WARNING | MSG_KILLSAVESCREEN, 2, Msg::KeyESCWasPressed,
 			((Opt.Confirm.EscTwiceToInterrupt) ? Msg::DoYouWantToStopWork2 : Msg::DoYouWantToStopWork),
@@ -567,8 +623,5 @@ int AbortMessage()
 	if (Res == -1)	// Set "ESC" equal to "NO" button
 		Res = 1;
 
-	if ((Opt.Confirm.EscTwiceToInterrupt && Res) || (!Opt.Confirm.EscTwiceToInterrupt && !Res))
-		return (TRUE);
-	else
-		return (FALSE);
+	return ((Opt.Confirm.EscTwiceToInterrupt && Res) || (!Opt.Confirm.EscTwiceToInterrupt && !Res));
 }

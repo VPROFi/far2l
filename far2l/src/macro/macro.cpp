@@ -711,7 +711,7 @@ int KeyMacro::LoadMacros(BOOL InitedRAM, BOOL LoadAll)
 	return ErrCount ? FALSE : TRUE;
 }
 
-uint32_t KeyMacro::ProcessKey(uint32_t Key)
+int KeyMacro::ProcessKey(FarKey Key)
 {
 	if (InternalInput || Key == KEY_IDLE || Key == KEY_NONE || !FrameManager->GetCurrentFrame())
 		return FALSE;
@@ -2321,6 +2321,8 @@ static bool panelselectFunc(const TMacroFunction *)
 		if (Mode == 2 || Mode == 3) {
 			FARString strStr = ValItems.s();
 			ReplaceStrings(strStr, L"\r\n", L";");
+			ReplaceStrings(strStr, L"\r", L";");
+			ReplaceStrings(strStr, L"\n", L";");
 			ValItems = strStr.CPtr();
 		}
 
@@ -3279,9 +3281,7 @@ static bool replaceFunc(const TMacroFunction *)
 	int64_t Ret = 1;
 	// TODO: Здесь нужно проверить в соответствии с УНИХОДОМ!
 	FARString strStr;
-	int lenS = StrLength(Src.s());
 	int lenF = StrLength(Find.s());
-	int lenR = StrLength(Repl.s());
 	int cnt = 0;
 
 	if (lenF) {
@@ -3300,9 +3300,6 @@ static bool replaceFunc(const TMacroFunction *)
 	}
 
 	if (cnt) {
-		if (lenR > lenF)
-			lenS+= cnt * (lenR - lenF + 1);		//???
-
 		strStr = Src.s();
 		cnt = (int)Count.i();
 
@@ -3942,7 +3939,7 @@ static bool __CheckCondForSkip(DWORD Op)
 	return false;
 }
 
-int KeyMacro::GetKey()
+FarKey KeyMacro::GetKey()
 {
 	MacroRecord *MR;
 	TVar tmpVar;
@@ -3954,7 +3951,7 @@ int KeyMacro::GetKey()
 		return 0;
 	}
 
-	int RetKey = 0;		// функция должна вернуть 0 - сигнал о том, что макропоследовательности нет
+	FarKey RetKey = 0;		// функция должна вернуть 0 - сигнал о том, что макропоследовательности нет
 
 	if (Work.Executing == MACROMODE_NOMACRO) {
 		if (!Work.MacroWORK) {
@@ -4085,7 +4082,6 @@ begin:
 	// Mantis#0000581: Добавить возможность прервать выполнение макроса
 	{
 		INPUT_RECORD rec;
-
 		if (PeekInputRecord(&rec) && rec.EventType == KEY_EVENT
 				&& rec.Event.KeyEvent.wVirtualKeyCode == VK_CANCEL) {
 			GetInputRecord(&rec, true);		// удаляем из очереди эту "клавишу"...
@@ -4942,7 +4938,7 @@ return_func:
 }
 
 // Проверить - есть ли еще клавиша?
-int KeyMacro::PeekKey()
+FarKey KeyMacro::PeekKey()
 {
 	if (InternalInput || !Work.MacroWORK)
 		return 0;
@@ -4989,7 +4985,7 @@ FARString &KeyMacro::MkRegKeyName(int IdxMacro, FARString &strRegKeyName)
 */
 wchar_t *KeyMacro::MkTextSequence(DWORD *Buffer, int BufferSize, const wchar_t *Src)
 {
-	int J, Key;
+	int J;
 	FARString strMacroKeyText;
 	FARString strTextBuffer;
 
@@ -5019,7 +5015,7 @@ wchar_t *KeyMacro::MkTextSequence(DWORD *Buffer, int BufferSize, const wchar_t *
 
 	if (Buffer[0] == MCODE_OP_KEYS)
 		for (J = 1; J < BufferSize; J++) {
-			Key = Buffer[J];
+			const auto Key = Buffer[J];
 
 			if (Key == MCODE_OP_ENDKEYS || Key == MCODE_OP_KEYS)
 				continue;
@@ -5582,7 +5578,7 @@ void KeyMacro::RunStartMacro()
 LONG_PTR WINAPI KeyMacro::AssignMacroDlgProc(HANDLE hDlg, int Msg, int Param1, LONG_PTR Param2)
 {
 	FARString strKeyText;
-	static int LastKey = 0;
+	static FarKey LastKey = 0;
 	static DlgParam *KMParam = nullptr;
 	int Index;
 
@@ -5674,9 +5670,7 @@ LONG_PTR WINAPI KeyMacro::AssignMacroDlgProc(HANDLE hDlg, int Msg, int Param1, L
 			goto M1;
 		}
 	} else if (Msg == DN_KEY
-			&& (((Param2 & KEY_END_SKEY) < KEY_END_FKEY)
-					|| (((Param2 & KEY_END_SKEY) > INTERNAL_KEY_BASE)
-							&& (Param2 & KEY_END_SKEY) < INTERNAL_KEY_BASE_2))) {
+			&& (IS_KEY_NORMAL(STRIP_KEY_CODE(Param2)) || IS_KEY_EXTENDED(STRIP_KEY_CODE(Param2)) || IS_KEY_INTERNAL(STRIP_KEY_CODE(Param2)))) {
 		// if((Param2&0x00FFFFFF) >= 'A' && (Param2&0x00FFFFFF) <= 'Z' && ShiftPressed)
 		// Param2|=KEY_SHIFT;
 
@@ -5799,7 +5793,7 @@ LONG_PTR WINAPI KeyMacro::AssignMacroDlgProc(HANDLE hDlg, int Msg, int Param1, L
 		// if(Param2 == KEY_F1 && LastKey == KEY_F1)
 		// LastKey=-1;
 		// else
-		LastKey = (int)Param2;
+		LastKey = (FarKey)Param2;
 		return TRUE;
 	}
 	return DefDlgProc(hDlg, Msg, Param1, Param2);
@@ -5850,7 +5844,7 @@ enum MACROSETTINGSDLG
 	MS_TEXT_SEQUENCE,
 	MS_EDIT_SEQUENCE,
 	MS_SEPARATOR1,
-	MS_CHECKBOX_OUPUT,
+	MS_CHECKBOX_OUTPUT,
 	MS_CHECKBOX_START,
 	MS_SEPARATOR2,
 	MS_CHECKBOX_A_PANEL,
@@ -5963,7 +5957,7 @@ int KeyMacro::GetMacroSettings(uint32_t Key, DWORD &Flags)
 	MacroSettingsDlg[MS_DOUBLEBOX].strData.Format(Msg::MacroSettingsTitle, strKeyText.CPtr());
 	// if(!(Key&0x7F000000))
 	// MacroSettingsDlg[3].Flags|=DIF_DISABLE;
-	MacroSettingsDlg[MS_CHECKBOX_OUPUT].Selected = Flags & MFLAGS_DISABLEOUTPUT ? 0 : 1;
+	MacroSettingsDlg[MS_CHECKBOX_OUTPUT].Selected = Flags & MFLAGS_DISABLEOUTPUT ? 0 : 1;
 	MacroSettingsDlg[MS_CHECKBOX_START].Selected = Flags & MFLAGS_RUNAFTERFARSTART ? 1 : 0;
 	MacroSettingsDlg[MS_CHECKBOX_A_PLUGINPANEL].Selected =
 			Set3State(Flags, MFLAGS_NOFILEPANELS, MFLAGS_NOPLUGINPANELS);
@@ -5994,7 +5988,7 @@ int KeyMacro::GetMacroSettings(uint32_t Key, DWORD &Flags)
 	if (Dlg.GetExitCode() != MS_BUTTON_OK)
 		return FALSE;
 
-	Flags = MacroSettingsDlg[MS_CHECKBOX_OUPUT].Selected ? 0 : MFLAGS_DISABLEOUTPUT;
+	Flags = MacroSettingsDlg[MS_CHECKBOX_OUTPUT].Selected ? 0 : MFLAGS_DISABLEOUTPUT;
 	Flags|= MacroSettingsDlg[MS_CHECKBOX_START].Selected ? MFLAGS_RUNAFTERFARSTART : 0;
 
 	if (MacroSettingsDlg[MS_CHECKBOX_A_PANEL].Selected) {
@@ -6240,23 +6234,23 @@ int KeyMacro::PopState()
 // Функция получения индекса нужного макроса в массиве
 // Ret=-1 - не найден таковой.
 // если CheckMode=-1 - значит пофигу в каком режиме, т.е. первый попавшийся
-int KeyMacro::GetIndex(uint32_t Key, int ChechMode, bool UseCommon)
+int KeyMacro::GetIndex(uint32_t Key, int CheckMode, bool UseCommon)
 {
 	if (MacroLIB) {
 		for (int I = 0;; ++I) {
 			int Pos, Len;
 			MacroRecord *MPtr = nullptr;
 
-			if (ChechMode == -1) {
+			if (CheckMode == -1) {
 				Len = MacroLIBCount;
 				MPtr = MacroLIB;
-			} else if (ChechMode >= 0 && ChechMode < MACRO_LAST) {
-				Len = IndexMode[ChechMode][1];
+			} else if (CheckMode >= 0 && CheckMode < MACRO_LAST) {
+				Len = IndexMode[CheckMode][1];
 
 				if (Len)
-					MPtr = MacroLIB + IndexMode[ChechMode][0];
+					MPtr = MacroLIB + IndexMode[CheckMode][0];
 
-				//_SVS(SysLog(L"ChechMode=%d (%d,%d)",ChechMode,IndexMode[ChechMode][0],IndexMode[ChechMode][1]));
+				//_SVS(SysLog(L"CheckMode=%d (%d,%d)",CheckMode,IndexMode[CheckMode][0],IndexMode[CheckMode][1]));
 			} else {
 				Len = 0;
 			}
@@ -6266,17 +6260,17 @@ int KeyMacro::GetIndex(uint32_t Key, int ChechMode, bool UseCommon)
 					if (!((MPtr->Key ^ Key) & ~0xFFFFu)
 							&& (Upper(static_cast<WCHAR>(MPtr->Key)) == Upper(static_cast<WCHAR>(Key)))
 							&& (MPtr->BufferSize > 0)) {
-						// && (ChechMode == -1 || (MPtr->Flags&MFLAGS_MODEMASK) == ChechMode))
+						// && (CheckMode == -1 || (MPtr->Flags&MFLAGS_MODEMASK) == CheckMode))
 						//_SVS(SysLog(L"GetIndex: Pos=%d MPtr->Key=0x%08X", Pos,MPtr->Key));
 						if (!(MPtr->Flags & MFLAGS_DISABLEMACRO))
-							return Pos + ((ChechMode >= 0) ? IndexMode[ChechMode][0] : 0);
+							return Pos + ((CheckMode >= 0) ? IndexMode[CheckMode][0] : 0);
 					}
 				}
 			}
 
 			// здесь смотрим на MACRO_COMMON
-			if (I == 0 && ChechMode != -1 && UseCommon)
-				ChechMode = MACRO_COMMON;
+			if (I == 0 && CheckMode != -1 && UseCommon)
+				CheckMode = MACRO_COMMON;
 			else
 				break;
 		}
@@ -6288,7 +6282,7 @@ int KeyMacro::GetIndex(uint32_t Key, int ChechMode, bool UseCommon)
 // получение размера, занимаемого указанным макросом
 // Ret= 0 - не найден таковой.
 // если CheckMode=-1 - значит пофигу в каком режиме, т.е. первый попавшийся
-int KeyMacro::GetRecordSize(int Key, int CheckMode)
+int KeyMacro::GetRecordSize(FarKey Key, int CheckMode)
 {
 	int Pos = GetIndex(Key, CheckMode);
 
@@ -6446,7 +6440,9 @@ BOOL KeyMacro::CheckEditSelected(DWORD CurFlags)
 
 BOOL KeyMacro::CheckInsidePlugin(DWORD CurFlags)
 {
-	if (CtrlObject && CtrlObject->Plugins.CurPluginItem && (CurFlags & MFLAGS_NOSENDKEYSTOPLUGINS))		// ?????
+	if (CtrlObject && (CtrlObject->Plugins.CurPluginItem ||
+	                   CtrlObject->Plugins.CheckFlags(PSIF_ENTERTOOPENPLUGIN)) &&
+		(CurFlags & MFLAGS_NOSENDKEYSTOPLUGINS))		// ?????
 		// if(CtrlObject && CtrlObject->Plugins.CurEditor && (CurFlags&MFLAGS_NOSENDKEYSTOPLUGINS))
 		return FALSE;
 

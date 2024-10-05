@@ -1,5 +1,0 @@
-[*]
-indent_style = space
-
-[*.sh]
-indent_style = tab

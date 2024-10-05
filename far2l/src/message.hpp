@@ -74,6 +74,24 @@ struct Messager : protected std::vector<const wchar_t *>
 	int Show(DWORD Flags, int Buttons, INT_PTR PluginNumber);
 	int Show(DWORD Flags, int Buttons);
 	int Show(int Buttons = 0);
+
+};
+
+struct ExMessager : Messager
+{
+	ExMessager(FarLangMsg title);
+	ExMessager(const wchar_t *title);
+	ExMessager();		// title supposed to be set by very first Add()
+
+	~ExMessager();
+
+	Messager &AddFormatV(const wchar_t *fmt, va_list args);
+	Messager &AddFormat(FarLangMsg fmt, ...);
+	Messager &AddFormat(const wchar_t *fmt, ...);
+	Messager &AddDup(const wchar_t *v);
+
+private:
+	std::vector<FARString> _owneds;
 };
 
 template <class TitleT, class... ItemsT>
@@ -93,7 +111,7 @@ void GetMessagePosition(int &X1, int &Y1, int &X2, int &Y2);
 		FALSE - продолжить операцию
 		TRUE  - прервать операцию
 */
-int AbortMessage();
+bool AbortMessage();
 
 bool GetErrorString(FARString &strErrStr);
 void SetErrorString(const FARString &strErrStr);

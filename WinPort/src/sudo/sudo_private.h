@@ -30,6 +30,7 @@ namespace Sudo
 		SUDO_CMD_CHMOD,
 		SUDO_CMD_CHOWN,
 		SUDO_CMD_UTIMENS,
+        SUDO_CMD_FUTIMENS,
 		SUDO_CMD_RENAME,
 		SUDO_CMD_SYMLINK,
 		SUDO_CMD_LINK,
@@ -38,6 +39,8 @@ namespace Sudo
 		SUDO_CMD_FSFLAGSGET,
 		SUDO_CMD_FSFLAGSSET,
 		SUDO_CMD_FCHMOD,
+		SUDO_CMD_MKFIFO,
+		SUDO_CMD_MKNOD
 	};
 
 	class BaseTransaction
@@ -91,6 +94,8 @@ namespace Sudo
 		const char * &_path;
 	public:
 		ClientReconstructCurDir(const char * &path);
+		ClientReconstructCurDir(const ClientReconstructCurDir&) = delete;
+		ClientReconstructCurDir& operator=(const ClientReconstructCurDir&) = delete;
 		~ClientReconstructCurDir();
 	};
 

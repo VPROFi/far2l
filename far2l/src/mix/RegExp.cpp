@@ -269,7 +269,7 @@ public:
 
 		bool Set;
 #if (__WCHAR_MAX__ > 0xffff)
-		if (UNLIKELY(chr >= RE_FAST_CHAR_COUNT))
+		if (UNLIKELY(chr >= RE_FAST_CHAR_COUNT || chr < 0))
 		{
 			Set = (HighBits.find(chr) != HighBits.end());
 
@@ -286,7 +286,7 @@ public:
 	inline void SetBit(wchar_t chr)
 	{
 #if (__WCHAR_MAX__ > 0xffff)
-		if (UNLIKELY(chr >= RE_FAST_CHAR_COUNT))
+		if (UNLIKELY(chr >= RE_FAST_CHAR_COUNT || chr < 0))
 		{
 			HighBits.insert(chr);
 		}
@@ -300,7 +300,7 @@ public:
 	inline void ClearBit(wchar_t chr)
 	{
 #if (__WCHAR_MAX__ > 0xffff)
-		if (UNLIKELY(chr >= RE_FAST_CHAR_COUNT))
+		if (UNLIKELY(chr >= RE_FAST_CHAR_COUNT || chr < 0))
 		{
 			HighBits.erase(chr);
 		}
@@ -318,7 +318,7 @@ enum REOp
 	opLineStart,            // ^
 	opLineEnd,              // $
 	opDataStart,            // \A and ^ in single line mode
-	opDataEnd,              // \Z and $ in signle line mode
+	opDataEnd,              // \Z and $ in single line mode
 
 	opWordBound,            // \b
 	opNotWordBound,         // \B
@@ -398,7 +398,7 @@ enum REOp
 
 struct REOpCode_data
 {
-	int	op; //movable<int>
+	int	op{}; //movable<int>
 #ifdef RE_DEBUG
 	int	srcpos;
 #endif
@@ -860,9 +860,6 @@ bool RegExp::InnerCompile(const wchar_t* const start, const wchar_t* src, int sr
 	// current brackets depth
 	// one place reserved for surrounding 'main' brackets
 	int brdepth=1;
-	// compiling interior of lookbehind
-	// used to apply restrictions of lookbehind
-	int lookbehind=0;
 	// counter of normal brackets
 	int brcount=0;
 	// counter of closed brackets
@@ -892,7 +889,7 @@ bool RegExp::InnerCompile(const wchar_t* const start, const wchar_t* src, int sr
 		op->srcpos=i+1;
 #endif
 
-		if (inquote && src[i]!=backslashChar)
+		if (inquote && (src[i]!=backslashChar))
 		{
 			op->op=ignorecase?opSymbolIgnoreCase:opSymbol;
 			op->symbol=ignorecase?TOLOWER(src[i]):src[i];
@@ -906,7 +903,7 @@ bool RegExp::InnerCompile(const wchar_t* const start, const wchar_t* src, int sr
 		{
 			i++;
 
-			if (inquote && src[i]!='E')
+			if (inquote && (src[i]!='E'))
 			{
 				op->op=opSymbol;
 				op->symbol=backslashChar;
@@ -1151,7 +1148,6 @@ bool RegExp::InnerCompile(const wchar_t* const start, const wchar_t* src, int sr
 							else
 								return SetError(errSyntax, i + (src - start));
 
-							lookbehind++;
 						} break;
 						case L'{':
 						{
@@ -1231,7 +1227,6 @@ bool RegExp::InnerCompile(const wchar_t* const start, const wchar_t* src, int sr
 					case opLookBehind:
 					case opNotLookBehind:
 					{
-						lookbehind--;
 						int l=CalcPatternLength(brackets[brdepth] + 1, op - 1);
 
 						if (l == -1)return SetError(errVariableLengthLookBehind, i + (src - start));
@@ -3094,12 +3089,11 @@ bool RegExp::InnerMatch(const wchar_t* const start, const wchar_t* str, const wc
 							st.pos=op->range.bracket.nextalt;
 							st.savestr=str;
 						}
-						/*
-						if(op->bracket.index>=0 && op->bracket.index<matchcount)
+						if(op->bracket.index>=0 && op->bracket.index<matchcount && inrangebracket<0)
 						{
-							match[op->bracket.index].end=str-start;
+							match[op->bracket.index].start=-1;
+							match[op->bracket.index].end=-1;
 						}
-						*/
 						break;
 					}
 

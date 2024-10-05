@@ -128,6 +128,19 @@ unsigned long DecToULong(const char *str, size_t maxlen, size_t *pos)
 	return out;
 }
 
+long DecToLong(const char *str, size_t maxlen, size_t *pos)
+{
+	const bool minus = maxlen && *str == '-';
+	long out = DecToULong(minus ? str + 1 : str, minus ? maxlen - 1 : maxlen, pos);
+	if (minus) {
+		if (pos) {
+			++*pos;
+		}
+		out = -out;
+	}
+	return out;
+}
+
 bool IsHexaDecimalNumberStr(const char *str)
 {
 	if (!*str) {
@@ -143,4 +156,51 @@ bool IsHexaDecimalNumberStr(const char *str)
 	}
 
 	return true;
+}
+
+char MakeHexDigit(const unsigned char c)
+{
+	if (c <= 9) {
+		return '0' + c;
+	}
+
+	if (c <= 0xf) {
+		return 'a' + (c - 0xa);
+	}
+
+	return 0;
+}
+
+
+static void AppendHex(std::string &s, uint64_t v)
+{
+	if (v == 0) {
+		s+= '0';
+		return;
+	}
+
+	const size_t prev_sz = s.size();
+	size_t i = 0;
+	for (uint64_t tmp = v; tmp; tmp/= 16) {
+		++i;
+	}
+	s.resize(prev_sz + i);
+	for (uint64_t tmp = v; tmp; tmp/= 16) {
+		--i;
+		s[prev_sz + i] = MakeHexDigit((unsigned char)(tmp % 16));
+	}
+}
+
+std::string ToHex(uint64_t v)
+{
+	std::string s;
+	AppendHex(s, v);
+	return s;
+}
+
+std::string ToPrefixedHex(uint64_t v, const char *prefix)
+{
+	std::string s(prefix);
+	AppendHex(s, v);
+	return s;
 }

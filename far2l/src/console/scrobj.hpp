@@ -35,6 +35,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "bitflags.hpp"
 #include <WinCompat.h>
+#include "keys.hpp"
+#include "macroopcode.hpp"
+
 
 class SaveScreen;
 
@@ -70,7 +73,7 @@ public:
 	virtual ~ScreenObject();
 
 public:
-	virtual int ProcessKey(int Key) { return 0; };
+	virtual int ProcessKey(FarKey Key) { return 0; };
 	virtual int ProcessMouse(MOUSE_EVENT_RECORD *MouseEvent) { return 0; };
 
 	virtual void Hide();
@@ -82,7 +85,7 @@ public:
 	virtual void SetScreenPosition();
 	virtual void ResizeConsole(){};
 
-	virtual int64_t VMProcess(int OpCode, void *vParam = nullptr, int64_t iParam = 0) { return 0; };
+	virtual int64_t VMProcess(MacroOpcode OpCode, void *vParam = nullptr, int64_t iParam = 0) { return 0; };
 
 	void Lock();
 	void Unlock();
@@ -93,8 +96,8 @@ public:
 
 	void SavePrevScreen();
 	void Redraw();
-	int IsVisible() { return Flags.Check(FSCROBJ_VISIBLE); };
-	void SetVisible(int Visible) { Flags.Change(FSCROBJ_VISIBLE, Visible); };
+	bool IsVisible() const { return Flags.Check(FSCROBJ_VISIBLE) != 0; };
+	void SetVisible(bool Visible) { Flags.Change(FSCROBJ_VISIBLE, Visible); };
 	void SetRestoreScreenMode(int Mode) { Flags.Change(FSCROBJ_ENABLERESTORESCREEN, Mode); };
 	void Shadow(bool Full = false);
 

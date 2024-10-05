@@ -201,9 +201,9 @@ void FARString::PrepareForModify(size_t nCapacity)
 
 void FARString::PrepareForModify()
 {
-	// invoke PrepareForModify with current length but not capacity intentially
+	// invoke PrepareForModify with current length but not capacity intentionally
 	// so in case of single owner this will not alter things but in case of
-	// not single owner then new copy will be alloced with capacity == length
+	// not single owner then new copy will be allocated with capacity == length
 	PrepareForModify(m_pContent->GetLength());
 }
 
@@ -318,7 +318,7 @@ FARString& FARString::Append(const char *lpszAdd, UINT CodePage)
 	{
 		int nAddSize = WINPORT(MultiByteToWideChar)(CodePage,0,lpszAdd,-1,nullptr,0);
 		if (nAddSize > 0) {
-			size_t nNewLength = m_pContent->GetLength() + nAddSize - 1; // minus NUL char that implicitely there
+			size_t nNewLength = m_pContent->GetLength() + nAddSize - 1; // minus NUL char that implicitly there
 			PrepareForModify(nNewLength);
 			WINPORT(MultiByteToWideChar)(CodePage, 0, lpszAdd, -1, m_pContent->GetData() + m_pContent->GetLength(), nAddSize);
 			m_pContent->SetLength(nNewLength);
@@ -463,10 +463,10 @@ void FARString::Reserve(size_t DesiredCapacity)
 	}
 }
 
-static void FARStringFmt(FARString &str, bool append, const wchar_t *format, va_list argptr)
+void FARStringFmtV(FARString &str, bool append, const wchar_t *format, va_list argptr)
 {
-	const size_t StartSize = 0x200;		// 512 bytes ought to be enough for mosts
-	const size_t MaxSize = 0x1000000;	// 16 megs ought to be enough for anybody
+	const size_t StartSize = 0x200;		// 512 chars ought to be enough for mosts
+	const size_t MaxSize = 0x1000000;	// 16 millions ought to be enough for anybody
 	size_t Size;
 
 	for (Size = StartSize; Size <= MaxSize; Size<<= 1)
@@ -497,7 +497,7 @@ FARString& FARString::Format(const wchar_t * format, ...)
 {
 	va_list argptr;
 	va_start(argptr, format);
-	FARStringFmt(*this, false, format, argptr);
+	FARStringFmtV(*this, false, format, argptr);
 	va_end(argptr);
 	return *this;
 }
@@ -506,7 +506,7 @@ FARString& FARString::AppendFormat(const wchar_t * format, ...)
 {
 	va_list argptr;
 	va_start(argptr, format);
-	FARStringFmt(*this, true, format, argptr);
+	FARStringFmtV(*this, true, format, argptr);
 	va_end(argptr);
 	return *this;
 }

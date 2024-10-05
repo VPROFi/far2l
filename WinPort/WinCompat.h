@@ -420,6 +420,7 @@ typedef struct _CHAR_INFO {
 
 typedef struct _WINDOW_BUFFER_SIZE_RECORD {
     COORD dwSize;
+    BOOL bDamaged; // TRUE if screen area was damaged even in frames not affected by actual size change
 } WINDOW_BUFFER_SIZE_RECORD, *PWINDOW_BUFFER_SIZE_RECORD;
 
 typedef struct _MENU_EVENT_RECORD {
@@ -972,8 +973,18 @@ typedef void *HMODULE;
 #define FILE_ATTRIBUTE_DEVICE_CHAR          0x00800000
 #define FILE_ATTRIBUTE_DEVICE_FIFO          0x01000000
 #define FILE_ATTRIBUTE_DEVICE_SOCK          0x02000000
+#define FILE_ATTRIBUTE_HARDLINKS            0x08000000
+
 
 #define FILE_ATTRIBUTE_DEVICE               (FILE_ATTRIBUTE_DEVICE_CHAR | FILE_ATTRIBUTE_DEVICE_BLOCK | FILE_ATTRIBUTE_DEVICE_FIFO | FILE_ATTRIBUTE_DEVICE_SOCK)
+
+// mask for those attributes that matches to usual win32 ones, others are specific to WinPort
+#define COMPATIBLE_FILE_ATTRIBUTES          ( FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM \
+                                            | FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_DEVICE_BLOCK \
+                                            | FILE_ATTRIBUTE_NORMAL | FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_SPARSE_FILE \
+                                            | FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED \
+                                            | FILE_ATTRIBUTE_ENCRYPTED | FILE_ATTRIBUTE_INTEGRITY_STREAM | FILE_ATTRIBUTE_VIRTUAL \
+                                            | FILE_ATTRIBUTE_NO_SCRUB_DATA )
 
 #define FILE_FILE_COMPRESSION               0x00000010
 #define FILE_SUPPORTS_SPARSE_FILES          0x00000040
@@ -1439,7 +1450,7 @@ typedef struct _nlsversioninfo{
     DWORD dwNLSVersionInfoSize;     // sizeof(NLSVERSIONINFO) == 32 bytes
     DWORD dwNLSVersion;
     DWORD dwDefinedVersion;         // Deprecated, use dwNLSVersion instead
-    DWORD dwEffectiveId;            // Deprecated, use guidCustomVerison instead
+    DWORD dwEffectiveId;            // Deprecated, use guidCustomVersion instead
     GUID  guidCustomVersion;        // Explicit sort version
 } NLSVERSIONINFO, *LPNLSVERSIONINFO;
 
@@ -1486,7 +1497,7 @@ typedef BOOL (*WINPORT_HANDLER_ROUTINE)(  DWORD CtrlType );
 typedef WINPORT_HANDLER_ROUTINE PHANDLER_ROUTINE;
 typedef WINPORT_THREAD_START_ROUTINE LPTHREAD_START_ROUTINE, PTHREAD_START_ROUTINE;
 
-typedef VOID (*PCONSOLE_SCROLL_CALLBACK)(PVOID pContext, unsigned int Width, CHAR_INFO *Charss);
+typedef VOID (*PCONSOLE_SCROLL_CALLBACK)(PVOID pContext, HANDLE hConsole, unsigned int Width, CHAR_INFO *Chars);
 
 #define STDMETHOD(method)        virtual HRESULT method
 #define STDMETHOD_(type,method)  virtual type method

@@ -326,6 +326,12 @@ class TTYX
 					}
 				}
 				XFree(data);
+
+			} else {
+				fprintf(stderr, "DispatchSelectionNotify: wrong target=0x%lx\n", (unsigned long)target);
+				if (!target) {
+					_get_clipboard.state = GetClipboardContext::MISSING;
+				}
 			}
 			XDeleteProperty(event.xselection.display, event.xselection.requestor, event.xselection.property);
 
@@ -579,7 +585,9 @@ public:
 #endif
 
 		auto x_keymods = GetKeyModifiers();
-#ifdef TTYXI
+#ifndef TTYXI
+		event.dwControlKeyState|= x_keymods;
+#else
 		if (!_xi) {
 			event.dwControlKeyState|= x_keymods;
 			return;

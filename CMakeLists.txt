@@ -45,10 +45,21 @@ endif()
 
 if(NOT "${GIT_TAG}" STREQUAL "v_${VERSION}")
     if(GIT_FOUND)
-        execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --short HEAD
-            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-            OUTPUT_VARIABLE GIT_HASH
-            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(IS_DIRECTORY ${PROJECT_SOURCE_DIR}/.git)
+            execute_process(COMMAND "${GIT_EXECUTABLE}" show --no-patch --format=%ci HEAD
+                WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+                OUTPUT_VARIABLE GIT_DATE
+                OUTPUT_STRIP_TRAILING_WHITESPACE)
+            string(SUBSTRING ${GIT_DATE} 0 10 GIT_DATE)
+            execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --short HEAD
+                WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+                OUTPUT_VARIABLE GIT_HASH
+                OUTPUT_STRIP_TRAILING_WHITESPACE)
+        endif()
+    endif()
+    if(NOT "${GIT_DATE}" STREQUAL "")
+        message(STATUS "git date: ${GIT_DATE}")
+        set(VERSION_PATCH "${VERSION_PATCH}-${GIT_DATE}")
     endif()
     if(NOT "${GIT_HASH}" STREQUAL "")
         message(STATUS "git hash: ${GIT_HASH}")
@@ -84,16 +95,16 @@ endif()
 
 ##############################
 
+if (NOT DEFINED TESTING)
+    set(TESTING "NO")
+endif()
+
 if (NOT DEFINED USEWX)
     set(USEWX "YES")
 endif()
 
 if (NOT DEFINED UNRAR)
     set(UNRAR "bundled")
-endif()
-
-if (NOT DEFINED USESPDLOG)
-    set(USESPDLOG "NO")
 endif()
 
 # EACP disabled by default for now as FAR's GetCodePageInfo rejects all multibyte charsets due to BUGBUG.
@@ -249,267 +260,13 @@ else()
     message(STATUS "Building without TTY X11 extensions due to TTYX=${TTYX}")
 endif()
 
-
-##############################
-# plugins directives
-
-if (NOT DEFINED ALIGN OR ALIGN)
-    message(STATUS "ALIGN plugin enabled")
-    add_subdirectory (align)
-else()
-    message(STATUS "${ColorRed}ALIGN plugin disabled due to ALIGN=${ALIGN}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/align/plug/align.far-plug-wide)
-        " COMPONENT system)
-endif()
-
-if (NOT DEFINED AUTOWRAP OR AUTOWRAP)
-    message(STATUS "AUTOWRAP plugin enabled")
-    add_subdirectory (autowrap)
-else()
-    message(STATUS "${ColorRed}AUTOWRAP plugin disabled due to AUTOWRAP=${AUTOWRAP}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/autowrap/plug/autowrap.far-plug-wide)
-        " COMPONENT system)
-endif()
-
-if (NOT DEFINED CALC OR CALC)
-    message(STATUS "CALC plugin enabled")
-    add_subdirectory (calc)
-else()
-    message(STATUS "${ColorRed}CALC plugin disabled due to CALC=${CALC}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/calc/plug/calc.far-plug-wide)
-        " COMPONENT system)
-endif()
-
-if (NOT DEFINED COLORER OR COLORER)
-    message(STATUS "COLORER plugin enabled")
-    add_subdirectory (colorer)
-else()
-    message(STATUS "${ColorRed}COLORER plugin disabled due to COLORER=${COLORER}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/colorer/plug/colorer.far-plug-wide)
-        " COMPONENT system)
-endif()
-
-if (NOT DEFINED COMPARE OR COMPARE)
-    message(STATUS "COMPARE plugin enabled")
-    add_subdirectory (compare)
-else()
-    message(STATUS "${ColorRed}COMPARE plugin disabled due to COMPARE=${COMPARE}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/compare/plug/compare.far-plug-wide)
-        " COMPONENT system)
-endif()
-
-if (NOT DEFINED DRAWLINE OR DRAWLINE)
-    message(STATUS "DRAWLINE plugin enabled")
-    add_subdirectory (drawline)
-else()
-    message(STATUS "${ColorRed}DRAWLINE plugin disabled due to DRAWLINE=${DRAWLINE}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/drawline/plug/drawline.far-plug-wide)
-        " COMPONENT system)
-endif()
-
-if (NOT DEFINED EDITCASE OR EDITCASE)
-    message(STATUS "EDITCASE plugin enabled")
-    add_subdirectory (editcase)
-else()
-    message(STATUS "${ColorRed}EDITCASE plugin disabled due to EDITCASE=${EDITCASE}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/editcase/plug/editcase.far-plug-wide)
-        " COMPONENT system)
-endif()
-
-if (NOT DEFINED EDITORCOMP OR EDITORCOMP)
-    message(STATUS "EDITORCOMP plugin enabled")
-    add_subdirectory (editorcomp)
-else()
-    message(STATUS "${ColorRed}EDITORCOMP plugin disabled due to EDITORCOMP=${EDITORCOMP}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/editorcomp/plug/editorcomp.far-plug-wide)
-        " COMPONENT system)
-endif()
-
-if (DEFINED FARFTP AND FARFTP)
-    message(STATUS "FARFTP plugin enabled (obsolete)")
-    add_subdirectory (FARStdlib)
-    add_subdirectory (farftp)
-else()
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/farftp/plug/farftp.far-plug-mb)
-        " COMPONENT system)
-endif()
-
-if (NOT DEFINED FILECASE OR FILECASE)
-    message(STATUS "FILECASE plugin enabled")
-    add_subdirectory (filecase)
-else()
-    message(STATUS "${ColorRed}FILECASE plugin disabled due to FILECASE=${FILECASE}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/filecase/plug/filecase.far-plug-wide)
-        " COMPONENT system)
-endif()
-
-if (NOT DEFINED INCSRCH OR INCSRCH)
-    message(STATUS "INCSRCH plugin enabled")
-    add_subdirectory (incsrch)
-else()
-    message(STATUS "${ColorRed}Building without <INCSRCH> plugin due to INCSRCH=${INCSRCH}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/incsrch/plug/incsrch.far-plug-wide)
-        " COMPONENT system)
-endif()
-
-if (NOT DEFINED INSIDE OR INSIDE)
-    message(STATUS "INSIDE plugin enabled")
-    add_subdirectory (inside)
-else()
-    message(STATUS "${ColorRed}INSIDE plugin disabled due to INSIDE=${INSIDE}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/inside/plug/inside.far-plug-mb)
-        " COMPONENT system)
-endif()
-
-if (NOT DEFINED MULTIARC OR MULTIARC)
-    message(STATUS "MULTIARC plugin enabled")
-    find_package(PkgConfig REQUIRED)
-    pkg_search_module(LibArchive QUIET libarchive)
-    if(NOT LibArchive_FOUND)
-        message(WARNING "${ColorRed}libarchive not found, multiarc will have weaker archives support. Its recommended to install libarchive-dev and reconfigure far2l.${ColorNormal}")
-    endif()
-
-    pkg_search_module(PCRE QUIET libpcre)
-    if(NOT PCRE_FOUND)
-        message(WARNING "${ColorRed}libpcre not found, multiarc will have no regexp support in custom archive format descriptions. Install libpcre and reconfigure far2l if you need that functionality.${ColorNormal}")
-    endif()
-
-    add_subdirectory (multiarc)
-else()
-    message(STATUS "${ColorRed}MULTIARC plugin disabled due to MULTIARC=${MULTIARC}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/multiarc/plug/multiarc.far-plug-mb)
-        " COMPONENT system)
-endif()
-
-if (NOT DEFINED NETROCKS OR NETROCKS)
-    message(STATUS "NETROCKS plugin enabled")
-    find_package(OpenSSL)
-    if(OPENSSL_FOUND)
-        message(STATUS "OpenSSL found -> enjoy FTPS support in NetRocks")
-    else()
-        message(WARNING "${ColorRed}OpenSSL not found, NetRocks will not have FTPS protocol support. Install libssl-dev if you want FTPS protocol available in NetRocks.${ColorNormal}")
-    endif(OPENSSL_FOUND)
-
-    find_package(LibSSH 0.5.0)
-    if(LIBSSH_FOUND)
-        message(STATUS "libssh found -> enjoy SFTP support in NetRocks")
-    else()
-        message(WARNING "${ColorRed}libssh not found, NetRocks will not have SFTP protocol support. Install libssh-dev if you want SFTP protocol available in NetRocks.${ColorNormal}")
-    endif(LIBSSH_FOUND)
-
-    find_package(Libsmbclient)
-    if(LIBSMBCLIENT_FOUND)
-        message(STATUS "libsmbclient found -> enjoy SMB support in NetRocks")
-    else()
-        message(WARNING "${ColorRed}libsmbclient not found, NetRocks will not have SMB protocol support. Install libsmbclient-dev if you want SMB protocol available in NetRocks.${ColorNormal}")
-    endif(LIBSMBCLIENT_FOUND)
-
-    find_package(LibNfs)
-    if(LIBNFS_FOUND)
-        message(STATUS "libnfs found -> enjoy NFS support in NetRocks")
-    else()
-        message(WARNING "${ColorRed}libnfs not found, NetRocks will not have NFS protocol support. Install libnfs-dev if you want NFS protocol available in NetRocks.${ColorNormal}")
-    endif(LIBNFS_FOUND)
-
-    find_package(LibNEON)
-    if(LIBNEON_FOUND)
-        message(STATUS "libneon found -> enjoy WebDav support in NetRocks")
-    else()
-        message(WARNING "${ColorRed}libneon not found, NetRocks will not have WebDav protocol support. Install libneon*-dev if you want WebDav protocol available in NetRocks.${ColorNormal}")
-    endif(LIBNEON_FOUND)
-
-    add_subdirectory (NetRocks)
-else()
-    message(STATUS "${ColorRed}NETROCKS plugin disabled due to NETROCKS=${NETROCKS}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/NetRocks/plug/NetRocks.far-plug-wide)
-        " COMPONENT system)
-endif()
-
-if (DEFINED VIRTUAL_PYTHON)
-    message(STATUS "PYTHON plugin with interpreter from virtualenv enabled")
-    add_subdirectory (python)
-    # Copy this explicitly cuz generic copier command excludes 'far2l'
-    install(DIRECTORY "${INSTALL_DIR}/Plugins/python/plug/far2l"
-        DESTINATION "lib/far2l/Plugins/python/plug/" USE_SOURCE_PERMISSIONS
-        COMPONENT base FILES_MATCHING
-        PATTERN "*")
-else()
-    if (DEFINED PYTHON AND PYTHON)
-        find_package(Python3 COMPONENTS Interpreter Development)
-
-        if(Python3_FOUND AND Python3_Development_FOUND)
-            message(STATUS "PYTHON plugin enabled")
-            add_subdirectory (python)
-            install(CODE "
-                execute_process(COMMAND echo Python: preparing virtual environment)
-                " COMPONENT system)
-            install(CODE "
-                execute_process(COMMAND ${Python3_EXECUTABLE} -m venv --system-site-packages ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/python/plug/python)
-                " COMPONENT system)
-            install(CODE "
-                execute_process(COMMAND echo Python: installing packages)
-                " COMPONENT system)
-            install(CODE "
-                execute_process(COMMAND ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/python/plug/python/bin/python -m pip install cffi debugpy)
-                " COMPONENT system)
-
-            # Copy this explicitly cuz generic copier command excludes 'far2l'
-            install(DIRECTORY "${INSTALL_DIR}/Plugins/python/plug/far2l"
-                DESTINATION "lib/far2l/Plugins/python/plug/" USE_SOURCE_PERMISSIONS
-                COMPONENT base FILES_MATCHING
-                PATTERN "*")
-        else()
-            message(WARNING "${ColorRed}PYTHON plugin disabled due to missing python3 environment${ColorNormal}")
-        endif ()
-
-    else()
-        message(STATUS "${ColorRed}PYTHON plugin disabled, use -DPYTHON=yes if you need it${ColorNormal}")
-        install(CODE "
-            execute_process(COMMAND rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/python/plug/python.far-plug-wide)
-            " COMPONENT system)
-    endif()
-endif()
-
-if (NOT DEFINED SIMPLEINDENT OR SIMPLEINDENT)
-    message(STATUS "SIMPLEINDENT plugin enabled")
-    add_subdirectory (SimpleIndent)
-else()
-    message(STATUS "${ColorRed}SIMPLEINDENT plugin disabled due to SIMPLEINDENT=${SIMPLEINDENT}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/SimpleIndent/plug/SimpleIndent.far-plug-wide)
-        " COMPONENT system)
-endif()
-
-if (NOT DEFINED TMPPANEL OR TMPPANEL)
-    message(STATUS "TMPPANEL plugin enabled")
-    add_subdirectory (tmppanel)
-else()
-    message(STATUS "${ColorRed}TMPPANEL plugin disabled due to TMPPANEL=${TMPPANEL}${ColorNormal}")
-    install(CODE "
-        execute_process(COMMAND rm -f ${CMAKE_INSTALL_PREFIX}/lib/far2l/Plugins/tmppanel/plug/tmppanel.far-plug-wide)
-        " COMPONENT system)
-endif()
-
 ##############################
 # common install directives
 
 add_subdirectory (packaging)
 
 add_subdirectory(man)
+add_subdirectory(bash-completion)
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(FIXUP_SCRIPT packaging/osx/FixupBundle.cmake)
@@ -525,7 +282,8 @@ install(DIRECTORY "${INSTALL_DIR}/" DESTINATION "lib/far2l" USE_SOURCE_PERMISSIO
     PATTERN "far2l_gui.so"
     PATTERN "far2l_ttyx.broker"
     PATTERN "plug/*.far-plug-*"
-    PATTERN "plug/*.broker")
+    PATTERN "plug/*.broker"
+)
 
 install(DIRECTORY "${INSTALL_DIR}/" DESTINATION "share/far2l" USE_SOURCE_PERMISSIONS COMPONENT base FILES_MATCHING
     PATTERN "${EXECUTABLE_NAME}" EXCLUDE
@@ -534,7 +292,8 @@ install(DIRECTORY "${INSTALL_DIR}/" DESTINATION "share/far2l" USE_SOURCE_PERMISS
     PATTERN "*.far-plug-*" EXCLUDE
     PATTERN "*.broker" EXCLUDE
     PATTERN "python/plug/python" EXCLUDE
-    PATTERN "*")
+    PATTERN "*"
+)
 
 # setup some symlinks and remove deprecated stuff from previous installation
 execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ../../bin/far2l ${PROJECT_BINARY_DIR}/far2l/far2l_askpass)

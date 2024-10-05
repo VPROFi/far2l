@@ -58,19 +58,21 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 struct HighlightStrings
 {
-	const char *UseAttr, *IncludeAttributes, *ExcludeAttributes, *AttrSet, *AttrClear, *IgnoreMask, *UseMask,
-			*Mask, *NormalColor, *SelectedColor, *CursorColor, *SelectedCursorColor, *MarkCharNormalColor,
-			*MarkCharSelectedColor, *MarkCharCursorColor, *MarkCharSelectedCursorColor, *MarkChar,
-			*ContinueProcessing, *UseDate, *DateType, *DateAfter, *DateBefore, *DateRelative, *UseSize,
-			*SizeAbove, *SizeBelow, *HighlightEdit, *HighlightList;
+	const char *Flags, *UseAttr, *IncludeAttributes, *ExcludeAttributes, *AttrSet, *AttrClear, *IgnoreMask, *UseMask,
+			*Mask, *NormalColor, *SelectedColor, *CursorColor, *SelectedCursorColor, *MarkCharNormalColor, *MarkCharSelectedColor,
+			*MarkCharCursorColor, *MarkCharSelectedCursorColor, *MarkChar, *ContinueProcessing, *UseDate, *DateType, *DateAfter,
+			*DateBefore, *DateRelative, *UseSize, *SizeAbove, *SizeBelow, *HighlightEdit, *HighlightList, *MarkStr, *NormalColorMask,
+			*SelectedColorMask, *CursorColorMask, *SelectedCursorColorMask, *MarkCharNormalColorMask, *MarkCharSelectedColorMask,
+			*MarkCharCursorColorMask, *MarkCharSelectedCursorColorMask, *MaskIgnoreCase;
 };
 
-static const HighlightStrings HLS = {"UseAttr", "IncludeAttributes", "ExcludeAttributes", "AttrSet",
-		"AttrClear", "IgnoreMask", "UseMask", "Mask", "NormalColor", "SelectedColor", "CursorColor",
-		"SelectedCursorColor", "MarkCharNormalColor", "MarkCharSelectedColor", "MarkCharCursorColor",
-		"MarkCharSelectedCursorColor", "MarkChar", "ContinueProcessing", "UseDate", "DateType", "DateAfter",
-		"DateBefore", "DateRelative", "UseSize", "SizeAboveS", "SizeBelowS", "HighlightEdit",
-		"HighlightList"};
+static const HighlightStrings HLS = {"Flags", "UseAttr", "IncludeAttributes", "ExcludeAttributes", "AttrSet", "AttrClear",
+		"IgnoreMask", "UseMask", "Mask", "NormalColor", "SelectedColor", "CursorColor", "SelectedCursorColor", "MarkCharNormalColor",
+		"MarkCharSelectedColor", "MarkCharCursorColor","MarkCharSelectedCursorColor", "MarkChar", "ContinueProcessing", "UseDate",
+		"DateType", "DateAfter", "DateBefore", "DateRelative", "UseSize", "SizeAboveS", "SizeBelowS", "HighlightEdit", "HighlightList",
+		"MarkStr", "NormalColorMask", "SelectedColorMask", "CursorColorMask", "SelectedCursorColorMask", "MarkCharNormalColorMask",
+		"MarkCharSelectedColorMask", "MarkCharCursorColorMask", "MarkCharSelectedCursorColorMask", "MaskIgnoreCase"
+};
 
 static const char fmtFirstGroup[] = "Group%d";
 static const char fmtUpperGroup[] = "UpperGroup%d";
@@ -85,8 +87,8 @@ static void SetDefaultHighlighting()
 
 	ConfigWriter cfg_writer;
 	static const wchar_t *MasksArchives = /* 1 */
-			L"*.rar,*.zip,*.[zj],*.[bxg7]z,*.[bg]zip,*.tar,*.t[agbx]z,*.ar[cj],*.r[0-9][0-9],*.a[0-9][0-9],*."
-			L"bz2,*.cab,*.msi,*.jar,*.lha,*.lzh,*.ha,*.ac[bei],*.pa[ck],*.rk,*.cpio,*.rpm,*.zoo,*.hqx,*.sit,*"
+			L"*.rar,*.zip,*.[zj],*.[7bglx]z,*.[bg]zip,*.tar,*.t[agbx]z,*.ar[cj],*.r[0-9][0-9],*.a[0-9][0-9],*."
+			L"bz2,*.cab,*.msi,*.jar,*.lha,*.lzh,*.ha,*.ac[bei],*.pa[ck],*.rk,*.cpio,*.rpm,*.tbz2,*.zoo,*.zst,*.hqx,*.sit,*"
 			L".ice,*.uc2,*.ain,*.imp,*.777,*.ufa,*.boa,*.bs[2a],*.sea,*.hpk,*.ddi,*.x2,*.rkv,*.[lw]sz,*.h[ay]"
 			L"p,*.lim,*.sqz,*.chz";
 	static const wchar_t *MasksTemporary = /* 2 */ L"*.bak,*.tmp";
@@ -95,35 +97,81 @@ static void SetDefaultHighlighting()
 											Эта маска для каталогов: обрабатывать все каталоги, кроме тех, что
 											являются родительскими (их имена - две точки).
 										*/
-	static const wchar_t *MasksScripts = L"*.sh,*.py,*.pl,*.cmd,*.exe,*.bat,*.com";
+	static const wchar_t *MasksScripts = L"*.sh,*.py,*.pl,*.cmd,*.exe,*.bat,*.com,*.run,*.elf";
+	static const wchar_t *MasksSoundFiles = 
+			L"*.aif,*.cda,*.mid,*.midi,*.mp3,*.mpa,*.ogg,*.wma,*.flac,*.wav,*.ape,*.wv,*.voc,*.669,*.digi,*.amf,*.ams,*.dbm,*.dmf,*.dsm,*.gdm,*.imf,"
+			L"*.it,*.itg,*.itp,*.j2b,*.mdl,*.med,*.mo3,*.mod,*.mt2,*.mtm,*.okt,*.plm,*.psm,*.ptm,*.s3m,*.sfx,*.stm,*.stp,*.uax,*.ult,*.xm";
+	static const wchar_t *MaskSharedObjects = L"*.dll,*.so,*.dll.*,*.so.*,*.obj,*.o,*.a,*.lib,*.sys,*.pyo,*.vim";
+	static const wchar_t *MaskVideoFiles = L"*.mkv,*.webm,*.mpg,*.mp2,*.mpeg,*.mpe,*.mpv,*.mp4,*.m4p,*.m4v,*.avi,*.wmv,*.mov,*.qt,*.flv,*.swf,*.avchd,*.3gp,*.vob";
+	static const wchar_t *MaskImageFiles = L"*.avif,*.jpg,*.jpeg,*.jpeg2000,*.ico,*.gif,*.png,*.webp,*.tga,*.bmp,*.pcx,*.tiff,*.tif,*.psd,*.eps,*.indd,*.svg,*.ai,*.cpt,*.kra,*.pdn,*.psp,*.xcf,*.sai,*.cgm,*.mpo,*.pns,*.jps";
+	static const wchar_t *MaskSourceFiles = L"*.c,*.cpp,*.c++,*.h,*.hpp,*.h++,*.asm,*.inc,*.src,*.css,*.glsl,*.lua,*.java,*.php,*.go,*.perl,*.r,*.bas,*.pas,*.jsm,*.qml,"
+											L"*.js,*.kt,*.sample,*.vs,*.fs,*.fx,*.hlsl,*.fsh,*.vsh,*.pixel,*.vertex,*.fragmentshader,*.fragment,*.vertexshader,"
+											L"*.ml,*.frag,*.geom,*.vert,*.rs,*.ts,*.jam,*.tcl, *.swift";
+	static const wchar_t *MaskModelFiles =  L"*.ma,*.mb,*.opengex,*.ply,*.pov-ray,*.prc,*.step,*.skp,*.stl,*.u3d,*.vrml,*.xaml,*.xgl,*.xvl,*.xvrml,*.x3d,*.3d,*.3df,*.3dm,*.3ds,*.3dxml,*.x3d,"
+											L"*.dds,*.sdkmesh,*.x,*.hdr,*.ktx,*.amf,*.asymptote,*.blend,*.collada,*.dgn,*.dwf,*.dwg,*.dxf,*.drawings,*.flt,*.fvrml,*.gltf,*.hsf,*.iges,*.imml,*.ipa,*.jt";
+	static const wchar_t *MaskTextFiles =  	L"*.docx,*.odt,*.pdf,*.rtf,*.tex,*.wpd,*.htm,*.html,*.key,*.odp,*.pps,*.ppt,*.pptx,*.ods,*.xls,*.xlsm,*.xlsx,*.srt,*.nfo,*.rst,*.man,"
+											L"read.me,readme*,*.txt,*.chm,*.hlp,*.doc,*.md,NEWS";
+
 	static struct DefaultData
 	{
 		const wchar_t *Mask;
 		int IgnoreMask;
 		DWORD IncludeAttr;
-		DWORD64 NormalColor;
-		DWORD64 CursorColor;
+		DWORD ExcludeAttr;
+		uint64_t NormalColor;
+		uint64_t NormalMask;
+		uint64_t CursorColor;
+		uint64_t CursorMask;
+		DWORD dwMarkChar;
+		DWORD continueProcessing;
+		DWORD Flags;
+
 	} StdHighlightData[] = {
+
 			//           Mask                NormalColor
 			//                        IncludeAttributes
 			//                     IgnoreMask       CursorColor
-			/* 7 */ {L"*", 1, FILE_ATTRIBUTE_BROKEN, 0x10 | F_LIGHTRED,    0x30 | F_LIGHTRED},
-			/* 0 */ {L"*", 1, FILE_ATTRIBUTE_HIDDEN, 0x10 | F_CYAN,        0x30 | F_DARKGRAY},
-			/* 1 */ {L"*", 1, FILE_ATTRIBUTE_SYSTEM, 0x10 | F_CYAN,        0x30 | F_DARKGRAY},
-			/* 2 */ {L"*|..", 0, FILE_ATTRIBUTE_DIRECTORY, 0x10 | F_WHITE, 0x30 | F_WHITE},
-			/* 3 */ {L"..", 0, FILE_ATTRIBUTE_DIRECTORY,  0x00,            0x00},
-			/* 4 */ {MasksScripts, 0, 0x0000,   0x10 | F_LIGHTGREEN,         0x30 | F_LIGHTGREEN},
-			/* 5 */ {MasksArchives, 0, 0x0000,  0x10 | F_LIGHTMAGENTA,      0x30 | F_LIGHTMAGENTA},
-			/* 6 */ {MasksTemporary, 0, 0x0000, 0x10 | F_BROWN,            0x30 | F_BROWN},
-			// это настройка для каталогов на тех панелях, которые должны раскрашиваться
-			// без учета масок (например, список хостов в "far navigator")
-			/* 7 */ {L"*", 1, FILE_ATTRIBUTE_EXECUTABLE | FILE_ATTRIBUTE_REPARSE_POINT, 0x10 | F_GREEN, 0x30 | F_GREEN},
-			/* 8 */ {L"*", 1, FILE_ATTRIBUTE_DIRECTORY,    0x10 | F_WHITE,      0x30 | F_WHITE},
-			/* 9 */ {L"*", 1, FILE_ATTRIBUTE_EXECUTABLE,   0x10 | F_LIGHTGREEN, 0x30 | F_LIGHTGREEN},
-			/*10 */ {L"*", 1, FILE_ATTRIBUTE_DEVICE_CHAR,  0x10 | F_LIGHTBLUE,  0x30 | F_BLUE},
-			/*11 */ {L"*", 1, FILE_ATTRIBUTE_DEVICE_BLOCK, 0x10 | F_LIGHTBLUE,  0x30 | F_BLUE},
-			/*12 */ {L"*", 1, FILE_ATTRIBUTE_DEVICE_FIFO,  0x10 | F_LIGHTBLUE,  0x30 | F_BLUE},
-			/*13 */ {L"*", 1, FILE_ATTRIBUTE_DEVICE_SOCK,  0x10 | F_LIGHTBLUE,  0x30 | F_BLUE}
+	{L"*", 1, FILE_ATTRIBUTE_BROKEN, 0x00, 0x10 | F_LIGHTRED, 0xFFFFFFFD0F, 0x30 | F_LIGHTRED, 0xFFFFFFFD0F, 0xFF0021 /*!*/, 0, 0},
+	{L"*", 1, FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY, 0x00, 0x10 | F_WHITE, 0xFFFFFFFD0F, 0x30 | F_WHITE, 0xFFFFFFFD0F, 0xFF007E /*~*/, 0, 0},
+	{L"*", 1, FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_DIRECTORY, 0x90 | F_LIGHTCYAN, 0xFFFFFFFD0F, 0x30 | F_BLUE, 0xFFFFFFFD0F, 0xFF0040 /*@*/, 0, 0},
+
+	{L"*", 1, FILE_ATTRIBUTE_DEVICE_CHAR, 0x00, 0x10 | F_LIGHTBLUE, 0xFFFFFFFD0F, 0x30 | F_BLUE, 0xFFFFFFFD0F, 0xFF002D /*-*/, 0, 0},
+	{L"*", 1, FILE_ATTRIBUTE_DEVICE_BLOCK, 0x00, 0x10 | F_LIGHTBLUE, 0xFFFFFFFD0F, 0x30 | F_BLUE, 0xFFFFFFFD0F, 0xFF002B /*+*/, 0, 0},
+	{L"*", 1, FILE_ATTRIBUTE_DEVICE_FIFO, 0x00, 0x10 | F_LIGHTBLUE, 0xFFFFFFFD0F, 0x30 | F_BLUE, 0xFFFFFFFD0F, 0xFF007C /*|*/, 0, 0},
+	{L"*", 1, FILE_ATTRIBUTE_DEVICE_SOCK, 0x00, 0x10 | F_LIGHTBLUE, 0xFFFFFFFD0F, 0x30 | F_BLUE, 0xFFFFFFFD0F, 0xFF003D /*=*/, 0, 0},
+
+	{L"*", 1, FILE_ATTRIBUTE_HARDLINKS, FILE_ATTRIBUTE_DIRECTORY, 0x10 | F_LIGHTCYAN, 0xFFFFFFFD0F, 0x30 | F_BLUE, 0xFFFFFFFD0F, 0xFF00AB, 0, 0},
+
+	{L"*", 1, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_DIRECTORY, 0x10 | F_CYAN, 0xFFFFFFFD0F, 0x30 | F_DARKGRAY, 0xFFFFFFFD0F, 0xFF0000, 0, 0},
+	{L"*", 1, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_DIRECTORY, 0x00, 0x10 | F_CYAN, 0xFFFFFFFD0F, 0x30 | F_DARKGRAY, 0xFFFFFFFD0F, 0xFF002F /*/*/, 0, 0},
+	{L"*", 1, FILE_ATTRIBUTE_SYSTEM, 0x00, 0x10 | F_CYAN, 0xFFFFFFFD0F, 0x30 | F_DARKGRAY, 0xFFFFFFFD0F, 0xFF263C, 1, 0},
+	{L"*|..", 0, FILE_ATTRIBUTE_DIRECTORY, 0x00, 0x10 | F_WHITE, 0xFFFFFFFD0F, 0x30 | F_WHITE, 0xFFFFFFFD0F, 0xFF002F /*/*/, 0, 0},
+	{L"..", 0, FILE_ATTRIBUTE_DIRECTORY, 0x00, 0x00, 0xFFFFFFFD0F, 0x00, 0xFFFFFFFD0F, 0x00002F /*/*/, 0, 0},
+	{L"*", 1, FILE_ATTRIBUTE_EXECUTABLE, 0, 0x10 | F_GREEN, 0xFFFFFFFD0F, 0x30 | F_GREEN, 0xFFFFFFFD0F, 0xFF002A /***/, 0, 0},
+
+	{MasksSoundFiles,0, 0x00,0x00, (0xAAFF00ull << 16) | (0x10 | F_LIGHTGREEN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, (0x005500ull << 16) | (0x30 | F_LIGHTGREEN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, 0xFF266A, 0, FFF_DISABLED},
+	{MaskSharedObjects,0, 0x00,0x00, (0x00b800ull << 16) | (0x10 | F_GREEN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, (0x005500ull << 16) | (0x30 | F_GREEN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, 0xFF0000, 0, 0},
+	{MaskSourceFiles,0, 0x00,0x00, (0xffbcacull << 16) | (0x10 | F_GREEN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, (0x8F0C00ull << 16) | (0x30 | F_GREEN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, 0xFF0000, 0, 0},
+	{MaskVideoFiles,0, 0x00,0x00, (0x30b8ffull << 16) | (0x10 | F_BROWN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, (0x006767ull << 16) | (0x30 | F_BROWN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, 0xFF0000, 0, 0},
+	{MaskImageFiles,0, 0x00,0x00, (0x00ffaeull << 16) | (0x10 | F_BROWN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, (0x00432eull << 16) | (0x30 | F_BROWN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, 0xFF0000, 0, 0},
+	{MaskModelFiles,0, 0x00,0x00, (0x00ffaeull << 16) | (0x10 | F_BROWN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, (0x00432eull << 16) | (0x30 | F_BROWN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, 0xFF0000, 0, 0},
+	{MaskTextFiles,0, 0x00,0x00, (0xccccccull << 16) | (0x10 | F_BROWN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, (0x767676ull << 16) | (0x30 | F_BROWN) | FOREGROUND_TRUECOLOR, 0xFFFFFFFD0F, 0xFF0000, 0, 0},
+
+	{MasksScripts,   0, 0x00,0x00, 0x10 | F_LIGHTGREEN, 0xFFFFFFFD0F, 0x30 | F_LIGHTGREEN, 0xFFFFFFFD0F, 0xFF0000, 0, 0},
+	{MasksArchives,  0, 0x00,0x00, 0x10 | F_LIGHTMAGENTA, 0xFFFFFFFD0F, 0x30 | F_LIGHTMAGENTA, 0xFFFFFFFD0F, 0xFF0000, 0, 0},
+	{MasksTemporary, 0, 0x00,0x00, 0x10 | F_BROWN, 0xFFFFFFFD0F, 0x30 | F_BROWN, 0xFFFFFFFD0F, 0xFF0000, 0, 0},
+
+	// это настройка для каталогов на тех панелях, которые должны раскрашиваться
+	// без учета масок (например, список хостов в "far navigator")
+	{L"*", 1, FILE_ATTRIBUTE_EXECUTABLE | FILE_ATTRIBUTE_REPARSE_POINT, 0, 0x10 | F_GREEN, 0xFFFFFFFD0F, 0x30 | F_GREEN, 0xFFFFFFFD0F, 0xFF0000, 0, 0},
+	{L"*", 1, FILE_ATTRIBUTE_DIRECTORY, 0x00, 0x10 | F_WHITE, 0xFFFFFFFD0F, 0x30 | F_WHITE, 0xFFFFFFFD0F, 0xFF0000, 0, 0},
+	{L"*", 1, FILE_ATTRIBUTE_DEVICE_CHAR, 0x00, 0x10 | F_LIGHTBLUE, 0xFFFFFFFD0F, 0x30 | F_BLUE, 0xFFFFFFFD0F, 0, 0, 0},
+	{L"*", 1, FILE_ATTRIBUTE_DEVICE_BLOCK, 0x00, 0x10 | F_LIGHTBLUE, 0xFFFFFFFD0F, 0x30 | F_BLUE, 0xFFFFFFFD0F, 0, 0, 0},
+	{L"*", 1, FILE_ATTRIBUTE_DEVICE_FIFO, 0x00, 0x10 | F_LIGHTBLUE, 0xFFFFFFFD0F, 0x30 | F_BLUE, 0xFFFFFFFD0F, 0, 0, 0},
+	{L"*", 1, FILE_ATTRIBUTE_DEVICE_SOCK, 0x00, 0x10 | F_LIGHTBLUE, 0xFFFFFFFD0F, 0x30 | F_BLUE, 0xFFFFFFFD0F, 0, 0, 0},
+//	{L"*.*", 0, 0x00, 0x00, 0x10 | F_LIGHTCYAN, 0xFFFFFFFD0F, 0x30 | F_BLUE, 0xFFFFFFFD0F, 0xFF0000, 0}, // Чтобы не раскрашивало на NTFS все файлы в зеленый
+	{L"*", 1, FILE_ATTRIBUTE_EXECUTABLE, 0x00, 0x10 | F_LIGHTGREEN, 0xFFFFFFFD0F, 0x30 | F_LIGHTGREEN, 0xFFFFFFFD0F, 0xFF0000, 0, 0}
+
 	};
 
 	for (size_t I = 0; I < ARRAYSIZE(StdHighlightData); I++) {
@@ -131,8 +179,14 @@ static void SetDefaultHighlighting()
 		cfg_writer.SetString(HLS.Mask, StdHighlightData[I].Mask);
 		cfg_writer.SetInt(HLS.IgnoreMask, StdHighlightData[I].IgnoreMask);
 		cfg_writer.SetUInt(HLS.IncludeAttributes, StdHighlightData[I].IncludeAttr);
+		cfg_writer.SetUInt(HLS.ExcludeAttributes, StdHighlightData[I].ExcludeAttr);
 		cfg_writer.SetULL(HLS.NormalColor, StdHighlightData[I].NormalColor);
+		cfg_writer.SetULL(HLS.NormalColorMask, StdHighlightData[I].NormalMask);
 		cfg_writer.SetULL(HLS.CursorColor, StdHighlightData[I].CursorColor);
+		cfg_writer.SetULL(HLS.CursorColorMask, StdHighlightData[I].CursorMask);
+		cfg_writer.SetUInt(HLS.MarkChar, StdHighlightData[I].dwMarkChar);
+		cfg_writer.SetInt(HLS.ContinueProcessing, StdHighlightData[I].continueProcessing);
+		cfg_writer.SetUInt(HLS.Flags, StdHighlightData[I].Flags);
 	}
 
 	cfg_writer.SelectSection(RegColorsHighlight);
@@ -153,7 +207,8 @@ static void LoadFilter(FileFilterParams *HData, ConfigReader &cfg_reader, const 
 	if (bSortGroup)
 		HData->SetMask(cfg_reader.GetInt(HLS.UseMask, 1) != 0, Mask);
 	else
-		HData->SetMask(cfg_reader.GetInt(HLS.IgnoreMask, 0) == 0, Mask);
+		HData->SetMask(cfg_reader.GetInt(HLS.IgnoreMask, 0) == 0, Mask,
+					   cfg_reader.GetInt(HLS.MaskIgnoreCase, 1) == 1);
 
 	FILETIME DateAfter{}, DateBefore{};
 	cfg_reader.GetPOD(HLS.DateAfter, DateAfter);
@@ -172,27 +227,85 @@ static void LoadFilter(FileFilterParams *HData, ConfigReader &cfg_reader, const 
 				(DWORD)cfg_reader.GetUInt(HLS.IncludeAttributes, 0),
 				(DWORD)cfg_reader.GetUInt(HLS.ExcludeAttributes, 0));
 	}
-
 	HData->SetSortGroup(SortGroup);
-	HighlightDataColor Colors;
-	Colors.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_NORMAL] =
-			cfg_reader.GetULL(HLS.NormalColor, 0);
-	Colors.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_SELECTED] =
-			cfg_reader.GetULL(HLS.SelectedColor, 0);
-	Colors.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_UNDERCURSOR] =
-			cfg_reader.GetULL(HLS.CursorColor, 0);
-	Colors.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_SELECTEDUNDERCURSOR] =
-			cfg_reader.GetULL(HLS.SelectedCursorColor, 0);
-	Colors.Color[HIGHLIGHTCOLORTYPE_MARKCHAR][HIGHLIGHTCOLOR_NORMAL] =
-			cfg_reader.GetULL(HLS.MarkCharNormalColor, 0);
-	Colors.Color[HIGHLIGHTCOLORTYPE_MARKCHAR][HIGHLIGHTCOLOR_SELECTED] =
-			cfg_reader.GetULL(HLS.MarkCharSelectedColor, 0);
-	Colors.Color[HIGHLIGHTCOLORTYPE_MARKCHAR][HIGHLIGHTCOLOR_UNDERCURSOR] =
-			cfg_reader.GetULL(HLS.MarkCharCursorColor, 0);
-	Colors.Color[HIGHLIGHTCOLORTYPE_MARKCHAR][HIGHLIGHTCOLOR_SELECTEDUNDERCURSOR] =
-			cfg_reader.GetULL(HLS.MarkCharSelectedCursorColor, 0);
-	Colors.MarkChar = cfg_reader.GetUInt(HLS.MarkChar, 0);
-	HData->SetColors(&Colors);
+
+	HData->SetFlags(FFFT_CUSTOM, cfg_reader.GetUInt(HLS.Flags, 0));
+
+	HighlightDataColor hl;
+	hl.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_NORMAL] = cfg_reader.GetULL(HLS.NormalColor, 0);
+	hl.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_SELECTED] = cfg_reader.GetULL(HLS.SelectedColor, 0);
+	hl.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_UNDERCURSOR] = cfg_reader.GetULL(HLS.CursorColor, 0);
+	hl.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_SELECTEDUNDERCURSOR] = cfg_reader.GetULL(HLS.SelectedCursorColor, 0);
+	hl.Color[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_NORMAL] = cfg_reader.GetULL(HLS.MarkCharNormalColor, 0);
+	hl.Color[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_SELECTED] = cfg_reader.GetULL(HLS.MarkCharSelectedColor, 0);
+	hl.Color[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_UNDERCURSOR] = cfg_reader.GetULL(HLS.MarkCharCursorColor, 0);
+	hl.Color[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_SELECTEDUNDERCURSOR] = cfg_reader.GetULL(HLS.MarkCharSelectedCursorColor, 0);
+
+	hl.Mask[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_NORMAL] = cfg_reader.GetULL(HLS.NormalColorMask, 0);
+	hl.Mask[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_SELECTED] = cfg_reader.GetULL(HLS.SelectedColorMask, 0);
+	hl.Mask[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_UNDERCURSOR] = cfg_reader.GetULL(HLS.CursorColorMask, 0);
+	hl.Mask[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_SELECTEDUNDERCURSOR] = cfg_reader.GetULL(HLS.SelectedCursorColorMask, 0);
+	hl.Mask[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_NORMAL] = cfg_reader.GetULL(HLS.MarkCharNormalColorMask, 0);
+	hl.Mask[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_SELECTED] = cfg_reader.GetULL(HLS.MarkCharSelectedColorMask, 0);
+	hl.Mask[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_UNDERCURSOR] = cfg_reader.GetULL(HLS.MarkCharCursorColorMask, 0);
+	hl.Mask[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_SELECTEDUNDERCURSOR] = cfg_reader.GetULL(HLS.MarkCharSelectedCursorColorMask, 0);
+
+	{ // Load Mark str
+		FARString strMark = cfg_reader.GetString(HLS.MarkStr, L"");
+		DWORD dwMarkLen = strMark.GetLength();
+		DWORD dwMarkChar = cfg_reader.GetUInt(HLS.MarkChar, 0);
+
+		hl.Flags = (dwMarkChar & 0xFF0000) >> 23;
+		dwMarkChar &= 0x0000FFFF;
+
+		if (dwMarkLen) {
+			if (dwMarkLen > HIGHLIGHT_MAX_MARK_LENGTH)
+				dwMarkLen = HIGHLIGHT_MAX_MARK_LENGTH;
+
+			memcpy(&hl.Mark[0], strMark.GetBuffer(), sizeof(wchar_t) * dwMarkLen);
+			strMark.ReleaseBuffer();
+		}
+		else if (dwMarkChar) {
+			hl.Mark[0] = dwMarkChar;
+			dwMarkLen = 1;
+		}
+
+		hl.Mark[dwMarkLen] = 0; // terminate
+		hl.MarkLen = dwMarkLen;
+	}
+
+
+#if 1
+	  // FIXME: Temporary code for compatibility with old settings where there are no transparency masks for colors
+
+	for (int j = 0; j < 2; j++) {
+		for (int i = 0; i < 4; i++) {
+
+			if (hl.Mask[j][i])
+				continue;
+
+			hl.Mask[j][i] = 0xFFFFFFFFFFFFFFFF;
+
+			if (hl.Color[j][i] & 0x0000000000000F00) // transparent foreground
+				hl.Mask[j][i] ^= (0x000000FFFFFF000F | FOREGROUND_TRUECOLOR);
+
+			if (hl.Color[j][i] & 0x000000000000F000) // transparent background
+				hl.Mask[j][i] ^= (0xFFFFFF00000000F0 | BACKGROUND_TRUECOLOR);
+
+			hl.Color[j][i] &= 0xFFFFFFFFFFFF00FF;
+
+			if (hl.Color[j][i] & 0xFFFFFF0000000000) // background true color
+				hl.Color[j][i] |= BACKGROUND_TRUECOLOR;
+
+			if (hl.Color[j][i] & 0x000000FFFFFF0000) // foreground true color
+				hl.Color[j][i] |= FOREGROUND_TRUECOLOR;
+		}
+	}
+
+	   // FIXME: Temporary code for compatibility with old settings where there are no transparency masks for colors
+#endif
+
+	HData->SetColors(&hl);
 	HData->SetContinueProcessing(cfg_reader.GetInt(HLS.ContinueProcessing, 0) != 0);
 }
 
@@ -259,95 +372,104 @@ void HighlightFiles::ClearData()
 static const DWORD FarColor[] = {COL_PANELTEXT, COL_PANELSELECTEDTEXT, COL_PANELCURSOR,
 		COL_PANELSELECTEDCURSOR};
 
-const HighlightDataColor DefaultStartingColors =
+static const HighlightDataColor DefaultStartingColors =
 	{
-		{0xFF00, 0xFF00, 0xFF00, 0xFF00, // Color[0]
-		0xFF00, 0xFF00, 0xFF00, 0xFF00}, // Color[1]
-		0x00FF0000 // MarkChar
+		{	{0x0, 0x0, 0x0, 0x0},	// Color[0][4] 0 = Black on black = default theme color
+			{0x0, 0x0, 0x0, 0x0}},	// Color[1][4]
+		{	{0x0, 0x0, 0x0, 0x0},	// Mask[0][4] // Transparency Masks 0 = fully transparent
+			{0x0, 0x0, 0x0, 0x0}},	// Mask[1][4]
+		0,     						// size_t	MarkLen;
+		1,   						// flags;
+		{ 0 }, 						// wchar_t	Mark
 	};
 
-static void ApplyBlackOnBlackColors(HighlightDataColor *Colors)
+const HighlightDataColor ZeroColors =
+	{
+		{	{0x0, 0x0, 0x0, 0x0},	// Color[0][4] 0 = Black on black = default theme color
+			{0x0, 0x0, 0x0, 0x0}},	// Color[1][4]
+		{	{0x0, 0x0, 0x0, 0x0},	// Mask[0][4] // Transparency Masks 0 = fully transparent
+			{0x0, 0x0, 0x0, 0x0}},	// Mask[1][4]
+		0,     						// size_t	MarkLen;
+		0,   						// flags;
+		{ 0 }, 						// wchar_t	Mark
+	};
+
+//const HighlightDataColor ZeroColors{{{0}}};
+
+static void ApplyBlackOnBlackColors(HighlightDataColor *hl)
 {
 	for (int i = 0; i < 4; i++) {
+
 		// Применим black on black.
 		// Для файлов возьмем цвета панели не изменяя прозрачность.
 		// Для пометки возьмем цвета файла включая прозрачность.
-		if (!(Colors->Color[HIGHLIGHTCOLORTYPE_FILE][i] & 0x00FF)) {
-			Colors->Color[HIGHLIGHTCOLORTYPE_FILE][i] = (Colors->Color[HIGHLIGHTCOLORTYPE_FILE][i] & 0xFF00)
-					| (0x00FF & Palette[FarColor[i] - COL_FIRSTPALETTECOLOR]);
+		if (!(hl->Color[HIGHLIGHTCOLORTYPE_FILE][i] & 0xFF)) {
+
+			hl->Color[HIGHLIGHTCOLORTYPE_FILE][i] = Palette[FarColor[i]];
 		}
 
-		if (!(Colors->Color[HIGHLIGHTCOLORTYPE_MARKCHAR][i] & 0x00FF)) {
-			Colors->Color[HIGHLIGHTCOLORTYPE_MARKCHAR][i] = Colors->Color[HIGHLIGHTCOLORTYPE_FILE][i];
+		// Если у метки black on black, то возьмем ей цвета и маску от имени
+		if (!(hl->Color[HIGHLIGHTCOLORTYPE_MARKSTR][i] & 0xFF)) {
+
+			hl->Color[HIGHLIGHTCOLORTYPE_MARKSTR][i] = hl->Color[HIGHLIGHTCOLORTYPE_FILE][i];
+			hl->Mask[HIGHLIGHTCOLORTYPE_MARKSTR][i] = hl->Mask[HIGHLIGHTCOLORTYPE_FILE][i];
 		}
 	}
 }
 
-static void ApplyColors(HighlightDataColor *DestColors, HighlightDataColor *SrcColors)
+static void ApplyStartColors(HighlightDataColor *hl)
+{
+	// Начинаем с цветов "по умолчанию" и далее их раскрашиваем
+	for (int i = 0; i < 4; i++) {
+		hl->Color[HIGHLIGHTCOLORTYPE_FILE][i] = Palette[FarColor[i]];
+		hl->Mask[HIGHLIGHTCOLORTYPE_FILE][i] |= 0xFFFFFFFFFFFFFFFF;
+		hl->Color[HIGHLIGHTCOLORTYPE_MARKSTR][i] = hl->Color[HIGHLIGHTCOLORTYPE_FILE][i];
+		hl->Mask[HIGHLIGHTCOLORTYPE_MARKSTR][i] = hl->Mask[HIGHLIGHTCOLORTYPE_FILE][i];
+	}
+
+	hl->Flags   = 0;
+	hl->MarkLen = 0;
+	hl->Mark[0] = 0;
+}
+
+static void ApplyColors(HighlightDataColor *hlDst, HighlightDataColor *hlSrc)
 {
 	// Обработаем black on black чтоб наследовать правильные цвета
 	// и чтоб после наследования были правильные цвета.
-	ApplyBlackOnBlackColors(DestColors);
-	ApplyBlackOnBlackColors(SrcColors);
+	ApplyBlackOnBlackColors(hlDst);
+	ApplyBlackOnBlackColors(hlSrc);
 
 	for (int j = 0; j < 2; j++) {
 		for (int i = 0; i < 4; i++) {
-			// Если текущие цвета в Src (fore и/или back) не прозрачные
-			// то унаследуем их в Dest.
-			if (!(SrcColors->Color[j][i] & 0xF000)) {
-				DestColors->Color[j][i] =
-						(DestColors->Color[j][i] & 0x000000FFFFFF0F0F) | (SrcColors->Color[j][i] & 0xFFFFFF000000F0F0);
-			}
 
-			if (!(SrcColors->Color[j][i] & 0x0F00)) {
-				DestColors->Color[j][i] =
-						(DestColors->Color[j][i] & 0xFFFFFF000000F0F0) | (SrcColors->Color[j][i] & 0x000000FFFFFF0F0F);
+			// Если текущие цвета в Src (fore и/или back) не прозрачные
+			// то унаследуем их в Dest. (включая флаги стилей)
+
+			if (hlSrc->Mask[j][i]) {
+				hlDst->Color[j][i] = (hlDst->Color[j][i] & (~hlSrc->Mask[j][i])) | (hlSrc->Color[j][i] & hlSrc->Mask[j][i]);
 			}
 		}
 	}
 
-	// Унаследуем пометку из Src если она не прозрачная
-	if (!(SrcColors->MarkChar & 0x00FF0000))
-		DestColors->MarkChar = SrcColors->MarkChar;
-}
-
-/*
-bool HasTransparent(HighlightDataColor *Colors)
-{
-	for (int j=0; j<2; j++)
-		for (int i=0; i<4; i++)
-			if (Colors->Color[j][i]&0xFF00)
-				return true;
-
-	if (Colors->MarkChar&0x00FF0000)
-		return true;
-
-	return false;
-}
-*/
-
-static void ApplyFinalColors(HighlightDataColor *Colors)
-{
-	// Обработаем black on black чтоб после наследования были правильные цвета.
-	ApplyBlackOnBlackColors(Colors);
-
-	for (int j = 0; j < 2; j++)
-		for (int i = 0; i < 4; i++) {
-			// Если какой то из текущих цветов (fore или back) прозрачный
-			// то унаследуем соответствующий цвет с панелей.
-			BYTE temp = (BYTE)((Colors->Color[j][i] & 0xFF00) >> 8);
-			Colors->Color[j][i] = (Colors->Color[j][i] & 0xffffffffffff0000)
-					| ((~temp) & (BYTE)Colors->Color[j][i])
-					| (temp & (BYTE)Palette[FarColor[i] - COL_FIRSTPALETTECOLOR]);
+	// Унаследуем пометку из Src в Dst если она есть
+	if (hlSrc->MarkLen) {
+		// Если нет наследования в Src, то просто заменим метку на новую в Dst
+		if (!(hlSrc->Flags & HL_FLAGS_MARK_INHERIT)) {
+			hlDst->MarkLen = hlSrc->MarkLen;
+			memcpy(hlDst->Mark, hlSrc->Mark, sizeof(wchar_t) * hlSrc->MarkLen);
 		}
-
-	// Если символ пометки прозрачный то его как бы и нет вообще.
-	if (Colors->MarkChar & 0x00FF0000)
-		Colors->MarkChar = 0;
-
-	// Параноя но случится может:
-	// Обработаем black on black снова чтоб обработались унаследованые цвета.
-	ApplyBlackOnBlackColors(Colors);
+		else { // Если есть наследование, добавим метку к старой
+			uint32_t freespace = (HIGHLIGHT_MAX_MARK_LENGTH - hlDst->MarkLen);
+			if (freespace) { // Если есть хоть какое то место, добавим что влезет
+				uint32_t copylen = (freespace < hlSrc->MarkLen) ? freespace : hlSrc->MarkLen;
+				memcpy(hlDst->Mark + hlDst->MarkLen, hlSrc->Mark, sizeof(wchar_t) * copylen);
+				hlDst->MarkLen += copylen;
+			}
+		}
+	}
+	else if (!(hlSrc->Flags & HL_FLAGS_MARK_INHERIT)) { // Если нет наследования и метка пустая, то убираем метку совсем
+		hlDst->MarkLen = 0;
+	}
 }
 
 void HighlightFiles::UpdateCurrentTime()
@@ -369,36 +491,39 @@ class HighlightFilesChunk : protected Threaded
 	uint64_t _CurrentTime;
 	const TPointerArray<FileFilterParams> &_HiData;
 	FileListItem **_FileItem;
-	int _FileCount;
+	size_t _FileCount, _MarkLM;
 	bool _UseAttrHighlighting;
 
 	virtual void *ThreadProc()
 	{
-		DoNow();
-		return nullptr;
+		return DoNow();
 	}
 
 public:
 	HighlightFilesChunk(uint64_t CurrentTime, const TPointerArray<FileFilterParams> &HiData,
-			FileListItem **FileItem, int FileCount, bool UseAttrHighlighting)
+			FileListItem **FileItem, size_t FileCount, bool UseAttrHighlighting)
 		:
 		_CurrentTime(CurrentTime),
 		_HiData(HiData),
 		_FileItem(FileItem),
 		_FileCount(FileCount),
+		_MarkLM(0),
 		_UseAttrHighlighting(UseAttrHighlighting)
 	{}
 
 	virtual ~HighlightFilesChunk() { WaitThread(); }
 
-	void DoNow()
+	void *DoNow()
 	{
-		for (int FCnt = 0; FCnt < _FileCount; ++FCnt) {
+		for (size_t FCnt = 0; FCnt < _FileCount; ++FCnt) {
 			FileListItem &fli = *_FileItem[FCnt];
 			HighlightDataColor Colors = DefaultStartingColors;
+			ApplyStartColors(&Colors);
 
 			for (size_t i = 0; i < _HiData.getCount(); i++) {
 				const FileFilterParams *CurHiData = _HiData.getConstItem(i);
+				if (CurHiData->GetFlags(FFFT_CUSTOM) & FFF_DISABLED)
+					continue;
 
 				if (_UseAttrHighlighting && CurHiData->GetMask(nullptr))
 					continue;
@@ -408,47 +533,68 @@ public:
 					CurHiData->GetColors(&TempColors);
 					ApplyColors(&Colors, &TempColors);
 
-					if (!CurHiData->GetContinueProcessing())	// || !HasTransparent(&fli->Colors))
+					if (!CurHiData->GetContinueProcessing())
 						break;
 				}
 			}
 
-			ApplyFinalColors(&Colors);
+			if (Colors.MarkLen) {
+				size_t ncells = StrCellsCount( Colors.Mark, Colors.MarkLen );
+
+				if (ncells > _MarkLM && ncells <= Opt.MaxFilenameIndentation)
+					_MarkLM = ncells;
+			}
+
 			fli.ColorsPtr = PooledHighlightDataColor(Colors);
 		}
+
+		return (void *)_MarkLM;
 	}
 
-	void DoAsync()
+	void *GetResult() { return GetThreadResult(); }
+
+	bool DoAsync()
 	{
-		if (!StartThread()) {
-			DoNow();
-		}
+		return StartThread();
 	}
 };
 
-void HighlightFiles::GetHiColor(FileListItem **FileItem, int FileCount, bool UseAttrHighlighting)
+void HighlightFiles::GetHiColor(FileListItem **FileItem, size_t FileCount, bool UseAttrHighlighting, size_t *_MarkLM)
 {
 	if (!FileItem || !FileCount)
 		return;
 
+	size_t MarkLM = 0;
+	size_t BestThreadsNum = std::max(BestThreadsCount(), 1u);
 	std::list<HighlightFilesChunk> async_hfc;
 
 	const int sFileCountTrh = 0x1000;	// empirically found, can be subject of (dynamic) adjustment
 
-	if (FileCount >= sFileCountTrh && BestThreadsCount() > 1) {
-		int FilePerCPU = std::max(FileCount / BestThreadsCount(), 0x400u);
-		while (FileCount > FilePerCPU && async_hfc.size() + 1 < BestThreadsCount()) {
+	if (FileCount >= sFileCountTrh && BestThreadsNum > 1) {
+		size_t FilePerCPU = std::max(FileCount / BestThreadsNum, (size_t)0x400u);
+
+		while (FileCount > FilePerCPU && async_hfc.size() + 1 < BestThreadsNum) {
 			async_hfc.emplace_back(CurrentTime, HiData, FileItem, FilePerCPU, UseAttrHighlighting);
-			async_hfc.back().DoAsync();
-			FileItem+= FilePerCPU;
-			FileCount-= FilePerCPU;
+			if (!async_hfc.back().DoAsync()) {
+				async_hfc.pop_back();
+				break;
+			}
+			FileItem += FilePerCPU;
+			FileCount -= FilePerCPU;
 		}
-		//		fprintf(stderr, "%s: spawned %u async processors %d files per each, %d files processed synchronously\n",
-		//			__FUNCTION__, (unsigned int)async_hfc.size(), FilePerCPU, FileCount);
 	}
 
-	HighlightFilesChunk(CurrentTime, HiData, FileItem, FileCount, UseAttrHighlighting).DoNow();
-	// async_hfc will join at d-tors
+	MarkLM = (size_t)HighlightFilesChunk(CurrentTime, HiData, FileItem, FileCount, UseAttrHighlighting).DoNow();
+
+	while(!async_hfc.empty( )) {
+		size_t len = (size_t)async_hfc.back().GetResult();
+		if (len > MarkLM)
+			MarkLM = len;
+		async_hfc.pop_back();
+	}
+
+	if (_MarkLM && *_MarkLM < MarkLM )
+		*_MarkLM = MarkLM;
 }
 
 int HighlightFiles::GetGroup(const FileListItem *fli)
@@ -484,8 +630,17 @@ void HighlightFiles::FillMenu(VMenu *HiMenu, int MenuPos)
 
 	for (int j = 0; j < 4; j++) {
 		for (int i = Count[j][0]; i < Count[j][1]; i++) {
-			MenuString(HiMenuItem.strName, HiData.getItem(i), true);
+
+			FileFilterParams *ffp = HiData.getItem(i);
+			MenuString(HiMenuItem.strName, ffp, true);
+
+			if (ffp->GetFlags(FFFT_CUSTOM) & FFF_DISABLED) {
+				HiMenuItem.Flags |= LIF_GRAYED;
+				HiMenuItem.SetCheck(L'X');
+			}
+
 			HiMenu->AddItem(&HiMenuItem);
+			HiMenuItem.Clear();
 		}
 
 		HiMenuItem.strName.Clear();
@@ -552,7 +707,7 @@ void HighlightFiles::HiEdit(int MenuPos)
 {
 	VMenu HiMenu(Msg::HighlightTitle, nullptr, 0, ScrY - 4);
 	HiMenu.SetHelp(FARString(HLS.HighlightList));
-	HiMenu.SetFlags(VMENU_WRAPMODE | VMENU_SHOWAMPERSAND);
+	HiMenu.SetFlags(VMENU_WRAPMODE | VMENU_SHOWAMPERSAND ); //
 	HiMenu.SetPosition(-1, -1, 0, 0);
 	HiMenu.SetBottomTitle(Msg::HighlightBottom);
 	FillMenu(&HiMenu, MenuPos);
@@ -563,7 +718,7 @@ void HighlightFiles::HiEdit(int MenuPos)
 
 	while (1) {
 		while (!HiMenu.Done()) {
-			int Key = HiMenu.ReadInput();
+			FarKey Key = HiMenu.ReadInput();
 			int SelectPos = HiMenu.GetSelectPos();
 			NeedUpdate = FALSE;
 
@@ -572,8 +727,33 @@ void HighlightFiles::HiEdit(int MenuPos)
 						$ 07.07.2000 IS
 						Если нажали ctrl+r, то восстановить значения по умолчанию.
 					*/
-				case KEY_CTRLR:
 
+				case KEY_SUBTRACT:
+				case KEY_ADD:
+				case KEY_SPACE: {
+					int *Count = nullptr;
+					int RealSelectPos = MenuPosToRealPos(SelectPos, &Count);
+
+					if (Count && RealSelectPos < (int)HiData.getCount()) {
+
+						FileFilterParams *ffp = HiData.getItem(RealSelectPos);
+						uint32_t flags = ffp->GetFlags(FFFT_CUSTOM);
+						if (Key == KEY_SUBTRACT && (flags & FFF_DISABLED))
+							break;
+						if (Key == KEY_ADD && !(flags & FFF_DISABLED))
+							break;
+
+						ffp->SetFlags(FFFT_CUSTOM, flags ^ FFF_DISABLED);
+
+						HiMenu.SetUpdateRequired(TRUE);
+						HiMenu.FastShow();
+						HiMenu.ProcessKey(KEY_DOWN);
+						NeedUpdate = true;
+					}
+				}
+				break;
+
+				case KEY_CTRLR:
 					if (Message(MSG_WARNING, 2, Msg::HighlightTitle, Msg::HighlightWarning,
 								Msg::HighlightAskRestore, Msg::Yes, Msg::Cancel))
 						break;
@@ -762,43 +942,82 @@ static void SaveFilter(FileFilterParams *CurHiData, ConfigWriter &cfg_writer, bo
 		const wchar_t *Mask = nullptr;
 		cfg_writer.SetInt(HLS.IgnoreMask, (CurHiData->GetMask(&Mask) ? 0 : 1));
 		cfg_writer.SetString(HLS.Mask, Mask);
+		cfg_writer.SetInt(HLS.MaskIgnoreCase, CurHiData->GetMaskIgnoreCase() ? 1 : 0);
 	}
 
 	DWORD DateType;
 	FILETIME DateAfter, DateBefore;
 	bool bRelative;
+
 	cfg_writer.SetInt(HLS.UseDate,
 			CurHiData->GetDate(&DateType, &DateAfter, &DateBefore, &bRelative) ? 1 : 0);
 	cfg_writer.SetUInt(HLS.DateType, DateType);
 	cfg_writer.SetPOD(HLS.DateAfter, DateAfter);
 	cfg_writer.SetPOD(HLS.DateBefore, DateBefore);
 	cfg_writer.SetInt(HLS.DateRelative, bRelative ? 1 : 0);
+
 	const wchar_t *SizeAbove = nullptr, *SizeBelow = nullptr;
 	cfg_writer.SetInt(HLS.UseSize, CurHiData->GetSize(&SizeAbove, &SizeBelow) ? 1 : 0);
 	cfg_writer.SetString(HLS.SizeAbove, SizeAbove);
 	cfg_writer.SetString(HLS.SizeBelow, SizeBelow);
+
 	DWORD AttrSet = 0, AttrClear = 0;
 	cfg_writer.SetInt(HLS.UseAttr, CurHiData->GetAttr(&AttrSet, &AttrClear) ? 1 : 0);
 	cfg_writer.SetUInt((bSortGroup ? HLS.AttrSet : HLS.IncludeAttributes), AttrSet);
 	cfg_writer.SetUInt((bSortGroup ? HLS.AttrClear : HLS.ExcludeAttributes), AttrClear);
-	HighlightDataColor Colors{};
-	CurHiData->GetColors(&Colors);
-	cfg_writer.SetULL(HLS.NormalColor, Colors.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_NORMAL]);
+
+	cfg_writer.SetUInt(HLS.Flags, CurHiData->GetFlags(FFFT_CUSTOM));
+
+	HighlightDataColor hl;
+	CurHiData->GetColors(&hl);
+
+	cfg_writer.SetULL(HLS.NormalColor,
+			hl.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_NORMAL]);
 	cfg_writer.SetULL(HLS.SelectedColor,
-			Colors.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_SELECTED]);
+			hl.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_SELECTED]);
 	cfg_writer.SetULL(HLS.CursorColor,
-			Colors.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_UNDERCURSOR]);
+			hl.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_UNDERCURSOR]);
 	cfg_writer.SetULL(HLS.SelectedCursorColor,
-			Colors.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_SELECTEDUNDERCURSOR]);
+			hl.Color[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_SELECTEDUNDERCURSOR]);
 	cfg_writer.SetULL(HLS.MarkCharNormalColor,
-			Colors.Color[HIGHLIGHTCOLORTYPE_MARKCHAR][HIGHLIGHTCOLOR_NORMAL]);
+			hl.Color[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_NORMAL]);
 	cfg_writer.SetULL(HLS.MarkCharSelectedColor,
-			Colors.Color[HIGHLIGHTCOLORTYPE_MARKCHAR][HIGHLIGHTCOLOR_SELECTED]);
+			hl.Color[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_SELECTED]);
 	cfg_writer.SetULL(HLS.MarkCharCursorColor,
-			Colors.Color[HIGHLIGHTCOLORTYPE_MARKCHAR][HIGHLIGHTCOLOR_UNDERCURSOR]);
+			hl.Color[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_UNDERCURSOR]);
 	cfg_writer.SetULL(HLS.MarkCharSelectedCursorColor,
-			Colors.Color[HIGHLIGHTCOLORTYPE_MARKCHAR][HIGHLIGHTCOLOR_SELECTEDUNDERCURSOR]);
-	cfg_writer.SetUInt(HLS.MarkChar, Colors.MarkChar);
+			hl.Color[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_SELECTEDUNDERCURSOR]);
+
+	cfg_writer.SetULL(HLS.NormalColorMask,
+			hl.Mask[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_NORMAL]);
+	cfg_writer.SetULL(HLS.SelectedColorMask,
+			hl.Mask[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_SELECTED]);
+	cfg_writer.SetULL(HLS.CursorColorMask,
+			hl.Mask[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_UNDERCURSOR]);
+	cfg_writer.SetULL(HLS.SelectedCursorColorMask,
+			hl.Mask[HIGHLIGHTCOLORTYPE_FILE][HIGHLIGHTCOLOR_SELECTEDUNDERCURSOR]);
+	cfg_writer.SetULL(HLS.MarkCharNormalColorMask,
+			hl.Mask[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_NORMAL]);
+	cfg_writer.SetULL(HLS.MarkCharSelectedColorMask,
+			hl.Mask[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_SELECTED]);
+	cfg_writer.SetULL(HLS.MarkCharCursorColorMask,
+			hl.Mask[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_UNDERCURSOR]);
+	cfg_writer.SetULL(HLS.MarkCharSelectedCursorColorMask,
+			hl.Mask[HIGHLIGHTCOLORTYPE_MARKSTR][HIGHLIGHTCOLOR_SELECTEDUNDERCURSOR]);
+
+	{ // Save Mark str
+		FARString strMark = L"";
+//		DWORD dwMarkChar = (hl.MarkLen == 1) ? hl.Mark[0] : 0;
+		DWORD dwMarkChar = 0;
+		dwMarkChar |= (0xFF0000 * (hl.Flags & HL_FLAGS_MARK_INHERIT));
+
+		cfg_writer.SetUInt(HLS.MarkChar, dwMarkChar);
+
+//		if (hl.MarkLen > 1)
+		strMark = hl.Mark;
+		cfg_writer.SetString(HLS.MarkStr, strMark);
+	}
+
 	cfg_writer.SetInt(HLS.ContinueProcessing, (CurHiData->GetContinueProcessing() ? 1 : 0));
 }
 
@@ -852,33 +1071,35 @@ void HighlightFiles::SaveHiData()
 
 ////////
 
-static bool operator==(const HighlightDataColor &color1, const HighlightDataColor &color2)
+static bool operator==(const HighlightDataColor &hl1, const HighlightDataColor &hl2)
 {
-	if (color1.MarkChar != color2.MarkChar)
+	if (hl1.Flags != hl2.Flags || hl1.MarkLen != hl2.MarkLen)
 		return false;
 
-	for (size_t i = 0; i < ARRAYSIZE(color1.Color); ++i) {
-		for (size_t j = 0; j < ARRAYSIZE(color1.Color[i]); ++j) {
-			if (color1.Color[i][j] != color2.Color[i][j]) {
-				return false;
-			}
-		}
-	}
+	if (hl1.MarkLen && wmemcmp(&hl1.Mark[0], &hl2.Mark[0], hl1.MarkLen) != 0)
+		return false;
+
+	if (memcmp(hl1.Color, hl2.Color, sizeof(hl2.Color)) != 0)
+		return false;
+
+	if (memcmp(hl1.Mask, hl2.Mask, sizeof(hl2.Mask)) != 0)
+		return false;
 
 	return true;
 }
 
+
 struct HighlightDataColorHash
 {
-	size_t operator()(const HighlightDataColor &color) const
+	size_t operator()(const HighlightDataColor &hl) const
 	{
-		size_t out = color.MarkChar;
-		for (size_t i = 0; i < ARRAYSIZE(color.Color); ++i) {
-			for (size_t j = 0; j < ARRAYSIZE(color.Color[i]); ++j) {
-				out^= color.Color[i][j] + ((i ^ j) << 16);
+		size_t out = hl.Flags ^ (hl.MarkLen * 0xFFFF);
+
+		for (size_t i = 0; i < ARRAYSIZE(hl.Color); ++i) {
+			for (size_t j = 0; j < ARRAYSIZE(hl.Color[i]); ++j) {
+				out ^= hl.Color[i][j] + hl.Mask[i][j] + ((i ^ j) << 16);
 			}
 		}
-
 		return out;
 	}
 };
@@ -890,6 +1111,7 @@ static std::atomic<const HighlightDataColor *> s_last_color{&DefaultStartingColo
 const HighlightDataColor *PooledHighlightDataColor(const HighlightDataColor &color)
 {
 	const HighlightDataColor *last_color = s_last_color.load(std::memory_order_relaxed);
+
 	if (color == *last_color) {
 		return last_color;
 	}

@@ -519,7 +519,7 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_chdir(const char *pat
 		}
 
 	} else if (access_denied && !IsSudoRegionActive()) {
-		//Workaround to avoid excessive sudo prompt on TAB panel swicth:
+		//Workaround to avoid excessive sudo prompt on TAB panel switch:
 		//set override if path likely to be existing but not accessible 
 		//cuz we're out of sudo region now
 		//Right solution would be putting TAB worker code into sudo region
@@ -613,10 +613,28 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_utimens(const char *f
 
 extern "C" __attribute__ ((visibility("default"))) int sdc_futimens(int fd, const struct timespec times[2])
 {
-	return futimens(fd, times);
+    int saved_errno = errno;
+    int r = futimens(fd, times);
+    if (r==-1 && IsAccessDeniedErrno() && TouchClientConnection(true)) {
+        try {
+            ClientTransaction ct(SUDO_CMD_FUTIMENS);
+            ct.SendFD(fd);
+            ct.SendPOD(times[0]);
+            ct.SendPOD(times[1]);
+            r = ct.RecvInt();
+            if (r==-1)
+                ct.RecvErrno();
+            else
+                errno = saved_errno;
+        } catch(std::exception &e) {
+            fprintf(stderr, "sudo_client: sdc_futimens('%d') - error %s\n", fd, e.what());
+            r = -1;
+        }
+    }
+    return r;
 }
 
-static int common_two_pathes(SudoCommand cmd, 
+static int common_two_paths(SudoCommand cmd,
 	int (*pfn)(const char *, const char *), const char *path1, const char *path2, bool modify)
 {
 	int saved_errno = errno;
@@ -632,7 +650,7 @@ static int common_two_pathes(SudoCommand cmd,
 			else
 				errno = saved_errno;
 		} catch(std::exception &e) {
-			fprintf(stderr, "sudo_client: common_two_pathes(%u, '%s', '%s') - error %s\n", cmd, path1, path2, e.what());
+			fprintf(stderr, "sudo_client: common_two_paths(%u, '%s', '%s') - error %s\n", cmd, path1, path2, e.what());
 			r = -1;
 		}
 	}
@@ -642,19 +660,19 @@ static int common_two_pathes(SudoCommand cmd,
 extern "C" __attribute__ ((visibility("default"))) int sdc_rename(const char *path1, const char *path2)
 {
 	ClientReconstructCurDir crcd(path1);
-	return common_two_pathes(SUDO_CMD_RENAME, &rename, path1, path2, true);
+	return common_two_paths(SUDO_CMD_RENAME, &rename, path1, path2, true);
 }
 
 extern "C" __attribute__ ((visibility("default"))) int sdc_symlink(const char *path1, const char *path2)
 {
 	ClientReconstructCurDir crcd(path2);
-	return common_two_pathes(SUDO_CMD_SYMLINK, &symlink, path1, path2, true);
+	return common_two_paths(SUDO_CMD_SYMLINK, &symlink, path1, path2, true);
 }
 
 extern "C" __attribute__ ((visibility("default"))) int sdc_link(const char *path1, const char *path2)
 {
 	ClientReconstructCurDir crcd(path2);
-	return common_two_pathes(SUDO_CMD_LINK, &link, path1, path2, true);	
+	return common_two_paths(SUDO_CMD_LINK, &link, path1, path2, true);
 }
 
 extern "C" __attribute__ ((visibility("default"))) char *sdc_realpath(const char *path, char *resolved_path)
@@ -802,10 +820,10 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_fsetxattr(int fd, con
 	}
 	return r;
 #endif
- }
+}
  
- extern "C" __attribute__ ((visibility("default"))) int sdc_fs_flags_set(const char *path, unsigned long flags)
- {
+extern "C" __attribute__ ((visibility("default"))) int sdc_fs_flags_set(const char *path, unsigned long flags)
+{
 #if defined(__CYGWIN__) || defined(__HAIKU__)
 	//TODO
 	return 0;
@@ -842,7 +860,59 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_fsetxattr(int fd, con
 	 
 	return r;
 #endif
- }
+}
+
+extern "C" __attribute__ ((visibility("default"))) int sdc_mkfifo(const char *path, mode_t mode)
+{
+	ClientReconstructCurDir crcd(path);
+	int r = mkfifo(path, mode);
+	if (r == 0 || !IsAccessDeniedErrno() || !TouchClientConnection(true)) {
+		return r;
+	}
+
+	try {
+		ClientTransaction ct(SUDO_CMD_MKFIFO);
+		ct.SendStr(path);
+		ct.SendPOD(mode);
+
+		r = ct.RecvInt();
+		if (r != 0)
+			ct.RecvErrno();
+
+	} catch(std::exception &e) {
+		fprintf(stderr, "sudo_client: sdc_mkfifo('%s', 0x%lx) - error %s\n",
+			path, (unsigned long)mode, e.what());
+		r = -1;
+	}
+
+	return r;
+}
+
+extern "C" __attribute__ ((visibility("default"))) int sdc_mknod(const char *path, mode_t mode, dev_t dev)
+{
+	ClientReconstructCurDir crcd(path);
+	int r = mknod(path, mode, dev);
+	if (r == 0 || !IsAccessDeniedErrno() || !TouchClientConnection(true)) {
+		return r;
+	}
+
+	try {
+		ClientTransaction ct(SUDO_CMD_MKNOD);
+		ct.SendStr(path);
+		ct.SendPOD(mode);
+		ct.SendPOD(dev);
+
+		r = ct.RecvInt();
+		if (r != 0)
+			ct.RecvErrno();
+	} catch(std::exception &e) {
+		fprintf(stderr, "sudo_client: sdc_mknod('%s', 0x%lx, 0x%lx) - error %s\n",
+			path, (unsigned long)mode, (unsigned long)dev, e.what());
+		r = -1;
+	}
+
+	return r;
+}
 
 
 } //namespace Sudo

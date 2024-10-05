@@ -36,6 +36,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "farqueue.hpp"
 #include <WinCompat.h>
 #include "FARString.hpp"
+#include "keys.hpp"
 
 enum
 {
@@ -58,25 +59,25 @@ extern int ReturnAltValue;
 extern bool BracketedPasteMode;
 
 void InitKeysArray();
-bool KeyToKeyLayoutCompare(int Key, int CompareKey);
-int KeyToKeyLayout(int Key);
+bool KeyToKeyLayoutCompare(FarKey Key, FarKey CompareKey);
+FarKey KeyToKeyLayout(FarKey Key);
 
 // возвращает: 1 - LeftPressed, 2 - Right Pressed, 3 - Middle Pressed, 0 - none
 DWORD IsMouseButtonPressed();
-int TranslateKeyToVK(int Key, int &VirtKey, int &ControlState, INPUT_RECORD *rec = nullptr);
-uint32_t KeyNameToKey(const wchar_t *Name);
-uint32_t KeyNameToKey(const wchar_t *Name, uint32_t Default);
-BOOL WINAPI KeyToText(uint32_t Key, FARString &strKeyText);
-int WINAPI InputRecordToKey(const INPUT_RECORD *Rec);
-DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro = false, bool ProcessMouse = false,
-		bool AllowSynchro = true);
+int TranslateKeyToVK(FarKey Key, int &VirtKey, int &ControlState, INPUT_RECORD *rec = nullptr);
+FarKey KeyNameToKey(const wchar_t *Name);
+FarKey KeyNameToKey(const wchar_t *Name, uint32_t Default);
+BOOL WINAPI KeyToText(FarKey Key, FARString &strKeyText);
+unsigned int WINAPI InputRecordToKey(const INPUT_RECORD *Rec);
+DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro = false, bool ProcessMouse = false, bool AllowSynchro = true);
 DWORD PeekInputRecord(INPUT_RECORD *rec, bool ExcludeMacro = true);
-DWORD CalcKeyCode(INPUT_RECORD *rec, int RealKey, int *NotMacros = nullptr);
-DWORD WaitKey(DWORD KeyWait = (DWORD)-1, DWORD delayMS = 0, bool ExcludeMacro = true);
+FarKey CalcKeyCode(INPUT_RECORD *rec, int RealKey, int *NotMacros = nullptr);
+FarKey WaitKey(DWORD KeyWait = (DWORD)-1, DWORD delayMS = 0, bool ExcludeMacro = true);
 int SetFLockState(UINT vkKey, int State);
-int WriteInput(int Key, DWORD Flags = 0);
-int IsNavKey(DWORD Key);
-int IsShiftKey(DWORD Key);
-int CheckForEsc();
-int CheckForEscSilent();
-int ConfirmAbortOp();
+int WriteInput(wchar_t Key, DWORD Flags = 0);
+bool IsNavKey(DWORD Key);
+bool IsShiftKey(DWORD Key);
+bool CheckForEsc();
+bool CheckForEscSilent();
+bool ConfirmAbortOp();
+bool IsRepeatedKey();

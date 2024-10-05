@@ -91,7 +91,7 @@ static uint64_t CalculateDataID(UINT fmt, const void *data, uint32_t len)
 VTFar2lExtensios::VTFar2lExtensios(IVTShell *vt_shell, const std::string &host_id)
 	: _vt_shell(vt_shell), _client_id_prefix(host_id)
 {
-	// host_id pased by NetRocks representing client identity (user@host) and
+	// host_id passed by NetRocks representing client identity (user@host) and
 	// used together with clipboard client_id to guard against spoofed client_id
 	// in case malicious client was somehow able to steal id of some other client
 	if (!_client_id_prefix.empty()) {
@@ -109,7 +109,7 @@ VTFar2lExtensios::~VTFar2lExtensios()
 	for (;_clipboard_opens > 0; --_clipboard_opens) {
 		WINPORT(CloseClipboard)();
 	}
-	WINPORT(SetConsoleFKeyTitles)(NULL);
+	WINPORT(SetConsoleFKeyTitles)(_vt_shell->ConsoleHandle(), NULL);
 }
 
 void VTFar2lExtensios::WriteInputEvent(const StackSerializer &stk_ser)
@@ -145,6 +145,21 @@ void VTFar2lExtensios::AllowClipboardRead(bool prolong)
 }
 
 ///
+
+void VTFar2lExtensios::OnTerminalResized()
+{
+	if ( (_xfeatures & FARTTY_FEAT_TERMINAL_SIZE) != 0) {
+		CONSOLE_SCREEN_BUFFER_INFO csbi = { };
+		if (WINPORT(GetConsoleScreenBufferInfo)( NULL, &csbi )
+					&& csbi.dwSize.X && csbi.dwSize.Y) {
+			StackSerializer stk_ser;
+			stk_ser.PushNum((uint16_t)csbi.dwSize.X);
+			stk_ser.PushNum((uint16_t)csbi.dwSize.Y);
+			stk_ser.PushNum(FARTTY_INPUT_TERMINAL_SIZE);
+			WriteInputEvent(stk_ser);
+		}
+	}
+}
 
 bool VTFar2lExtensios::OnInputMouse(const MOUSE_EVENT_RECORD &MouseEvent)
 {
@@ -257,27 +272,30 @@ char VTFar2lExtensios::ClipboardAuthorize(std::string client_id)
 	{
 		SavedScreen saved_scr;
 		ScrBuf.FillBuf();
-		choice = Message(MSG_KEEPBACKGROUND, 4,
-			Msg::TerminalClipboardAccessTitle,
-			Msg::TerminalClipboardAccessText,
-			Msg::TerminalClipboardAccessBlock,		// 0
-			Msg::TerminalClipboardAccessTemporaryRemote,	// 1
-			Msg::TerminalClipboardAccessTemporaryLocal,	// 2
-			Msg::TerminalClipboardAccessAlwaysLocal);	// 3
+		do { // prevent quick thoughtless tap Enter or Space or Esc in dialog
+			choice = Message(MSG_KEEPBACKGROUND, 5,
+				Msg::TerminalClipboardAccessTitle,
+				Msg::TerminalClipboardAccessText,
+				L"...",	// 0 - stub select for thoughtless tap
+				Msg::TerminalClipboardAccessBlock,		// 1
+				Msg::TerminalClipboardAccessTemporaryRemote,	// 2
+				Msg::TerminalClipboardAccessTemporaryLocal,	// 3
+				Msg::TerminalClipboardAccessAlwaysLocal);	// 4
+		} while( choice <= 0 );
 	}
 
 	_vt_shell->OnTerminalResized(); // window could resize during dialog box processing
 
 	switch (choice) {
-		case 3: // Always allow access to local clipboard
+		case 4: // Always allow access to local clipboard
 			ListFileAppend(autheds_file, client_id);
 			// fall through
 
-		case 2: // Temporary allow access to local clipboared
+		case 3: // Temporary allow access to local clipboared
 			_autheds.insert(client_id);
 			return 1;
 
-		case 1: // Tell client that he need to use own clipboard
+		case 2: // Tell client that he need to use own clipboard
 			return -1;
 
 		default: // Mimic just failed to open clipboard
@@ -285,7 +303,7 @@ char VTFar2lExtensios::ClipboardAuthorize(std::string client_id)
 	}
 }
 
-void VTFar2lExtensios::OnInterract_ClipboardOpen(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_ClipboardOpen(StackSerializer &stk_ser)
 {
 	_clipboard_chunks.clear();
 	const std::string &client_id = stk_ser.PopStr();
@@ -302,7 +320,7 @@ void VTFar2lExtensios::OnInterract_ClipboardOpen(StackSerializer &stk_ser)
 	stk_ser.PushNum(out);
 }
 
-void VTFar2lExtensios::OnInterract_ClipboardClose(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_ClipboardClose(StackSerializer &stk_ser)
 {
 	_clipboard_chunks.clear();
 	_clipboard_chunks.shrink_to_fit();
@@ -320,7 +338,7 @@ void VTFar2lExtensios::OnInterract_ClipboardClose(StackSerializer &stk_ser)
 	_clipboard_read_allowance_prolongs = 0;
 }
 
-void VTFar2lExtensios::OnInterract_ClipboardEmpty(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_ClipboardEmpty(StackSerializer &stk_ser)
 {
 	char out = -1;
 	if (_clipboard_opens > 0) {
@@ -330,7 +348,7 @@ void VTFar2lExtensios::OnInterract_ClipboardEmpty(StackSerializer &stk_ser)
 	stk_ser.PushNum(out);
 }
 
-void VTFar2lExtensios::OnInterract_ClipboardIsFormatAvailable(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_ClipboardIsFormatAvailable(StackSerializer &stk_ser)
 {
 	UINT fmt;
 	stk_ser.PopNum(fmt);
@@ -339,7 +357,7 @@ void VTFar2lExtensios::OnInterract_ClipboardIsFormatAvailable(StackSerializer &s
 	stk_ser.PushNum(out);
 }
 
-void VTFar2lExtensios::OnInterract_ClipboardSetDataChunk(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_ClipboardSetDataChunk(StackSerializer &stk_ser)
 {
 	if (_clipboard_opens > 0) {
 		uint16_t encoded_chunk_size = 0;
@@ -360,7 +378,7 @@ void VTFar2lExtensios::OnInterract_ClipboardSetDataChunk(StackSerializer &stk_se
 	stk_ser.Clear();
 }
 
-void VTFar2lExtensios::OnInterract_ClipboardSetData(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_ClipboardSetData(StackSerializer &stk_ser)
 {
 	char out = -1;
 	uint64_t id = 0;
@@ -404,7 +422,7 @@ void VTFar2lExtensios::OnInterract_ClipboardSetData(StackSerializer &stk_ser)
 	_clipboard_chunks.clear();
 }
 
-void VTFar2lExtensios::OnInterract_ClipboardGetData(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_ClipboardGetData(StackSerializer &stk_ser)
 {
 	if (_clipboard_opens > 0) {
 		bool allowed = IsAllowedClipboardRead();
@@ -443,7 +461,7 @@ void VTFar2lExtensios::OnInterract_ClipboardGetData(StackSerializer &stk_ser)
 	}
 }
 
-void VTFar2lExtensios::OnInterract_ClipboardGetDataID(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_ClipboardGetDataID(StackSerializer &stk_ser)
 {
 	uint64_t id = 0;
 	if (_clipboard_opens > 0 && IsAllowedClipboardRead()) {
@@ -459,7 +477,7 @@ void VTFar2lExtensios::OnInterract_ClipboardGetDataID(StackSerializer &stk_ser)
 	stk_ser.PushNum(id);
 }
 
-void VTFar2lExtensios::OnInterract_ClipboardRegisterFormat(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_ClipboardRegisterFormat(StackSerializer &stk_ser)
 {
 	const std::wstring &fmt_name = StrMB2Wide(stk_ser.PopStr());
 	UINT out = WINPORT(RegisterClipboardFormat)(fmt_name.c_str());
@@ -469,27 +487,27 @@ void VTFar2lExtensios::OnInterract_ClipboardRegisterFormat(StackSerializer &stk_
 
 ///////////
 
-void VTFar2lExtensios::OnInterract_Clipboard(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_Clipboard(StackSerializer &stk_ser)
 {
 	const char code = stk_ser.PopChar();
 
 	switch (code) {
-		case FARTTY_INTERRACT_CLIP_OPEN: OnInterract_ClipboardOpen(stk_ser); break;
-		case FARTTY_INTERRACT_CLIP_CLOSE: OnInterract_ClipboardClose(stk_ser); break;
-		case FARTTY_INTERRACT_CLIP_EMPTY: OnInterract_ClipboardEmpty(stk_ser); break;
-		case FARTTY_INTERRACT_CLIP_ISAVAIL: OnInterract_ClipboardIsFormatAvailable(stk_ser); break;
-		case FARTTY_INTERRACT_CLIP_SETDATACHUNK: OnInterract_ClipboardSetDataChunk(stk_ser); break;
-		case FARTTY_INTERRACT_CLIP_SETDATA: OnInterract_ClipboardSetData(stk_ser); break;
-		case FARTTY_INTERRACT_CLIP_GETDATA: OnInterract_ClipboardGetData(stk_ser); break;
-		case FARTTY_INTERRACT_CLIP_GETDATAID: OnInterract_ClipboardGetDataID(stk_ser); break;
-		case FARTTY_INTERRACT_CLIP_REGISTER_FORMAT: OnInterract_ClipboardRegisterFormat(stk_ser); break;
+		case FARTTY_INTERACT_CLIP_OPEN: OnInteract_ClipboardOpen(stk_ser); break;
+		case FARTTY_INTERACT_CLIP_CLOSE: OnInteract_ClipboardClose(stk_ser); break;
+		case FARTTY_INTERACT_CLIP_EMPTY: OnInteract_ClipboardEmpty(stk_ser); break;
+		case FARTTY_INTERACT_CLIP_ISAVAIL: OnInteract_ClipboardIsFormatAvailable(stk_ser); break;
+		case FARTTY_INTERACT_CLIP_SETDATACHUNK: OnInteract_ClipboardSetDataChunk(stk_ser); break;
+		case FARTTY_INTERACT_CLIP_SETDATA: OnInteract_ClipboardSetData(stk_ser); break;
+		case FARTTY_INTERACT_CLIP_GETDATA: OnInteract_ClipboardGetData(stk_ser); break;
+		case FARTTY_INTERACT_CLIP_GETDATAID: OnInteract_ClipboardGetDataID(stk_ser); break;
+		case FARTTY_INTERACT_CLIP_REGISTER_FORMAT: OnInteract_ClipboardRegisterFormat(stk_ser); break;
 
 		default:
-			fprintf(stderr, "OnInterract_Clipboard: wrong code %c\n", code);
+			fprintf(stderr, "OnInteract_Clipboard: wrong code %c\n", code);
 	}
 }
 
-void VTFar2lExtensios::OnInterract_ChangeCursorHeigth(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_ChangeCursorHeight(StackSerializer &stk_ser)
 {
 	UCHAR h;
 	stk_ser.PopNum(h);
@@ -500,7 +518,7 @@ void VTFar2lExtensios::OnInterract_ChangeCursorHeigth(StackSerializer &stk_ser)
 	}
 }
 
-void VTFar2lExtensios::OnInterract_GetLargestWindowSize(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_GetLargestWindowSize(StackSerializer &stk_ser)
 {
 	COORD sz = WINPORT(GetLargestConsoleWindowSize)(NULL);
 	stk_ser.Clear();
@@ -508,7 +526,7 @@ void VTFar2lExtensios::OnInterract_GetLargestWindowSize(StackSerializer &stk_ser
 	stk_ser.PushNum(sz.Y);
 }
 
-void VTFar2lExtensios::OnInterract_DisplayNotification(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_DisplayNotification(StackSerializer &stk_ser)
 {
 	const std::string &title = stk_ser.PopStr();
 	const std::string &text = stk_ser.PopStr();
@@ -516,7 +534,7 @@ void VTFar2lExtensios::OnInterract_DisplayNotification(StackSerializer &stk_ser)
 	stk_ser.Clear();
 }
 
-void VTFar2lExtensios::OnInterract_SetFKeyTitles(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_SetFKeyTitles(StackSerializer &stk_ser)
 {
 	std::string titles_str[CONSOLE_FKEYS_COUNT];
 	const char *titles[ARRAYSIZE(titles_str)] {};
@@ -530,69 +548,72 @@ void VTFar2lExtensios::OnInterract_SetFKeyTitles(StackSerializer &stk_ser)
 		}
 	}
 
-	bool out = WINPORT(SetConsoleFKeyTitles)(titles) != FALSE;
+	bool out = WINPORT(SetConsoleFKeyTitles)(_vt_shell->ConsoleHandle(), titles) != FALSE;
 
 	stk_ser.Clear();
 	stk_ser.PushNum(out);
 }
 
-void VTFar2lExtensios::OnInterract_GetColorPalette(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract_GetColorPalette(StackSerializer &stk_ser)
 {
 	stk_ser.Clear();
-	const uint8_t bits = WINPORT(GetConsoleColorPalette)();
+	const uint8_t bits = WINPORT(GetConsoleColorPalette)(_vt_shell->ConsoleHandle());
 	const uint8_t reserved = 0;
 	stk_ser.PushNum(reserved);
 	stk_ser.PushNum(bits);
 }
 
-void VTFar2lExtensios::OnInterract(StackSerializer &stk_ser)
+void VTFar2lExtensios::OnInteract(StackSerializer &stk_ser)
 {
 	const char code = stk_ser.PopChar();
 
 	switch (code) {
-		case FARTTY_INTERRACT_CHOOSE_EXTRA_FEATURES:
+		case FARTTY_INTERACT_CHOOSE_EXTRA_FEATURES:
 			_xfeatures = 0;
 			stk_ser.PopNum(_xfeatures);
 			stk_ser.Clear();
+			if (_xfeatures & FARTTY_FEAT_TERMINAL_SIZE) {
+				OnTerminalResized();
+			}
 		break;
 
-		case FARTTY_INTERRACT_CONSOLE_ADHOC_QEDIT:
+		case FARTTY_INTERACT_CONSOLE_ADHOC_QEDIT:
 			WINPORT(BeginConsoleAdhocQuickEdit)();
 			stk_ser.Clear();
 		break;
 
-		case FARTTY_INTERRACT_WINDOW_MAXIMIZE:
+		case FARTTY_INTERACT_WINDOW_MAXIMIZE:
 			WINPORT(SetConsoleWindowMaximized)(TRUE);
 			stk_ser.Clear();
 		break;
 
-		case FARTTY_INTERRACT_WINDOW_RESTORE:
+		case FARTTY_INTERACT_WINDOW_RESTORE:
 			WINPORT(SetConsoleWindowMaximized)(FALSE);
 			stk_ser.Clear();
 		break;
 
-		case FARTTY_INTERRACT_CLIPBOARD:
-			OnInterract_Clipboard(stk_ser);
+		case FARTTY_INTERACT_CLIPBOARD:
+			OnInteract_Clipboard(stk_ser);
 		break;
 
-		case FARTTY_INTERRACT_SET_CURSOR_HEIGHT:
-			OnInterract_ChangeCursorHeigth(stk_ser);
+		case FARTTY_INTERACT_SET_CURSOR_HEIGHT:
+			OnInteract_ChangeCursorHeight(stk_ser);
 		break;
 
-		case FARTTY_INTERRACT_GET_WINDOW_MAXSIZE:
-			OnInterract_GetLargestWindowSize(stk_ser);
+		case FARTTY_INTERACT_GET_WINDOW_MAXSIZE:
+			OnInteract_GetLargestWindowSize(stk_ser);
 		break;
 
-		case FARTTY_INTERRACT_DESKTOP_NOTIFICATION:
-			OnInterract_DisplayNotification(stk_ser);
+		case FARTTY_INTERACT_DESKTOP_NOTIFICATION:
+			OnInteract_DisplayNotification(stk_ser);
 		break;
 
-		case FARTTY_INTERRACT_SET_FKEY_TITLES:
-			OnInterract_SetFKeyTitles(stk_ser);
+		case FARTTY_INTERACT_SET_FKEY_TITLES:
+			OnInteract_SetFKeyTitles(stk_ser);
 		break;
 
-		case FARTTY_INTERRACT_GET_COLOR_PALETTE:
-			OnInterract_GetColorPalette(stk_ser);
+		case FARTTY_INTERACT_GET_COLOR_PALETTE:
+			OnInteract_GetColorPalette(stk_ser);
 		break;
 
 		default:
