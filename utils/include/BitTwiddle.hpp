@@ -63,6 +63,12 @@ template <class V>
 
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 # define ENDIAN_IS_BIG
+#elif defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN
+# define ENDIAN_IS_BIG
+#elif defined(__BIG_ENDIAN__) || defined(__ARMEB__) || defined(__THUMBEB__) || \
+		defined(__AARCH64EB__) || defined(_MIPSEB) || defined(__MIPSEB) || \
+		defined(__MIPSEB__)
+# define ENDIAN_IS_BIG
 #endif
 
 #ifdef ENDIAN_IS_BIG
@@ -78,7 +84,7 @@ template <class V>
 
 #else // #ifdef ENDIAN_IS_BIG
 # define LITEND(V)   (V)
-# define LITEND_INPLACE(V) 
+# define LITEND_INPLACE(V)
 # define BIGEND(V)   (RevBytes(V))
 # define BIGEND_INPLACE(V)   V = BIGEND(V)
 # define LITEND_INPLACE_FILETIME(FT)

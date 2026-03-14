@@ -1010,6 +1010,11 @@ int WINAPI FarInputBoxA(const char *Title, const char *Prompt, const char *Histo
 	return ret;
 }
 
+int WINAPI FarColorDialogA(const int flags, uint64_t *c)
+{
+	return (int)GetColorDialog(c, true);
+}
+
 int WINAPI FarMessageFnA(INT_PTR PluginNumber, DWORD Flags, const char *HelpTopic, const char *const *Items,
 		int ItemsNumber, int ButtonsNumber)
 {
@@ -1860,6 +1865,9 @@ LONG_PTR WINAPI DlgProcA(HANDLE hDlg, int Msg, int Param1, LONG_PTR Param2)
 		case DN_KEY:
 			Msg = oldfar::DN_KEY;
 			Param2 = KeyToOldKey((DWORD)Param2);
+			break;
+		case DN_DROPDOWNOPENED:
+			Msg = oldfar::DN_DROPDOWNOPENED;
 			break;
 	}
 
@@ -4232,5 +4240,13 @@ int WINAPI GetFileOwnerA(const char *Computer, const char *Name, char *Owner)
 	FARString strComputer(Computer), strName(Name), strOwner;
 	int Ret = GetFileOwner(strComputer, strName, strOwner);
 	strOwner.GetCharString(Owner, oldfar::NM);
+	return Ret;
+}
+
+int WINAPI GetFileGroupA(const char *Computer, const char *Name, char *Group)
+{
+	FARString strComputer(Computer), strName(Name), strGroup;
+	int Ret = GetFileGroup(strComputer, strName, strGroup);
+	strGroup.GetCharString(Group, oldfar::NM);
 	return Ret;
 }

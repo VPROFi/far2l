@@ -37,6 +37,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "constitle.hpp"
 #include "cmdline.hpp"
 #include "filepanels.hpp"
+#include "fileattr.hpp"
 #include "panel.hpp"
 #include "vmenu.hpp"
 #include "dialog.hpp"
@@ -66,8 +67,13 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <list>
 #include <vector>
 #include <KeyFileHelper.h>
+#include <fileowner.hpp>
+#include "pick_color.hpp"
+
+#include "datetime.hpp"
 
 #include "farversion.h"
+
 
 static const char *szCache_Preload = "Preload";
 static const char *szCache_Preopen = "Preopen";
@@ -252,16 +258,16 @@ bool PluginW::SaveToCache()
 	kfh.SetString(GetSettingsName(), "ID", m_strModuleID.c_str());
 
 	for (int i = 0; i < Info.DiskMenuStringsNumber; i++) {
-		kfh.SetString(GetSettingsName(), StrPrintf(FmtDiskMenuStringD, i).c_str(), Info.DiskMenuStrings[i]);
+		kfh.SetString(GetSettingsName(), StrPrintf(FmtDiskMenuStringD, i), Info.DiskMenuStrings[i]);
 	}
 
 	for (int i = 0; i < Info.PluginMenuStringsNumber; i++) {
-		kfh.SetString(GetSettingsName(), StrPrintf(FmtPluginMenuStringD, i).c_str(),
+		kfh.SetString(GetSettingsName(), StrPrintf(FmtPluginMenuStringD, i),
 				Info.PluginMenuStrings[i]);
 	}
 
 	for (int i = 0; i < Info.PluginConfigStringsNumber; i++) {
-		kfh.SetString(GetSettingsName(), StrPrintf(FmtPluginConfigStringD, i).c_str(),
+		kfh.SetString(GetSettingsName(), StrPrintf(FmtPluginConfigStringD, i),
 				Info.PluginConfigStrings[i]);
 	}
 
@@ -389,11 +395,77 @@ static size_t WINAPI farStrCellsCount(const wchar_t *Str, size_t CharsCount)
 	return StrCellsCount(Str, CharsCount);
 }
 
-static size_t WINAPI
-farStrSizeOfCells(const wchar_t *Str, size_t CharsCount, size_t *CellsCount, BOOL RoundUp)
+static size_t WINAPI farStrSizeOfCells(const wchar_t *Str, size_t CharsCount, size_t *CellsCount, BOOL RoundUp)
 {
 	return StrSizeOfCells(Str, CharsCount, *CellsCount, RoundUp != FALSE);
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static int WINAPI farESetFileMode(const wchar_t *Name, DWORD Mode, int SkipMode)
+{
+	return ESetFileMode(Name, Mode, SkipMode);
+}
+
+static int WINAPI farESetFileTime(const wchar_t *Name, FILETIME *AccessTime, FILETIME *ModifyTime, DWORD FileAttr, int SkipMode)
+{
+	return ESetFileTime(Name, AccessTime, ModifyTime, FileAttr, SkipMode);
+}
+
+static int WINAPI farESetFileGroup(const wchar_t *Name, const wchar_t *Group, int SkipMode)
+{
+	return ESetFileGroup(Name, Group, SkipMode);
+}
+
+static int WINAPI farESetFileOwner(const wchar_t *Name, const wchar_t *Owner, int SkipMode)
+{
+	return ESetFileOwner(Name, Owner, SkipMode);
+}
+
+static const char *WINAPI farOwnerNameByID(uid_t id)
+{
+	return OwnerNameByID(id);
+}
+
+static const char *WINAPI farGroupNameByID(uid_t id)
+{
+	return GroupNameByID(id);
+}
+
+static BOOL farGetFindData(const wchar_t *lpwszFileName, WIN32_FIND_DATAW *FindDataW)
+{
+	FAR_FIND_DATA_EX FindDataEx;
+
+	if (!apiGetFindDataForExactPathName(lpwszFileName, FindDataEx))
+		return FALSE;
+
+	if (FindDataEx.strFileName.GetLength() >= MAX_NAME)
+		return FALSE;
+
+	FindDataW->ftCreationTime = FindDataEx.ftCreationTime;
+	FindDataW->ftLastAccessTime = FindDataEx.ftLastAccessTime;
+	FindDataW->ftLastWriteTime = FindDataEx.ftLastWriteTime;
+
+	FindDataW->UnixOwner = FindDataEx.UnixOwner;
+	FindDataW->UnixGroup = FindDataEx.UnixGroup;
+	FindDataW->UnixDevice = FindDataEx.UnixDevice;
+	FindDataW->UnixNode = FindDataEx.UnixNode;
+	FindDataW->dwFileAttributes = FindDataEx.dwFileAttributes;
+	FindDataW->nFileSize = FindDataEx.nFileSize;
+	FindDataW->dwUnixMode = FindDataEx.dwUnixMode;
+	FindDataW->nHardLinks = FindDataEx.nHardLinks;
+	FindDataW->nBlockSize = FindDataEx.nBlockSize;
+
+	memcpy(FindDataW->cFileName, FindDataEx.strFileName.GetBuffer(), sizeof(WCHAR) * (FindDataEx.strFileName.GetLength() + 1) );
+
+	return TRUE;
+}
+
+static int WINAPI farGetDateFormat() {return GetDateFormat();}
+static wchar_t WINAPI farGetDateSeparator() {return GetDateSeparator();}
+static wchar_t WINAPI farGetTimeSeparator() {return GetTimeSeparator();}
+static wchar_t WINAPI farGetDecimalSeparator() {return GetDecimalSeparator();}
+
 
 void CreatePluginStartupInfo(Plugin *pPlugin, PluginStartupInfo *PSI, FarStandardFunctions *FSF)
 {
@@ -443,7 +515,7 @@ void CreatePluginStartupInfo(Plugin *pPlugin, PluginStartupInfo *PSI, FarStandar
 		StandardFunctions.FarNameToKey = KeyNameToKeyW;
 		StandardFunctions.FarInputRecordToKey = InputRecordToKey;
 		StandardFunctions.XLat = Xlat;
-		StandardFunctions.GetFileOwner = farGetFileOwner;
+
 		StandardFunctions.GetNumberOfLinks = GetNumberOfLinks;
 		StandardFunctions.FarRecursiveSearch = FarRecursiveSearch;
 		StandardFunctions.MkTemp = FarMkTemp;
@@ -460,6 +532,22 @@ void CreatePluginStartupInfo(Plugin *pPlugin, PluginStartupInfo *PSI, FarStandar
 		StandardFunctions.BackgroundTask = farBackgroundTaskW;
 		StandardFunctions.StrCellsCount = farStrCellsCount;
 		StandardFunctions.StrSizeOfCells = farStrSizeOfCells;
+		StandardFunctions.VTEnumBackground = farAPIVTEnumBackground;
+		StandardFunctions.VTLogExport = farAPIVTLogExportW;
+
+		StandardFunctions.GetFileOwner = farGetFileOwner;
+		StandardFunctions.GetFileGroup = farGetFileGroup;
+		StandardFunctions.ESetFileMode = farESetFileMode;
+		StandardFunctions.ESetFileTime = farESetFileTime;
+		StandardFunctions.ESetFileGroup = farESetFileGroup;
+		StandardFunctions.ESetFileOwner = farESetFileOwner;
+		StandardFunctions.OwnerNameByID = farOwnerNameByID;
+		StandardFunctions.GroupNameByID = farGroupNameByID;
+		StandardFunctions.GetFindData = farGetFindData;
+		StandardFunctions.GetDateFormat = farGetDateFormat;
+		StandardFunctions.GetDateSeparator = farGetDateSeparator;
+		StandardFunctions.GetTimeSeparator = farGetTimeSeparator;
+		StandardFunctions.GetDecimalSeparator = farGetDecimalSeparator;
 	}
 
 	if (!StartupInfo.StructSize) {
@@ -482,12 +570,14 @@ void CreatePluginStartupInfo(Plugin *pPlugin, PluginStartupInfo *PSI, FarStandar
 		StartupInfo.ViewerControl = FarViewerControl;
 		StartupInfo.ShowHelp = FarShowHelp;
 		StartupInfo.AdvControl = FarAdvControl;
+		StartupInfo.AdvControlAsync = FarAdvControlAsync;
 		StartupInfo.DialogInit = FarDialogInit;
 		StartupInfo.DialogRun = FarDialogRun;
 		StartupInfo.DialogFree = FarDialogFree;
 		StartupInfo.SendDlgMessage = FarSendDlgMessage;
 		StartupInfo.DefDlgProc = FarDefDlgProc;
 		StartupInfo.InputBox = FarInputBox;
+		StartupInfo.ColorDialog = FarColorDialog;
 		StartupInfo.PluginsControl = farPluginsControl;
 		StartupInfo.FileFilterControl = farFileFilterControl;
 		StartupInfo.RegExpControl = farRegExpControl;
@@ -511,16 +601,17 @@ struct ExecuteStruct
 	{
 		INT_PTR nResult;
 		HANDLE hResult;
-		BOOL bResult;
 	};
+
+	BOOL bResult;
 
 	union
 	{
 		INT_PTR nDefaultResult;
 		HANDLE hDefaultResult;
-		BOOL bDefaultResult;
 	};
 
+	BOOL bDefaultResult;
 	bool bUnloaded;
 };
 
@@ -537,6 +628,7 @@ struct ExecuteStruct
 		es.bUnloaded = false;                                                                                  \
 		es.nResult = 0;                                                                                        \
 		es.nResult = (INT_PTR)function;                                                                        \
+		es.bResult = (BOOL)es.nResult;                                                                         \
 	}
 
 bool PluginW::SetStartupInfo(bool &bUnloaded)
@@ -619,7 +711,8 @@ bool PluginW::IsPanelPlugin()
 			|| pClosePluginW;
 }
 
-int PluginW::Analyse(const AnalyseData *pData)
+//int PluginW::Analyse(const AnalyseInfo *pData)
+HANDLE PluginW::Analyse(const AnalyseInfo *pData)
 {
 	if (Load() && pAnalyseW) {
 		ExecuteStruct es;
@@ -627,10 +720,11 @@ int PluginW::Analyse(const AnalyseData *pData)
 		es.bDefaultResult = FALSE;
 		es.bResult = FALSE;
 		EXECUTE_FUNCTION_EX(pAnalyseW(pData), es);
-		return es.bResult;
+//		return es.bResult;
+		return es.hResult;
 	}
 
-	return FALSE;
+	return INVALID_HANDLE_VALUE;
 }
 
 HANDLE PluginW::OpenPlugin(int OpenFrom, INT_PTR Item)

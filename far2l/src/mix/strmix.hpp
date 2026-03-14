@@ -51,6 +51,7 @@ enum
 	COLUMN_MINSIZEINDEX   = 0x00200000,
 	COLUMN_SHOWBYTESINDEX = 0x00100000,
 	COLUMN_FULLOWNER      = 0x00080000,
+	COLUMN_AUTO           = 0x00040000,
 
 	// MINSIZEINDEX может быть только 0, 1, 2 или 3 (K,M,G,T)
 	COLUMN_MINSIZEINDEX_MASK = 0x00000003,
@@ -71,7 +72,7 @@ void UnquoteExternal(FARString &strStr);
 wchar_t *WINAPI RemoveLeadingSpaces(wchar_t *Str);
 FARString &WINAPI RemoveLeadingSpaces(FARString &strStr);
 wchar_t *WINAPI RemoveTrailingSpaces(wchar_t *Str);
-FARString &WINAPI RemoveTrailingSpaces(FARString &strStr);
+FARString &WINAPI RemoveTrailingSpaces(FARString &strStr, bool keep_escaping=false);
 wchar_t *WINAPI RemoveExternalSpaces(wchar_t *Str);
 FARString &WINAPI RemoveExternalSpaces(FARString &strStr);
 FARString &WINAPI RemoveUnprintableCharacters(FARString &strStr);

@@ -5,7 +5,7 @@ m4_include(`farversion.m4')m4_dnl
 
 @Contents
 $^#File and archive manager#
-`$^#'FULLVERSIONNOBRACES`#'
+`$^#%FAR_BUILD% %FAR_PLATFORM%#'
 `$^#©1996-2000 Eugene Roshal, ©2000-2016 FAR Group,' ©COPYRIGHTYEARS `FAR People'#
    ~FAR2L features - Getting Started~@Far2lGettingStarted@
 
@@ -21,6 +21,7 @@ $^#File and archive manager#
    ~Plugins support~@Plugins@
    ~Overview of plugin capabilities~@PluginsReviews@
    ~Terminal~@Terminal@
+   ~External terminal: configuration~@ExternalTerminal@
 
    ~Panels:~@Panels@  ~File panel~@FilePanel@
             ~Tree panel~@TreePanel@
@@ -44,11 +45,12 @@ $^#File and archive manager#
 
    ~File associations~@FileAssoc@
    ~Operating system commands~@OSCommands@
+   ~Special commands~@SpecCmd@
+   ~Ways to run programs~@WaysToRunPrograms@
    ~Bookmarks~@Bookmarks@
    ~Filters menu~@FiltersMenu@
    ~Screens switching~@ScrSwitch@
    ~Task list~@TaskList@
-   ~Hotplug devices list~@HotPlugList@
 
    ~System settings~@SystemSettings@
    ~Panel settings~@PanelSettings@
@@ -124,17 +126,22 @@ transforms your commands into the corresponding external archiver calls.
 
 @Far2lGettingStarted
 $ # FAR2L features - Getting Started#
-    FAR2L is Linux port FAR Manager v2 (see ~About FAR2L~@About@)
+    FAR2L is a Linux port of FAR Manager v2 (see ~About FAR2L~@About@)
     FAR2L official site: ~https://github.com/elfmz/far2l~@https://github.com/elfmz/far2l@
 
+    Having troubles? Search for solution in community wiki:
+~https://github.com/akruphi/far2l/wiki~@https://github.com/akruphi/far2l/wiki@
+(currently in Russian only).
 
  #UI Backends#
-    FAR2L has 3 base UI Backends (see details in ~UI backends~@UIBackends@):
-        - #GUI#: uses wxWidgets, works in graphics mode, ideal UX, requires a lot of X11 dependencies;
-        - #TTY|Xi#: works in terminal mode, requires a dependency on pair X11 libraries
-(to access clipboard and to get state of all keyboard modifiers), almost perfect UX;
-        - #TTY|X#: works in terminal mode, uses X11 to access clipboard, all keyboard works via terminal;
-        - #TTY#: plain terminal mode, no X11 dependencies, UX with some restrictions
+    FAR2L has base UI Backends (see details in ~UI backends~@UIBackends@):
+        - #GUI#: uses wxWidgets, works in graphics mode, #ideal UX#
+(might add dependencies to your desktop environment, e.g. wxWidgets toolkit and related packages);
+        - #TTY|Xi#: works in terminal mode, requires a couple of X11 libraries
+(to access clipboard and to get state of all keyboard modifiers), #almost perfect UX#;
+        - #TTY|X#: works in terminal mode, uses X11 to access clipboard and to get state of keyboard modifiers.
+It provides better UX than plain TTY, but still some key combinations may be inaccessible;
+        - #TTY#: plain terminal mode, no X11 dependencies, #UX with some restrictions#
 (works fully when running in the terminal emulators,
 which provide clipboard access and has their advanced keyboard-protocols, see list below).
     You can see FAR2L version and currently used backend in window title or by ~pseudo-command~@SpecCmd@ #far:about#.
@@ -143,18 +150,29 @@ when it starts, far2l switches to #TTY|X# without i.
     Far2l running and selecting backend:
         - if you have FAR2L-GUI installed, then when you run FAR2L it will try to use GUI mode;
         - to force run in terminal mode TTY|Xi use in command line: #far2l --tty#;
-        - to force run in terminal mode TTY|X use in command line: #far2l --tty --nodetect=xi --ee#;
-        - to force run in plain mode TTY use in command line: #far2l --tty --nodetect=x --ee#;
+        - to force run in terminal mode TTY|X use in command line: #far2l --tty --nodetect=xi#;
+        - to force run in plain mode TTY use in command line: #far2l --tty --nodetect=x#;
         - run FAR2L-GUI from command line in background without blocking terminal: #far2l --notty &#
     (see details in ~Command line switches~@CmdLine@ or #far2l --help#).
 
 
  #Keyboard shortcuts are exclusively captured by desktop environment and terminals#
-    Some keyboard shortcuts #Alt-F1#, #Alt-F2#, #Alt-F7#, #Ctrl-arrows# etc. are exclusively used in desktop environment GNOME, KDE, Xfce, macOS etc. To work with these keys in FAR2L, you need to release keyboard shortcuts in the environment settings.
+    Some keyboard shortcuts #Alt-F1#, #Alt-F2#, #Alt-F7#, #Ctrl-arrows# etc.
+are exclusively used in desktop environment GNOME, KDE, Xfce, macOS etc.
+To work with these keys in FAR2L, you need to release keyboard shortcuts in the environment settings
+(under GNOME you can use #dconf-editor org.gnome.desktop.wm.keybindings# to view and change global keybindings).
     Terminal emulators also do not often pass some of the key combinations to applications, or do not distinguish pressing various combinations of modifiers (#Ctrl#, #Alt# etc.).
     Also you can use FAR2L lifehacks:
         - ~Sticky controls~@MiscCmd@ via #Ctrl-Space# or #Alt-Space#;
-        - Exclusively handle hotkeys option in the ~Input settings~@InputSettings@ (only in GUI backend mode).
+        - Exclusively handle hotkeys option in the ~Input settings~@InputSettings@ (only in GUI backend mode under X11).
+
+
+ #Special key mapping in macOS#
+    - The #Option# key maps to #Alt#;
+    - far2l-GUI only: both keys #Command# act as Left #Ctrl#, both keys #Ctrl# act as Right #Ctrl#;
+    - #Clear# key on the numeric keypad toggles NumLock mode;
+    - numpad #0# functions as #Insert# when NumLock is off;
+    - on external Windows keyboards, macOS swaps #Alt# and #Win# keys to match Mac layout logic (assuming the key closest to the spacebar on the left is #Command#, like on a MacBook keyboard).
 
 
  #macOS workaround# if far2l in macOS regularly asks permission to folders
@@ -166,14 +184,14 @@ when it starts, far2l switches to #TTY|X# without i.
 
 
  #Pasting feature in terminals#
-    The keyboard shortcut of the #terminal pasting# (terminal simulates keyboard input) and #FAR2L pasting# (FAR2L itself does paste) are different. Note that pasting keyboard shortcut in different terminals is various (and may overlap the standard FAR2L's pasting #Shift-Ins# or #Ctrl-V#).
+    The keyboard shortcut of the #terminal pasting# (terminal simulates keyboard input via bracketed paste) and #FAR2L pasting# (FAR2L itself does paste) are different. Note that pasting keyboard shortcut in different terminals is various (and may overlap the standard FAR2L's pasting #Shift-Ins# or #Ctrl-V#).
     In FAR2L without TTY|X (and without enabled OSC 52 both in FAR2L and in terminal) FAR2L's pasting uses its #internal clipboard# (because FAR2L does not access the system clipboard), terminal pasting uses #system clipboard#.
 
 
  #FAR2L command line shell & bash#
     FAR2L internal command line work fully only via #bash#.
     You can change shell by Menu(#F9#)->Options->~Command line settings~@CmdlineSettings@->#Use shell# but command line will work with significant restrictions/bugs especially with native shell commands.
-    If you system has not #bash# recommend installing it and using only bash in FAR2L.
+    If you system does not have #bash# recommend installing it and using only bash in FAR2L.
     If your system's default shell is not bash, you may be convenient to set your environments variables, aliases etc. in bash startup files also.
 
 
@@ -188,8 +206,8 @@ when it starts, far2l switches to #TTY|X# without i.
 You can run #far2l --tty --nodetect# to force not use others clipboard options.
     - Menu(#F9#)->Options->Interface settings->#Override base colors palette#
 (shown in the dialog only if FAR2L run in TTY/TTY|X mode) allows far2l to adjust terminal palette colors.
-If your terminal doesn't support OSC4 sequence you may turn it off to avoid show artifacts sequence in terminal after exit from far2l.
-
+If your terminal doesn't support OSC4 sequence you may turn it off to avoid ascii artifacts in terminal
+after far2l exiting.
 
  #Full-functional work with the system clipboard in a plain terminal version FAR2L TTY#
     To interact with the system clipboard you must not forget to enable #OSC 52# in both the #FAR2L settings#
@@ -199,56 +217,64 @@ and in #terminal settings# option #OSC 52 must be allowed#
 
 
  #Terminals and ssh-clients supporting extended FAR2L keyboard shortcuts for plain terminal version FAR2L TTY#
-    - Internal terminal in FAR2L-GUI (Linux, macOS, *BSD),
+    - Internal terminal in #FAR2L-GUI# (Linux/BSD, macOS),
 see ~UI backends~@UIBackends@ and in help of #NetRocks plugin# section #Command line and remote FAR2L#
 (~TTY|F backend~@UIBackends@: keys and clipboard by FAR2L TTY extensions support)
-
-    - kovidgoyal's kitty (Linux, macOS, *BSD): ~https://github.com/kovidgoyal/kitty~@https://github.com/kovidgoyal/kitty@ & ~https://sw.kovidgoyal.net/kitty~@https://sw.kovidgoyal.net/kitty@
+    - kovidgoyal's #kitty# (Linux/BSD, macOS): ~https://github.com/kovidgoyal/kitty~@https://github.com/kovidgoyal/kitty@ & ~https://sw.kovidgoyal.net/kitty~@https://sw.kovidgoyal.net/kitty@
 (~TTY|k backend~@UIBackends@: keys by kovidgoyal's kitty keyboard protocol;
-for clipboard need turn on OSC 52)
-
-    - Wez's Terminal Emulator (Linux, FreeBSD, Windows): ~https://github.com/wez/wezterm~@https://github.com/wez/wezterm@ & ~https://wezfurlong.org/wezterm~@https://wezfurlong.org/wezterm@
-(~TTY|k backend~@UIBackends@: keys in Linux, FreeBSD by kovidgoyal's kitty keyboard protocol;
+for clipboard need turn on OSC 52 in kitty and in far2l)
+    - #Alacritty# (Linux/BSD, macOS, Windows): ~https://github.com/alacritty/alacritty~@https://github.com/alacritty/alacritty@ & ~https://alacritty.org/~@https://alacritty.org/@
+(~TTY|k backend~@UIBackends@: keys by kovidgoyal's kitty keyboard protocol;
+for clipboard need turn on OSC 52 only in far2l)
+[in Windows in system must be conpty.dll]
+    - #Rio Terminal# (Linux/BSD, macOS, Windows): ~https://github.com/raphamorim/rio~@https://github.com/raphamorim/rio@ & ~https://raphamorim.io/rio/~@https://raphamorim.io/rio/@
+(~TTY|k backend~@UIBackends@: keys by kovidgoyal's kitty keyboard protocol;
+for clipboard need turn on OSC 52 only in far2l)
+    - #Ghostty# (Linux, macOS): ~https://github.com/ghostty-org/ghostty~@https://github.com/ghostty-org/ghostty@ & ~https://ghostty.org/~@https://ghostty.org/@
+(~TTY|k backend~@UIBackends@: keys by kovidgoyal's kitty keyboard protocol;
+for clipboard need turn on OSC 52 only in far2l)
+    - #Wez's Terminal Emulator# (Linux/BSD, Windows): ~https://github.com/wez/wezterm~@https://github.com/wez/wezterm@ & ~https://wezfurlong.org/wezterm~@https://wezfurlong.org/wezterm@
+(~TTY|k backend~@UIBackends@: keys in Linux/BSD by kovidgoyal's kitty keyboard protocol;
 ~TTY|w backend~@UIBackends@: keys in Windows by win32-input-mode which enable by default;
 for clipboard need turn on OSC 52)
 [in macOS & in Windows in wezterm the kitty keyboard protocol support not working]
-
-    - iTerm2 (macOS): ~https://gitlab.com/gnachman/iterm2~@https://gitlab.com/gnachman/iterm2@ & ~https://iterm2.com~@https://iterm2.com@
+    - #iTerm2# (macOS): ~https://gitlab.com/gnachman/iterm2~@https://gitlab.com/gnachman/iterm2@ & ~https://iterm2.com~@https://iterm2.com@
 (~TTY|a backend~@UIBackends@: keys by iTerm2 "raw keyboard" protocol;
 for clipboard need turn on OSC 52)
-
-    - Windows Terminal
+    - #Windows Terminal# [in win11 is installed by default, in win10 it needs to be installed]
 (~TTY|w backend~@UIBackends@: keys by win32-input-mode; for clipboard need turn on OSC 52; has mouse bug: ~https://github.com/microsoft/terminal/issues/15083~@https://github.com/microsoft/terminal/issues/15083@)
 
-    - putty4far2l (Windows ssh-client): ~https://github.com/ivanshatsky/putty4far2l/releases~@https://github.com/ivanshatsky/putty4far2l/releases@ & ~https://github.com/unxed/putty4far2l~@https://github.com/unxed/putty4far2l@
+  Original PuTTY does not correctly send some keyboard shortcuts. Please use putty forks with special far2l TTY extensions support (fluent keypresses, clipboard sharing etc):
+    - #putty4far2l# (Windows ssh-client): ~https://github.com/ivanshatsky/putty4far2l/releases~@https://github.com/ivanshatsky/putty4far2l/releases@ & ~https://github.com/unxed/putty4far2l~@https://github.com/unxed/putty4far2l@
 (~TTY|F backend~@UIBackends@: keys and clipboard by FAR2L TTY extensions support)
-
-    - cyd01's KiTTY (Windows ssh-client): ~https://github.com/cyd01/KiTTY~@https://github.com/cyd01/KiTTY@ & ~https://www.9bis.net/kitty~@https://www.9bis.net/kitty@
+    - cyd01's #KiTTY# (Windows ssh-client): ~https://github.com/cyd01/KiTTY~@https://github.com/cyd01/KiTTY@ & ~https://www.9bis.net/kitty~@https://www.9bis.net/kitty@
 (~TTY|F backend~@UIBackends@: keys and clipboard by FAR2L TTY extensions support)
-
-    - putty-nd (Windows ssh-client): ~https://sourceforge.net/projects/putty-nd~@https://sourceforge.net/projects/putty-nd@ & ~https://github.com/noodle1983/putty-nd~@https://github.com/noodle1983/putty-nd@
+    - #putty-nd# (Windows ssh-client): ~https://sourceforge.net/projects/putty-nd~@https://sourceforge.net/projects/putty-nd@ & ~https://github.com/noodle1983/putty-nd~@https://github.com/noodle1983/putty-nd@
 (~TTY|F backend~@UIBackends@: keys and clipboard by FAR2L TTY extensions support)
+    - #PuTTY 0.82+#: since 0.82 in vanilla PuTTY you can set keyboard settings #Xterm 216+# and #xterm-style bitmap# (see: ~https://github.com/elfmz/far2l/issues/2630~@https://github.com/elfmz/far2l/issues/2630@),
+but vanilla PuTTY can not transfer clipboard.
 
 
  #Location of FAR2L settings and history#
     - FAR2L by default works with settings located in #~~/.config/far2l/# or in #$XDG_CONFIG_HOME/far2l/#
-    - command line switch #-u# (or #$FARSETTINGS# environment variable) allows to specify arbitrary settings location:
+    - command line switch #-u# (or #$FARSETTINGS# ~environment variable~@FAREnv@) allows to specify arbitrary settings location:
         #-u <path>#: in #path/.config/# (if path or $FARSETTINGS is full path)
         #-u <identity>#: in #~~/.config/far2l/custom/identity/# or in #$XDG_CONFIG_HOME/far2l/custom/identity/#
     - some settings files (may be missing):
         - #settings/config.ini# - general config
         - #settings/colors.ini# - ~files highlighting and sort groups~@Highlight@
+        - #settings/farcolors.ini# - interface colors (configurable via F9->~Options~@OptMenu@->Colors)
         - #settings/key_macros.ini# - ~keyboard macro commands~@KeyMacro@
-        - #settings/user_menu.ini# - main ~user menu~@UserMenu@ (the format is different from local user FarMenu.ini)
-        - #settings/associations.ini# - ~file associations~@FileAssoc@
-        - #settings/bookmarks.ini# - ~bookmarks~@Bookmarks@ to fast access to frequently used directories by RCtrl-0...9 or Ctrl-Alt-0...9
+        - #settings/user_menu.ini# - main ~user menu~@UserMenu@ (configurable via F9->Commands->Edit user menu; the format is different from local user FarMenu.ini)
+        - #settings/associations.ini# - ~file associations~@FileAssoc@ (configurable via F9->Commands->File associations)
+        - #settings/bookmarks.ini# - ~bookmarks~@Bookmarks@ to fast access to frequently used directories by RCtrl-0...9 or Ctrl-Alt-0...9 (configurable via F9->Commands->Folder bookmarks)
         - #favorites# - additional items in ~location menu~@DriveDlg@ by Alt-F1/F2
         - #cp# - forced setting of OEM and ANSI encodings (see ~ANSI and OEM codepage setting~@CodePagesSet@)
         - #plugins# - plugins
             - #plugins/state.ini# - plugins cache
             - #plugins/NetRocks/sites.cfg# - NetRocks sites
             - #plugins/multiarc/custom.ini# - customization by extend command line archivers
-        - #clipboard# - bash-script (must be chmod +x) for workaround to access to clipboard if other FAR2L tools do not work
+        - #clipboard# - bash-script (must be chmod +x) for workaround to access to clipboard if other built-in FAR2L tools do not work
 
 
     See also:
@@ -283,11 +309,18 @@ to avoid attempt to use GUI mode.
   #--notty#
   Don't fallback to TTY backend if ~GUI backend~@UIBackends@ was failed to initialize.
 
-  #--nodetect#
+  #--nodetect#=[x|xi][f][w][a][k]
   By default far2l tries to detect if it runs inside of terminal of another far2l and in such case
 it uses TTY backend with far2l extensions. In case of far2l extensions unavailable far2l checks for
 availability of X11 session and uses it to improve user experience if compiled with TTYX/TTYXI option.
-This switch disables all this functionality, forcing plain terminal mode for TTY backend.
+  Specifying parameters allows you to disable only individual ~extensions~@UIBackends@:
+   - f  - disabling detection and use of far2l terminal extensions;
+   - x  - disabling detection and use of X11 (clipboard and keys);
+   - xi - disabling detection and use of keys via X11;
+   - a  - disabling detection and use of apple iTerm2 mode;
+   - k  - disabling detection and use of kovidgoyal's kitty mode;
+   - w  - disabling detection and use of win32 mode.
+  This switch without parameters disables all this functionality, forcing plain terminal mode for TTY backend.
 
   #--mortal#
   This argument applies only to far2l that runs with TTY backend. By default when terminal closed
@@ -299,9 +332,6 @@ runs inside.
   #--primary-selection#
   Use PRIMARY selection instead of CLIPBOARD X11 selection. This argument applies only to far2l
 that runs with WX backend.
-
-  Backend-specific options also can be set via the #FAR2L_ARGS# environment variable
-(for example: #export FAR2L_ARGS="--tty --nodetect --ee"# and then simple #far2l# to force start only TTY backend).
 
 
  #FAR2L command-line options:#
@@ -320,25 +350,13 @@ executing FAR2L under telnet.
 and line position.
   For example: #far2l -e70:2 readme#.
 
-  #-p[<path>]# [Unsupported in far2l]
-  Search for "main" plugins in the folder given in <path>.
-  Several search paths may be given separated by ';'.
-
   #-co#
   Forces FAR2L to load plugins from cache only. Plugins are loaded faster this way,
 but new or changed plugins are not discovered. Should be used ONLY with a stable
 list of plugins. After adding, replacing or deleting a plugin FAR2L should be loaded
 without this switch. If the cache is empty, no plugins will be loaded.
-
-  Remarks about switches -p and -co:
-
-  - ^<wrap>if -p is empty, then FAR2L will be loaded with no plugins;
-  - ^<wrap>if -p is given with a <path>, then only plugins from <path> will be loaded;
-  - ^<wrap>if only the -co switch is given and plugins cache is not empty, then plugins
-will be loaded from cache;
-  - ^<wrap>-co is ignored, if -p is given;
-  - ^<wrap>if -p and -co are not given, then plugins will be loaded from the main folder,
-and from the path given at the "~Path for personal plugins~@PluginsManagerSettings@" parameter.
+  If -co is not given, then plugins will be loaded from the main folder, and from the path
+given at the "~Path for personal plugins~@PluginsManagerSettings@" parameter.
 
   #-m#
   FAR2L will not load macros from config file when started.
@@ -347,7 +365,7 @@ and from the path given at the "~Path for personal plugins~@PluginsManagerSettin
   Macros with the "Run after FAR2L start" option set will not be run when FAR2L is started.
 
   #-u <identity># or #-u <path>#
-  Allows to specify separate settings identity or FS location.
+  Allows to specify separate settings identity or FS location (it override #FARSETTINGS# ~environment variable~@FAREnv@ value).
   #-u <path>#: in path/.config/ (if path is full path)
   #-u <identity>#: in ~~/.config/far2l/custom/identity/ or in $XDG_CONFIG_HOME/far2l/custom/identity/
 
@@ -356,13 +374,6 @@ and from the path given at the "~Path for personal plugins~@PluginsManagerSettin
   #-v - <command line>#
   Executes given command line and opens viewer with its output.
   For example, #far2l -v - ls# will view ls command output.
-
-  #-w# [Unsupported in far2l]
-  Stretch to console window instead of console buffer.
-
-  #-x# [Unsupported in far2l]
-  Disable exception handling. This option has been designed for plugin developers,
-and it is not recommended to specify it during normal operation.
 
   #-set:<parameter>=<value>#
   Override the configuration parameter, see ~far:config~@FarConfig@ for details.
@@ -376,8 +387,12 @@ active panel, the second path - to the passive one:
   - ^<wrap>if a file is specified, FAR2L will change to the folder where it
 resides and place the cursor on the file, if it exists;
   - ^<wrap>when prefixes specified (simultaneous use with common paths allowed)
-passive command executes first (passive panel activates temporary). Односимвольные префиксы игнорируются.
+passive command executes first (passive panel activates temporary). Single-character prefixes are ignored.
   Example: far ma:Far20.7z "macro:post MsgBox(\\"FAR2L\\",\\"Successfully started\\")"
+
+
+  All options (except #-h# and #-u#) also can be set via the #FAR2L_ARGS# environment variable
+(for example: #export FAR2L_ARGS="--tty --nodetect"# and then simple #far2l# to force start only TTY backend).
 
 
 @KeyRef
@@ -395,7 +410,6 @@ $ #Keyboard reference#
 
  ~Miscellaneous~@MiscCmd@
 
- ~Special commands~@SpecCmd@
 
 @MenuCmd
 $ #Menu control commands#
@@ -415,6 +429,8 @@ $ #Menu control commands#
 $ #Panel control commands  #
     #Common panel commands#
 
+  Vertical or Horizontal panel layout                         #Ctrl-,#
+
   Change active panel                                            #Tab#
   Swap panels                                                 #Ctrl-U#
   Re-read panel                                               #Ctrl-R#
@@ -433,7 +449,7 @@ $ #Panel control commands  #
     (when the command line is empty)
   Restore default panels width                          #Ctrl-Numpad5#
   Restore default panels height                     #Ctrl-Alt-Numpad5#
-  Show/Hide functional key bar at the bottom line.            #Ctrl-B#
+  Show/Hide functional key bar at the bottom line             #Ctrl-B#
 
     #File panel commands#
 
@@ -470,7 +486,14 @@ $ #Panel control commands  #
 
   Toggle hidden and system files displaying                   #Ctrl-H#
   Toggle long/short file names view mode                      #Ctrl-N#
-  Toggle hide/show/align file name ~highlighting markers~@Highlight@   #Ctrl-Alt-M#
+
+  Customize Size column:
+   change style of names for dirs and symlinks            #Ctrl-Alt-D#
+   toggle for symlinks "Symlink" or target file size      #Ctrl-Alt-L#
+
+  File name ~highlighting markers~@Highlight@:
+   toggle hide/show/align in file list on panels          #Ctrl-Alt-M#
+   toggle hide/show in status line                        #Ctrl-Alt-N#
 
   Hide/Show left panel                                       #Ctrl-F1#
   Hide/Show right panel                                      #Ctrl-F2#
@@ -503,8 +526,8 @@ $ #Panel control commands  #
    (ignore command line state)
   Copy full names of selected files to the clipboard   #Alt-Shift-Ins#
    (ignore command line state)
-  Copy network (UNC) names of selected files to the     #Ctrl-Alt-Ins#
-   clipboard (ignore command line state)
+  Copy full names of selected files to the clipboard    #Ctrl-Alt-Ins#
+   (ignore command line state) (*3)
 
   See also the list of ~macro keys~@KeyMacroShellList@, available in the panels.
 
@@ -519,10 +542,9 @@ and descriptions, work only with non-numpad #Left# and #Right# keys. This is due
 the fact that when #Alt# is pressed, numpad cursor keys are used to enter characters
 via their decimal codes.
 
-  3. ^<wrap>The key combination #Ctrl-Alt-Ins# puts the following text into the clipboard:
-       ^<wrap>* for network drives - the network (UNC) name of the file object;
-       ^<wrap>* for local drives - the local name of the file taking into account
-~symbolic links~@HardSymLink@.
+  3. ^<wrap>The key combination #Ctrl-Alt-Ins# adheres to the following rules:
+     ^<wrap>If "Classic hotkey link resolving" option in ~Panel settings~@PanelSettings@
+dialog is enabled, the full name is used with ~symbolic links~@HardSymLink@ expanded.
 
   4. ^<wrap>If #Ctrl-Ins#, #Alt-Shift-Ins# or #Ctrl-Alt-Ins# is pressed when the cursor
 is on the file "#..#", the name of the current folder is copied.
@@ -543,9 +565,9 @@ active panel. The following sort modes are available:
   Sort files by description                                 #Ctrl-F10#
   Sort files by file owner                                  #Ctrl-F11#
 
-  Клавиша #+# устанавливает прямую сортировку.
-  Клавиша #-# устанавливает обратную сортировку.
-  Клавиша #*# меняет сортировку на обратную.
+  Pressing #+# sets direct sort order.
+  Pressing #-# sets reverse sort order.
+  Pressing #*# toggles the sort order.
 
   Use group sorting                                        #Shift-F11#
   Show selected files first                                #Shift-F12#
@@ -554,12 +576,10 @@ active panel. The following sort modes are available:
 
   #Remarks on the numeric sort#
 
-    The sorting algorithm which is used by the operating system to sort file
-lists was changed in Windows XP. A numeric, not a string sort is used. FAR2L also
-allows to use a numeric sort as in Windows XP - leading zeros in a file name
-are ignored. The following example shows how the files are sorted:
+    FAR2L supports two sorting modes. The following example shows
+how the files are sorted:
 
-    Numeric sort (Windows XP)    String sort (Windows 2000)
+    Numeric sort                 String sort
 
     Ie4_01                       Ie4_01
     Ie4_128                      Ie4_128
@@ -627,20 +647,21 @@ $ #Command line commands#
      file mask entered in the fast find box.
 
   Insert current file name from the passive panel   #Ctrl-Shift-Enter#
+
   Insert full file name from the active panel                 #Ctrl-F#
   Insert full file name from the passive panel                #Ctrl-;#
-  Insert network (UNC) file name from the active panel    #Ctrl-Alt-F#
-  Insert network (UNC) file name from the passive panel   #Ctrl-Alt-;#
-
   Insert path from the left panel                             #Ctrl-[#
   Insert path from the right panel                            #Ctrl-]#
-  Insert network (UNC) path from the left panel           #Ctrl-Alt-[#
-  Insert network (UNC) path from the right panel          #Ctrl-Alt-]#
-
   Insert path from the active panel                     #Ctrl-Shift-[#
   Insert path from the passive panel                    #Ctrl-Shift-]#
-  Insert network (UNC) path from the active panel        #Alt-Shift-[#
-  Insert network (UNC) path from the passive panel       #Alt-Shift-]#
+
+  (*5)
+  Insert full file name from the active panel             #Ctrl-Alt-F#
+  Insert full file name from the passive panel            #Ctrl-Alt-;#
+  Insert path from the left panel                         #Ctrl-Alt-[#
+  Insert path from the right panel                        #Ctrl-Alt-]#
+  Insert path from the active panel                      #Alt-Shift-[#
+  Insert path from the passive panel                     #Alt-Shift-]#
 
   Notes:
 
@@ -657,12 +678,14 @@ controls in dialogs and internal editor.
   4. ^<wrap>#Alt-Shift-Left#, #Alt-Shift-Right#, #Alt-Shift-Home# and #Alt-Shift-End# select
 the block in the command line also when the panels are on.
 
-  5. ^<wrap>For local drives, the commands to insert the network (UNC) name of a file object
-insert the local name of the file with ~symbolic links~@HardSymLink@ expanded.
+  5. ^<wrap>The marked key combinations adhere to the following rules:
+     ^<wrap>If "Classic hotkey link resolving" option in ~Panel settings~@PanelSettings@
+dialog is enabled, the full name is used with ~symbolic links~@HardSymLink@ expanded.
 
   6. ^<wrap>About hotkeys and other tricks of built-in terminal emulator: ~read here~@Terminal@
 
     See also ~Special commands~@SpecCmd@.
+             ~Ways to run programs~@WaysToRunPrograms@.
 
 @FuncCmd
 $ #Panel control commands - service commands#
@@ -689,12 +712,12 @@ editor, depending upon the file type and ~external editor settings~@EditorSettin
   ~Copy~@CopyFiles@                                                            #F5#
 
     Copies files and folders. If you wish to create the destination folder
-before copying, terminate the name with a backslash.
+before copying, terminate the name with a slash.
 
   ~Rename or move~@CopyFiles@                                                  #F6#
 
     Moves or renames files and folders. If you wish to create the destination
-folder before moving, terminate the name with a backslash.
+folder before moving, terminate the name with a slash.
 
   ~Create new folder~@MakeFolder@                                               #F7#
 
@@ -732,7 +755,16 @@ internal editor.
     the selected files will be carried out using that plugin,
     otherwise by using internal facilities.
 
-  Create ~file links~@HardSymLink@ (NTFS only)                               #Alt-F6#
+    Note: Print manager for Linux is unavailable. Instead, Editor has embedded 
+    support for printing text files even with text highlighting with white background
+    and recomputed colors from the Colorer theme (RGB -> LAB -> RGB conversion).
+
+    GUI version uses wxWidgets capabilities to make print preview, manage printer settings,
+    and printy itself; termibnal version expects the #lp# command works and your CUPS is
+    configured correctly. MacOS version uses native capabilities based upon WebKit 
+    printing automation.
+
+  Create ~file links~@HardSymLink@                                           #Alt-F6#
 
     Using hard file links you may have several different file names referring
 to the same data.
@@ -744,8 +776,7 @@ to the same data.
   Toggles the size of the FAR2L console window                #Alt-F9#
 
     In the windowed mode, toggles between the current size and the maximum
-possible size of a console window. In the fullscreen mode, #Alt-F9# toggles the
-screen height between 25 and 50 lines. See TechInfo##38 for details.
+possible size of a console window.
 
   Configure ~plugin~@Plugins@ modules.                             #Alt-Shift-F9#
 
@@ -789,7 +820,9 @@ shows the selected directory. To show a root directory in the GUI file browser, 
 should press #Shift-Enter# on the required path in the ~location menu~@DriveDlg@.
 Pressing #Shift-Enter# on "#..#" opens the current directory in the GUI file browser.
 
-  Change to the root folder                                           #Ctrl-\\#
+  Change to the root folder (/)                                       #Ctrl-\\#
+
+  Change to the mount point of the current folder's file system   #Ctrl-Alt-\\#
 
   Change to the home directory (~~)                                    #Ctrl-`#
 
@@ -833,7 +866,7 @@ $ #Deleting and wiping files and folders#
     #Shift-F8#   - delete only the file under cursor
                  (with no regard to selection in the panel);
 
-    #Shift-Del#  - delete selected objects, skipping the Recycle Bin;
+    #Shift-Del#  - delete selected objects, skipping the Trash;
 
     #Alt-Del#    - Wipe out files and folders.
 
@@ -841,26 +874,13 @@ $ #Deleting and wiping files and folders#
     Remarks:
 
     1. ^<wrap>In accordance to ~System Settings~@SystemSettings@ the hotkeys #F8# and
-#Shift-F8# do or do not move the deleted files to the Recycle Bin. The
-#Shift-Del# hotkey always deletes, skipping the Recycle Bin.
+#Shift-F8# do or do not move the deleted files to the Trash. The
+#Shift-Del# hotkey always deletes, skipping the Trash.
 
     2. ^<wrap>Before file deletion its data is overwritten with zeroes (you can
-specify other overwrite characters - see TechInfo##29), after which the file
+specify other overwrite characters, System.WipeSymbol in ~far:config~@FarConfig@), after which the file
 is truncated to a zero sized file, renamed to a temporary name and then
 deleted.
-
-
-@ErrCannotExecute
-$ #Error: Cannot execute#
-    The program you tries to execute is not recognized as an internal or
-external command, operable program or batch file.
-
-    When executing the contents of the command line, FAR2L searches for the
-executable in the following sequence (sequentially substituting all extensions
-listed in the environment variable %PATHEXT%):
-
-  1. The current directory
-  2. The directories that are listed in the PATH environment variable
 
 
 @MiscCmd
@@ -932,7 +952,7 @@ virtually pressed until next non-control key press:
     Another way to achieve working hotkeys may be changing settings
 of desktop environment or external applications (in order to release needed hotkey combinations)
 or using exclusive handle hotkeys option
-in the ~Input Settings~@InputSettings@ (only in GUI backend mode).
+in the ~Input Settings~@InputSettings@ (only in GUI backend mode under X11).
 
 @SpecCmd
 $ #Special commands#
@@ -940,9 +960,9 @@ $ #Special commands#
 in the far2l ~internal command line~@CmdLineCmd@ and
 in ~associated commands~@FileAssoc@, ~user menu~@UserMenu@ and the ~apply command~@ApplyCmd@.
 
-   #far:about#  - Far information, list and information about plugins.
+   #far:about#  - Far information, list and information about plugins (also via the ~Commands menu~@CmdMenu@).
 
-   #far:config# - ~Configuration editor~@FarConfig@.
+   #far:config# - ~Configuration editor~@FarConfig@ (also via the ~Commands menu~@CmdMenu@).
 
    #view:file# or #far:view:file# or #far:view file# - open in viewer existing #file#.
    #view:<command# or #far:view:<command# or #far:view < command# - open in viewer result of #command# output in temporary file.
@@ -950,6 +970,14 @@ in ~associated commands~@FileAssoc@, ~user menu~@UserMenu@ and the ~apply comman
    #edit:file# or #far:edit:file# or #far:edit file# - open in editor #file# (if #file# not exist will be open empty).
    #edit:# or #far:edit:# or #far:edit# - open in editor new empty file.
    #edit:<command# or #far:edit:<command# or #far:edit < command# - open in editor result of #command# output in temporary file.
+   #edit:[line,col]file# or #edit:[line]file# or #edit:[,col]file#
+or #far:edit:[line,col]file# - open in editor #file# and immediately go to the specified position.
+To do this, immediately after the colon, in square brackets,
+you must specify the desired row and column (any component is optional; by default, one will be equal to 1).
+Square brackets are required!
+   If the filename contains square brackets (for example: "[1].txt"), then for
+the correct opening of the file in the editor you must provide at least one space
+before the filename: #edit: [1].txt#.
 
    #exit#       - reset shell in build-in ~Terminal~@Terminal@.
 
@@ -957,9 +985,12 @@ in ~associated commands~@FileAssoc@, ~user menu~@UserMenu@ and the ~apply comman
 
  Plugins can define their own command prefixes, see for each available plugin list of Command Prefixes via #far:about#.
 
+ See also ~Operating system commands~@OSCommands@
+
 @FarConfig
 $ #Configuration editor#
- Starts with the ~pseudo-command~@SpecCmd@ #far:config# in the far2l internal command line.
+ Starts with the #Configuration editor# command in the ~Commands menu~@CmdMenu@
+or ~pseudo-command~@SpecCmd@ #far:config# in the far2l internal command line.
 
  Allows to view and edit all Far Manager’s options.
 
@@ -1022,7 +1053,7 @@ editor and viewer (see TechInfo##33).
 
 @Plugins
 $ #Plugins support#
-    External DLL modules (plugins) may be used to implement new FAR2L commands
+    External modules (plugins) may be used to implement new FAR2L commands
 and emulate file systems. For example, archives support, FTP client, temporary
 panel and network browser are plugins that emulate file systems.
 
@@ -1059,11 +1090,6 @@ available help on the modules by pressing
     If the plugin has no help file, then context-dependent help will not pop
 out.
 
-    If the active panel shows a plugin emulated file system, the command "CD"
-in the command line may be used to change the plugin file system folder. Unlike
-"CD", "CHDIR" command always treats the specified parameter as a real folder
-name regardless a file panel type.
-
     Use #Alt-Shift-F9# to ~configure plugins~@PluginsConfig@.
 
 
@@ -1098,10 +1124,8 @@ in filenames and in editor).
     #Shift-F9#    - settings of the selected plugin.
     #Alt-Shift-F9# - open ~"Plugins configuration"~@PluginsConfig@ menu.
 
-    See also:
- 
-    ~Plugins support~@Plugins@.
-    Common ~menu~@MenuCmd@ keyboard commands.
+    See also: ~Plugins support~@Plugins@.
+              Common ~menu~@MenuCmd@ keyboard commands.
 
 @PluginsConfig
 $ #Plugins configuration#
@@ -1203,18 +1227,9 @@ $ #Panels: tree panel#
 Within tree mode you may change to a folder quickly and perform folder
 operations.
 
-    !! Windows legacy (not relevant on Linux/*BSD/Mac) !!
-
-    FAR stores folder tree information in the file named #Tree.Far# at root
-folder of each drive. For read-only drives this information is stored in the
-hidden folder Tree.Cache within the folder containing FAR.EXE. The Tree.FAR
-file doesn't exist by default. It will be automatically created after the first
-use of the #Tree Panel# or the #Find Folder# command. If that file exists, FAR
-updates it with the changes to the tree structure it is aware of. If such
-changes were made outside of FAR and Tree.far is no longer current, it can be
-refreshed by pressing #Ctrl-R#.
-
-    !! Windows legacy end !!
+    FAR stores folder tree information in its folder in the system's temporary directory
+(/tmp, /var/tmp, or $TMPDIR).  If necessary, the tree state can be updated using
+#Ctrl-R# key combination.
 
     You can find a folder quickly with the help of #speed search# action. Hold
 the Alt key and type the folder name until you point to the right folder.
@@ -1223,48 +1238,55 @@ Pressing #Ctrl-Enter# keys simultaneously will select the next match.
     #Gray +# and #Gray -# keys move up and down the tree to the next branch
 on the same level.
 
+    Key #Left# collapses the currently focused branch. If the branch is already collapsed, moves one level up.
+    Key #Right# expands a tree branch that was collapsed during construction
+according to the configured exclusion mask or scanning depth.
+
+    Keys #Left Ctrl+1#...#Left Ctrl+0# expand all branches up to the selected depth level (1...10).
+
     See also the list of ~macro keys~@KeyMacroTreeList@, available in the folder tree panel.
 
 @InfoPanel
 $ #Panels: info panel#
     The information panel contains the following data:
 
- - ^<wrap>#network# names of the computer and the current user (see ~Info panel settings~@InfoPanelSettings@);
+ 1. ^<wrap>#Network# names of the computer and the current user.
 
- - ^<wrap>type of the file system of the #current disk#, network
-name, total and free space, disk volume label and serial number;
+ 2. ^<wrap>Information about the current directory and its file system.
+    ^<wrap>File system type, total space and space available to unprivileged user, filesystem id, the current
+directory and its resolved path (including symbolic links), mount point of the current directory's file system,
+maximum allowed filename length for the given FS type, and flags with which the filesystem is mounted.
 
- - ^<wrap>#memory# load percentage (100% means all of available memory is used),
-size of the installed physical memory if possible, total and free size of the physical
-memory (available for OS), virtual memory and paging file;
+ 3. ^<wrap>Memory information.
+    ^<wrap>Memory load percentage (100% means all of available memory is used), total usable main memory size,
+available memory size, amount of shared memory, memory used by buffers, total swap space size,
+swap space still available.
 
- - #folder description# file
+ 4. ^<wrap>EditorConfig information (if available).
+    ^<wrap>Paths to the #.editorconfig# files, including the root and nearest, as well as values of #indent_style#,
+#indent_size#, #end_of_line#, #charset#, #trim_trailing_whitespace#, #insert_final_newline# properties for #[*]# mask.
+    ^<wrap>Learn more about EditorConfig on its official website: ~https://editorconfig.org/~@https://editorconfig.org/@.
 
-    You may view the contents of the folder description file in full screen by
+ 5. ^<wrap>Git brief status (if available).
+    ^<wrap>When in a local Git repository/working tree, the Git root directory path and the output of #git status -s -b# will be shown.
+
+ 6. ^<wrap>#Folder description# file
+
+    ^<wrap>You may view the contents of the folder description file in full screen by
 pressing the #F3# key or clicking the #left mouse button#. To edit or create the
 description file, press #F4# or click the #right mouse button#. You can also use
 many of the ~viewer commands~@Viewer@ (search, code page selection and so on)
 for viewing the folder description file.
 
-    A list of possible folder description file names may be defined using
+    ^<wrap>A list of possible folder description file names may be defined using
 "Folder description files" command in the ~Options menu~@OptMenu@.
 
-    !! Windows legacy (not relevant on Linux/*BSD/Mac) !!
+ 7. ^<wrap>Plugin panel.
+    ^<wrap>Contains information about the opposite plugin panel, if provided by the plugin.
 
-    FAR will attempt to determine the type of each of the CD drives available
-in the system. Known types are as follows: CD-ROM, CD-RW, CD-RW/DVD, DVD-ROM,
-DVD-RW and DVD-RAM. This function is available only for users either with
-administrative privileges or all local users, when it's stated explicitly in
-the Local Policy Editor (to do this, run a #secpol.msc# from the command
-prompt, and set the '#Local Policies/Security Options/Devices: Restrict#
-#CD-ROM access to locally logged-on user only#' setting to '#Enabled#')
+ See also: ^<wrap>~Info panel settings~@InfoPanelSettings@
+           ^<wrap>~Macro keys list~@KeyMacroInfoList@ available in the info panel.
 
-    For virtual devices (SUBST-disk) the parameters of the primary disk are
-shown.
-
-    !! Windows legacy end !!
-
-    See also the list of ~macro keys~@KeyMacroInfoList@, available in the info panel.
 
 @QViewPanel
 $ #Panels: quick view panel#
@@ -1279,7 +1301,6 @@ as well.
     For folders, the quick view panel displays total size, total compressed
 size, number of files and subfolders in the folder, current disk cluster size,
 real files size, including files slack (sum of the unused cluster parts).
-Compressed size has meaning for NTFS drives only.
 
     When viewing reparse points, the path to the source folder is also displayed.
 
@@ -1366,13 +1387,11 @@ respectively. These menus include the following items:
 
    #Sort modes#           Show available sort modes.
 
-   #Show long names#      Show long/short file names.
-
    #Panel On/Off#         Show/hide panel.
 
    #Re-read#              Re-read panel.
 
-   #Location#             Change current location.
+   #Location#             Show ~Location menu~@DriveDlg@ dialog to change the panel's current location or open a new plugin panel.
 
     See also: common ~menu~@MenuCmd@ keyboard commands.
 
@@ -1385,6 +1404,8 @@ $ #Menus: files menu#
    #Copy#               ~Copy~@CopyFiles@ files and folders.
 
    #Rename or move#     ~Rename or move~@CopyFiles@ files and folders.
+
+   #Link#               Create ~file links~@HardSymLink@.
 
    #Make folder#        ~Create~@MakeFolder@ new folder.
 
@@ -1430,7 +1451,7 @@ $ #Menus: commands menu#
    #History#              Display the previous commands.
                         See ~History~@History@ for more info.
 
-   #Video mode#           Switch between 25 and 50 lines on the screen.
+   #Video mode#           Switch between full-screen and windowed modes.
 
    #Find folder#          Search for a folder in the folders
                         tree. See ~Find folder~@FindFolder@ for more info.
@@ -1472,8 +1493,6 @@ $ #Menus: commands menu#
 
    #Task list#            Shows ~active tasks list~@TaskList@.
 
-   #Hotplug devices list# Show ~hotplug devices list~@HotPlugList@.
-
     See also: common ~menu~@MenuCmd@ keyboard commands.
 
 @OptMenu
@@ -1491,6 +1510,8 @@ $ #Menus: options menu#
    #Menu settings#         Shows ~menu settings~@VMenuSettings@ dialog.
 
    #Command line settings# Shows ~command line settings~@CmdlineSettings@ dialog.
+
+   #Groups of file masks#  Shows ~Groups of file masks~@MaskGroupsSettings@ menu.
 
    #Languages#             Select main and help language.
                          Use "Save setup" to save selected languages.
@@ -1520,6 +1541,9 @@ $ #Menus: options menu#
 
    #Files highlighting#    Change ~files highlighting and sort groups~@Highlight@
    #and sort groups#       settings.
+
+   #Notifications#         Shows ~Notifications Settings~@NotificationsSettings@ dialog.
+   #Settings#
 
    #Save setup#            Save current configuration, colors and
                          screen layout.
@@ -1585,10 +1609,31 @@ like NetRocks SFTP/SCP protocols to execute remote commands.
   Hard kill everything in shell                             #Ctrl+Alt+C#
     (not recommended, it may cause corruption or lost of unsaved data)
 
-  Put far2l instance to background                          #Ctrl+Alt+Z#
-    (only if far2l works in TTY backend)
+  Send currently running command to the background          #Ctrl+Alt+Z#
 
-  See also: ~pseudo-commands~@SpecCmd@
+  See also: ~Pseudo-commands~@SpecCmd@
+            ~Operating system commands~@OSCommands@
+
+@ExternalTerminal
+$ #External terminal: configuration#
+   To launch console applications in an external terminal emulator, far2l uses the helper script ~$FARHOME~@FAREnv@#/open.sh#.
+
+   #Default terminal selection logic.#
+
+   1. Checks for #/etc/alternatives/x-terminal-emulator#. On distributions using the alternatives mechanism (Debian, Ubuntu, Red Hat), this symbolic link points to the system's preferred terminal emulator. If valid, it is used.
+   2. Otherwise, #xterm# is used.
+
+
+   #Overriding the terminal.#
+
+   There are two main ways to change the emulator.
+   1. System-wide (for distributions with the alternatives mechanism).
+      You can change the global default terminal by running the command:
+         #sudo update-alternatives --config x-terminal-emulator#
+   2. User-defined (specific to far2l).
+      Create the executable file #~~/.config/far2l/open.sh#. Inside, define the #$EXEC_TERM# variable with your preferred terminal, for example:
+         #EXEC_TERM=kitty#
+      Note: The selected terminal must support the #-e# option.
 
 @UIBackends
 $ #UI Backends#
@@ -1661,8 +1706,7 @@ $ #Plugins manager#
   #Path for personal plugins#
   Enter here the full path, where FAR2L will search for "personal" plugins in addition to the "main"
 plugins. Several search paths may be given separated by ';'. Environment variables can be entered in the
-search path. Personal plugins will not be loaded, if the switches -p or -co are given in the
-~command line~@CmdLine@.
+search path. Personal plugins will not be loaded, if the switch -co is given in the ~command line~@CmdLine@.
 
 @ChoosePluginMenu
 $ #Plugin selection menu#
@@ -1674,9 +1718,9 @@ $ #Make folder#
     This function allows you to create folders. You can use environment
 variables in the input line, which are expanded to their values before creating
 the folder. Also you can create multiple nested subfolders at the same time:
-simply separate the folder names with the backslash character. For example:
+simply separate the folder names with the slash character. For example:
 
-    #%USERDOMAIN%\\%USERNAME%\\Folder3#
+    #$HOSTNAME/$USER/Folder3#
 
     If the option "#Process multiple names#" is enabled, it is possible to
 create multiple folders in a single operation. In this case, folder names
@@ -1706,15 +1750,16 @@ containing hexadecimal sequence of the specified bytes. In this case #Case#
 #sensitive#, #Whole words#, #Using code page# and #Search for folders#
 options are disabled and their values doesn't affect the search process.
 
-    Выпадающий список #Используя кодовую страницу# позволяет выбрать конкретную
-кодовую страницу, применяемую для поиска текста. Если в выпадающем списке выбрать
-пункт #Все кодовые страницы#, то FAR2L будет использовать для поиска все стандартные
-и #Любимые# кодовые страницы (список #Любимых# кодовых страниц можно настроить в
-меню выбора кодовой страницы редактора или программы просмотра). Если перечень
-кодовых страниц, поиск по которым производится при выборе пункта #Все кодовые#
-#страницы#, является для вас избыточным, то вы можете, при помощи клавиш #Ins# и
-#Space#, выбрать из списка стандартных и #Любимых# кодовых страниц только те кодовые
-страницы, по которым вам необходимо осуществлять поиск.
+    The drop-down list #Using code page# allows you to select a specific
+code page to be used for text search. If you select the item
+#Standard code pages# in the drop-down list, FAR2L will use all
+standard and #Favorite# code pages for the search (the list of #Favorite#
+code pages can be configured in the code page selection menu of the
+editor or viewer).
+    If the list of code pages searched when selecting
+#Standard code pages# is excessive for your needs, you can use the
+#Ins# and #Space# keys to choose only those standard and #Favorite#
+code pages from the list that you want to include in the search.
 
     If the option #Search in archives# is set, FAR2L also performs the search in
 archives with known formats. However, using this option significantly decreases
@@ -1733,7 +1778,7 @@ folders.
 
     - in all local drives, except removable and network;
 
-    - in all folders specified in the %PATH% environment variable
+    - in all folders specified in the $PATH environment variable
       (not including subfolders).
 
     - in all folders from one of folders in Location menu,
@@ -1771,14 +1816,7 @@ file will be ignored even if the required sequence exists there.
     P - for petabytes;
     E - for exabytes.
 
-
-    #Обрабатывать альтернативные потоки данных# - помимо основного потока данных
-(представляющего собой непосредственно содержимое файла)
-производить поиск также в альтернативных именованных потоках, поддерживаемых некоторыми
-файловыми системами (например, #NTFS#).
-
-
-  - #Column types# - позволяет задавать формат вывода результатов поиска.
+  - #Column types# - allows you to set the output format for search results.
 Column types are encoded as one or several characters, delimited with commas.
 Allowed column types are:
 
@@ -1809,59 +1847,70 @@ Allowed column types are:
     Z          - file descriptions
 
     O[L]       - file owner
-                 where: L - show domain name;
+                 where: L - show domain name (Windows legacy);
+    U          - file group
 
     LN         - number of hard links
 
     F          - number of streams
 
+    Windows file attributes have the following indications:
+       #R#         - Read only
+       #S#         - System
+       #H#         - Hidden
+       #A#         - Archive
+       #L#         - Junction or symbolic link
+       #C# or #E#    - Compressed or Encrypted
+       #$#         - Sparse
+       #T#         - Temporary
+       #I#         - Not content indexed
+       #O#         - Offline
+       #V#         - Virtual
 
-    Атрибуты файла имеют следующие обозначения:
+    Unix file types:
+       #B#         - Broken
+       #d#         - Directory
+       #c#         - Character device
+       #b#         - Block device
+       #p#         - FIFO (named Pipe)
+       #s#         - Socket
+       #l#         - Symbolic Link
+       #-#         - Regular file
 
-       #R#         - Только для чтения
-       #S#         - Системный
-       #H#         - Скрытый
-       #A#         - Архивный
-       #L#         - Связь или символическая ссылка
-       #C# или #E#   - Сжатый или Зашифрованный
-       #$#         - Разрежённый (sparse)
-       #T#         - Временный
-       #I#         - Неиндексируемый по содержимому
-       #O#         - Автономный (offline)
-       #V#         - Виртуальный
+    Unix file permissions (in each triad for owner, group, other users):
+       #r# or #-#    - readable or not
+       #w# or #-#    - writable or not
+       #x# or #-#    - executable or not
+       #s# or #S#    - setuid/setgid also executable (#s#) or not executable (#S#)
+       #t# or #T#    - sticky also executable (#t#) or not executable (#T#)
 
-    Порядок отображения атрибутов - RSHALCTIOV. Символ атрибута
-"Разрежённый" применяется только для файлов и ставится вместо 'L'.
-Символ атрибута "Зашифрованный" ставится вместо 'C', т.к. файл/каталог не
-могут иметь одновременно оба атрибута ("Сжатый" и "Зашифрованный"). По
-умолчанию размер колонки атрибутов - 6 символов. Для отображения
-дополнительных атрибутов 'T', 'I', 'O' и 'V' необходимо явно указать
-размер колонки в 10 символов.
+    By default the size of the attributes column is 6 characters. To display
+the additional 'T', 'I', 'O' and 'V' attributes it is necessary to manually
+set the size of the column to 10 characters.
 
-    #Ширина колонок# - позволяет изменить ширину колонок результатов поиска.
-Если ширина равна 0, то используется значение по умолчанию.
+    #Column widths# - allows you to change the width of the search result columns.
+If the width is 0, the default value is used.
 
-    Для использования 12-часового формата времени надо увеличить
-на единицу стандартную ширину колонки времени файла или колонки
-времени и даты файла. После дальнейшего увеличения в этих колонках
-также будут показаны секунды и миллисекунды.
+    To use a 12-hour time format, you need to increase the standard width
+of the file time column or the file time and date column by one.
+Further increasing these columns will also show seconds and milliseconds.
 
-    Для показа года в 4-х символьном формате нужно увеличить ширину
-колонки даты на 2.
+    To show the year in a 4-digit format, you need to increase the width of
+the date column by 2.
 
-    В отличии от режимов панелей, результат поиска может содержать только
-одну колонку. Имя файла присутствует всегда - добавляется последней колонкой
-автоматически.
+    Unlike panel modes, the search result can contain only one of each
+column type. The file name is always present - it is automatically added as
+the last column.
 
-    При указании колонок, отвечающих за показ ссылок и потоков (G, LN, и F) время
-поиска увеличивается.
+    When specifying columns responsible for showing links and streams (G, LN, and F),
+the search time increases.
 
-    Чтобы в результатах поиска отображать только имена файловых объектов без
-дополнительных атрибутов, оставьте поле "Типы колонок" пустым.
+    To display only the names of file objects in the search results without
+additional attributes, leave the "Column types" field empty.
 
-    По умолчанию значения колонок равны:
-    "Типы колонок"   - D,S,A
-    "Ширина колонок" - 14,13,0
+    By default, the column values are:
+    "Column types"   - D,S,A
+    "Column widths"  - 14,13,0
 
 
 @FindFileResult
@@ -1909,6 +1958,12 @@ the folder.
 
     #Gray +# and #Gray -# should move up and down the tree to the next branch
 on the same level.
+
+    Key #Left# collapses the currently focused branch. If the branch is already collapsed, moves one level up.
+    Key #Right# expands a tree branch that was collapsed during construction
+according to the configured exclusion mask or scanning depth.
+
+    Keys #Ctrl+Number# expand all branches up to the selected depth level.
 
     #F5# allows to maximize the window, pressing #F5# again will restore the
 window to the previous size.
@@ -2008,12 +2063,6 @@ rule sets.
                          not have this attribute.
                    #[?]# - ignore this attribute.
 
-                   The #Compressed#, #Encrypted#, #Not indexed#,
-                   #Sparse#, #Temporary# and #Offline# attributes
-                   are used only on disks with the NTFS file system.
-                   #Virtual# attribute is not used in Windows
-                   2000/XP/2003.
-
 
     To quickly disable one or several conditions, uncheck the corresponding
 checkboxes. The #Reset# button will clear all of the filter conditions.
@@ -2085,6 +2134,8 @@ respective option in the ~system settings dialog~@SystemSettings@.
 
     Remove duplicates method can be chosen in the ~system settings dialog~@SystemSettings@.
 
+    Actions recorded in commands history are configured in the ~dialog AutoComplete & History~@AutoCompleteSettings@.
+
     For automatic exclusion from history, see ~dialog AutoComplete & History~@AutoCompleteSettings@.
 
     See also: common ~menu~@MenuCmd@ keyboard commands.
@@ -2138,7 +2189,7 @@ respective option in the ~system settings dialog~@SystemSettings@.
   1. ^<wrap>List refresh operation (#Ctrl-R#) can take a considerable amount
 of time if a file was located on a currently unavailable remote resource.
 
-  2. ^<wrap>Заблокированные пункты не будут удаляться при очистке или обновлении истории.
+  2. ^<wrap>Locked items will not be deleted when clearing or refreshing the history.
 
     See also: common ~menu~@MenuCmd@ keyboard commands.
               common ~history~@HistoryCmd@ keyboard commands.
@@ -2188,27 +2239,15 @@ respective option in the ~system settings dialog~@SystemSettings@.
   1. ^<wrap>List refresh operation (#Ctrl-R#) can take a considerable amount
 of time if a folder was located on a currently unavailable remote resource.
 
-  2. ^<wrap>Заблокированные пункты не будут удаляться при очистке или обновлении истории.
+  2. ^<wrap>Locked items will not be deleted when clearing or refreshing the history.
 
     See also: common ~menu~@MenuCmd@ keyboard commands.
               common ~history~@HistoryCmd@ keyboard commands.
 
 @TaskList
 $ #Task list#
-    The task list displays active tasks by using #htop# (if available).
-
-@HotPlugList
-$ #Hotplug devices list#
-    Hotplug devices list displays PC Card boards and other analogue devices
-which are installed and work in the computer.
-
-    To remove a device you need to select it in the list and press the #Del#
-key. After that OS will prepare the device for safe removal and a
-notification will be displayed when it is safe to remove the device.
-
-    #Ctrl-R# allows to refresh the list of connected devices.
-
-    See also: common ~menu~@MenuCmd@ keyboard commands.
+    The task list displays active tasks by using #htop# (if available)
+or #top# as a fallback.
 
 @CompFolders
 $ #Compare folders#
@@ -2263,7 +2302,7 @@ sequence to execute when this item will be selected.
     When you edit or create a submenu, you should enter the hot key and the
 item title only.
 
-    Local user menus are stored in the text files #FarMenu.Ini#.
+    Local user menus are stored in the text files #FarMenu.ini#.
     The main menu is stored in profile in #~~/.config/far2l/settings/user_menu.ini#
 (the format is different from FarMenu.ini).
 If you create a local menu in the FAR2L folder, it will be used instead of
@@ -2275,6 +2314,8 @@ the main menu saved in the profile.
       ~Special commands~@SpecCmd@.
       The list of ~macro keys~@KeyMacroUserMenuList@, available in the user menu.
       Common ~menu~@MenuCmd@ keyboard commands.
+      ~Ways to run programs~@WaysToRunPrograms@.
+
 
 @FileAssoc
 $ #File associations #
@@ -2306,7 +2347,8 @@ is on, FAR2L tries to use OS association to execute this file type;
 
     See also:
       ~Special commands~@SpecCmd@.
-      common ~menu~@MenuCmd@ keyboard commands.
+      Common ~menu~@MenuCmd@ keyboard commands.
+      ~Ways to run programs~@WaysToRunPrograms@.
 
 
 @FileAssocModify
@@ -2341,17 +2383,6 @@ program, start its command line with '#@@#' character.
     The following ~special symbols~@MetaSymbols@ may be used in the associated
 command.
 
-  Notes:
-
-  1. ^<wrap>If no execute command is associated with file and
-#Use OS registered types# option in ~System settings~@SystemSettings@
-is on, FAR2L tries to use OS association to execute this file type;
-
-  2. ^<wrap>Operating system ~commands~@OSCommands@ "IF EXIST" and "IF DEFINED"
-allow to configure "smarter" associations - if you have specified several
-associations for a file type, the menu will show only the associations
-for which the conditions are true.
-
 
 @MetaSymbols
 $ #Special symbols#
@@ -2364,8 +2395,8 @@ $ #Special symbols#
     #!.!#         File name with extension
     #!@@!# or #!$!#  Name of file with selected file names list
     #!&#          List of selected files
-    #!/#  or #!\\#   Current path
-    #!=/# or #!=\\#  Current path considering ~symbolic links~@HardSymLink@.
+    #!/#          Current path
+    #!=/#         Current path considering ~symbolic links~@HardSymLink@.
 
     #!?<title>?<init>!#
              This symbol is replaced by user input, when
@@ -2402,7 +2433,7 @@ $ #Special symbols#
              symbol forces it (and all the following characters)
              to refer to the active panel (see note 4).
              For example, !^!.! denotes a current file name on
-             the active panel, !##!\\!^!.! - a file on the passive
+             the active panel, !##!/!^!.! - a file on the passive
              panel with the same name as the name of the current
              file on the active panel.
 
@@ -2435,49 +2466,38 @@ command is executed.
     4. ^<wrap>The prefixes "!##" and "!^" work as toggles for associations. The effect
 of these prefixes continues up to the next similar prefix. For example:
 
-    if exist !##!\\!^!.! diff -c -p !##!\\!^!.! !\\!.!
+    [ -f !##!/!^!.! ] && diff -c -p !##!/!^!.! !/!.!
 
   "If the same file exists on the passive panel as the file under
    the cursor on the active panel, show the differences between
    the file on the passive panel and the file on the active panel,
    regardless of the name of the current file on the passive panel"
 
-    5. ^<wrap>If it is needed to pass to a program a name with an ending
-backslash, use the following meta-symbol - #!.\#. For example, to
-extract a rar archive to a folder with the same name
-
-    winrar x "!.!" "!.\"
 
 @SystemSettings
 $ #Settings dialog: system#
-  #Clear R/O attribute from CD files#
-  Clear read-only attribute from files copied from CD.
+  #Enable sudo privileges elevation#
+  If enabled, FAR2L will prompt sudo password when attempting access to files requiring root permissions.
 
-  #Delete to Recycle Bin#
-  Enables file deletion via the Recycle Bin.The operation of deleting to the Recycle
-Bin can be performed only for local hard disks.
+  #Always confirm modify operations#
+  If enabled, FAR2L will request confirmation for each modifying operation when running with privilege elevation.
+
+  #Delete to Trash#
+  Enables file deletion via the Trash. The operation of deleting to the Trash
+can be performed only for local hard disks.
 
   #Delete symbolic links#
-  Scan for and delete symbolic links to subfolders before deleting to Recycle Bin.
-
-  #Use system copy routine#
-  Use the file copy functions provided by the operating system instead of internal
-file copy implementation. It may be useful on NTFS, because the system function
-(CopyFileEx) copies file extended attributes. On the other hand, when using the system
-function, the possibility to split files when ~copying~@CopyFiles@ or moving is not available.
-
-  #Copy files opened for writing#
-  Allows to copy files that are opened by other programs for writing. This mode
-is handy to copy a file opened for a long time, but it could be dangerous, if a file
-is being modified at the same time as copying.
+  Scan for and delete symbolic links to subfolders before deleting to Trash.
 
   #Scan symbolic links#
   Scan ~symbolic links~@HardSymLink@ along with normal sub-folders when building the folder tree,
 determining the total file size in the sub-folders.
 
-
-  #Create folders in uppercase#
-  If the name of a new folder contains only lowercase letters and this option is on, the folder will be created in uppercase.
+  #Use only files size in estimation#
+  This option determines how FAR2L estimates the overall size of the directory when building the
+directory tree. The value is used during file operations such as copying, deleting, quick viewing, etc.
+Enable to sum up the space occupied by files only. Disable to include directory overhead
+(space used to store the metadata of directories themselves) as well.
 
   #Inactivity time#
   Terminate FAR2L after a specified interval without keyboard or mouse activity. This works only if FAR2L waits for command line
@@ -2485,6 +2505,9 @@ input without viewer or editor screens in the background.
 
   #Save commands history#
   Forces saving ~commands history~@History@ before exit and restoring after starting FAR2L.
+Commands history list may be activated by #Alt-F8#.
+  This option can also be found in the ~Command line settings~@CmdlineSettings@ dialog.
+  Actions recorded in commands history are configured in the ~dialog AutoComplete & History~@AutoCompleteSettings@.
 
   #Save folders history#
   Forces saving ~folders history~@HistoryFolders@ before exit and restoring after starting FAR2L.
@@ -2494,15 +2517,20 @@ Folders history list may be activated by #Alt-F12#.
   Forces saving ~history of viewed and edited~@HistoryViews@ files before exit and restoring it after
 starting FAR2L. View and edit history list may be activated by #Alt-F11#.
 
-  #Use OS registered types#
-  When this option is on and #Enter# is pressed on a file, the type of which is known to
-OS and absent in the list of FAR2L ~file associations~@FileAssoc@, the OS program
-registered to process this file type will be executed.
+  #Remove duplicates in history#
+  The option specifies the rules for history lists processing and what exactly is considered duplicate records.
+  - never: history is kept in its entirety, identical records are not deleted.
+  - by name: the most recent record (viewed ~file~@HistoryViews@, opened ~directory~@HistoryFolders@, or executed ~command~@History@) is saved,
+while its earlier occurrences are deleted from the history.
+  - by name and path: the same as "by name", but for the ~command history~@History@ the working directory from which
+the command was executed is also taken into account; that is, if the same command was executed from
+two different directories, both entries will be saved in the history.
 
-  #CD drive auto mount#
-  When a CD-ROM drive is selected from the ~location menu~@DriveDlg@, FAR2L will close the open
-tray of a CD drive. Turn off this option if automatic CD-ROM mounting does not work
-correctly (this can happen because of bugs in the drivers of some CD-ROM drives).
+  #Autohighlight in history#
+  Allow FAR2L to automatically assign single-button shortcuts to items in the ~Commands history~@History@,
+~Folders history~@HistoryFolders@ and ~File view history~@HistoryViews@. This can be convenient, but there
+is also a risk of accidental selection due to unintentional key presses, given the dynamic nature
+of such lists. If you do not use this feature or feel uncomfortable with it, you can disable it.
 
   #Auto save setup#
   If checked, FAR2L will save setup automatically. The current folders for both panels will be also saved.
@@ -2516,15 +2544,15 @@ $ #Settings dialog: panel#
 
   #Highlight files#         Enable ~files highlighting~@Highlight@.
 
-  #Show file name markings# and #Align file names by markings#
-works only if #Highlight files# enabled
-and may be switched by #Ctrl-Alt-M#.
+  #Highlight files#         Button for open dialog
+  # - Marking#              (works only if #Highlight files# enabled)
+                          for customize show/align markers in panel
+                          (from the panel it can be switched by
+                          #Ctrl-Alt-N# and #Ctrl-Alt-M#).
 
-  #Auto change folder#      If checked, cursor moves in the ~tree panel~@TreePanel@
-                          will cause a folder change in the other
-                          panel. If it is not checked, you must press
-                          #Enter# to change the folder from the tree
-                          panel.
+  #Dirs and symlinks#       Button for open dialog, which can be
+  #in Size column#          also open from panel by #Ctrl-Alt-D#.
+
 
   #Select folders#          Enable to select folders, using #Gray +#
                           and #Gray *#. Otherwise these keys will
@@ -2550,17 +2578,33 @@ and may be switched by #Ctrl-Alt-M#.
   #update of panels#        the panels when the state of the file
                           system changes will be disabled if the
                           count of file objects exceeds the
-                          specified value.
-
-    The auto-update mechanism works only for FAT/FAT32/NTFS file
-    systems. The value of 0 means "update always". To force an
-    update of the panels, press #Ctrl-R#.
+                          specified value. The value of 0 means
+                          "update always". To force an update of the
+                          panels, press #Ctrl-R#.
 
   #Network drives#          This option enables panel autorefresh
   #autorefresh#             when state of filesystem on network
                           drives is being changed. It can be useful
                           to disable this option on slow network
                           connections
+
+  #Classic hotkey link#     Expand ~symbolic links~@HardSymLink@ when using certain
+  #resolving#               keyboard shortcuts. See ~Panel control commands~@PanelCmd@ and
+                          ~Command line commands~@CmdLineCmd@ for details.
+
+  #Auto change folder#      If checked, cursor moves in the ~tree panel~@TreePanel@
+                          will cause a folder change in the other
+                          panel. If it is not checked, you must press
+                          #Enter# to change the folder from the tree
+                          panel.
+
+  #Scanning depth#          Sets the maximum depth for recursive catalogue scanning
+                          while building the tree.
+
+  #Mask for subtree#        Defines filename ~masks~@FileMasks@ for subtrees to exclude
+  #scanning exclusions#     from automatic scanning. Use this to skip folders
+                          like .git or .mvn during tree expansion.
+                          #Example:# .git;.mvn;.svn;node_modules
 
   #Show column titles#      Enable display of ~file panel~@FilePanel@ column titles.
 
@@ -2621,10 +2665,40 @@ This may require some additional time before starting deleting
 to calculate the total files count.
 
   #Use Ctrl-PgUp for location menu#
-  Pressing #Ctrl-PgUp# in the root directory:
-  - for local drives - shows the location menu;
-  - for network drives - activates the Network plugin (if it is available)
-or location menu (if the Network plugin is not available).
+  Pressing #Ctrl-PgUp# in the root directory shows the ~Location menu~@DriveDlg@.
+
+  #Datetime format#
+  Here you can select the order in which the day, month, and year are displayed, and
+specify the separators for date and time based on your preferences.
+  "Reset to default" button restores the settings to the standard values offered by far2l.
+  "Reset to current" button is useful if you want to cancel changes that have not
+yet been confirmed, and return to the current far2l settings.
+  "From system locale" button sets the date and time format according to your operating
+system's locale.
+
+  #Cursor blink interval# (*GUI-backend only)
+  Allows decreasing or increasing the cursor blink frequency; the acceptable range of
+values is from 100 to 500 ms.
+
+  #Change font# (*GUI-backend only)
+  Shows the font selection dialog where you can choose a font for displaying the far2l interface.
+
+  #Disable antialiasing# (*GUI-backend only)
+  Disabling anti-aliasing algorithms may slightly speed up rendering, but it can negatively
+affect the visual perception of text.
+
+  #Use OSC52 to set clipboard data# (*TTY-backend only)
+  OSC52 allows copying from far2l running in TTY mode (even via SSH connection) to
+your local system clipboard.
+  Some terminals also need OSC52 to be enabled in terminal's settings.
+  If you are using far2l on a remote untrusted system, giving remote system write access
+to your clipboard may be potentially unsafe.
+  Note: The option is displayed if other preferred clipboard access methods (TTY|X, TTY|F)
+are inaccessible.
+
+  #Override base colors palette# (*TTY-backend only)
+  If your terminal doesn't support OSC4 sequence you may turn it off to avoid show artifacts
+sequence in terminal after exit from far2l.
 
   #FAR window title#
   Information displayed in the console window title. Can contain any text
@@ -2636,6 +2710,7 @@ including the following variables:
   - #%Host# - host name of the machine where FAR2L is running;
   - #%User# - user name under wich FAR2L is running;
   - #%Admin# - name "Root", if FAR2L runs under root privileges, otherwise - empty string.
+
 
 @InputSettings
 $ #Settings dialog: input#
@@ -2652,7 +2727,8 @@ to latin and vice-verse, that subsequentially used in #fast file find by Alt+FIL
   This options allows to choose control keys using which in hotkey combination
 will cause FAR2L to capture keyboard input exclusively, thus preventing other
 application from interfering with FAR2L hotkeys that contains such control key.
-Note that this options works only in GUI backend mode.
+Note that this options works only in GUI backend mode under X11
+(does not work under Wayland / xWayland).
 
 
 @DialogSettings
@@ -2690,6 +2766,12 @@ $ #Settings dialog: dialogs#
                           This option allows to switch off this
                           functionality.
 
+  #Show » « symbols when#   When the text in an edit field is too long
+  #edit text overflows#     to fit entirely, the » « markers appear at
+                          the edges of the field to indicate hidden
+                          content. This option allows you to enable or
+                          disable showing these markers.
+
    See also the list of ~macro keys~@KeyMacroDialogList@, available in dialogs.
 
 @VMenuSettings
@@ -2698,8 +2780,19 @@ $ #Menu settings#
   You may choose action for mouse buttons, when click occures outside a menu:
   #Cancel menu#, #Execute selected item# or #Do nothing#.
 
+  #Loop list scrolling#
+  Enable this option to allow circular scrolling through vertical menus when
+the arrow keys are held down. After reaching the top or bottom item, the cursor
+will automatically jump to the opposite end of the list.
+
+
 @CmdlineSettings
 $ #Settings dialog: command line#
+  #Save commands history#
+  Forces saving ~commands history~@History@ before exit and restoring after starting FAR2L.
+  This option can also be found in the ~System settings~@SystemSettings@ dialog.
+  Actions recorded in commands history are configured in the ~dialog AutoComplete & History~@AutoCompleteSettings@.
+
   #Persistent blocks#
   Do not remove block selection after moving the cursor in command line.
 
@@ -2712,8 +2805,27 @@ but this block.
 disabled, you may use the #Ctrl-Shift-End# key to autocomplete a line. The autocomplete
 feature is disabled while a macro is being recorded or executed.
 
+  #Command output splitter#
+  Enables the display of dividing lines between command outputs in the built-in ~Terminal~@Terminal@.
+  A green line of "-" characters indicates successful command execution, and a yellow
+line of "~~" characters indicates errors. This makes the output more structured and helps
+to evaluate the results of command execution faster.
+
+  #Wait keypress before close#
+  Pause for key press after executing a command in the built-in ~Terminal~@Terminal@ before
+showing the panels. Possible values: Never/On error/Always.
+
   #Set command line prompt format#
   This option allows to set the default FAR2L command ~line prompt~@CommandPrompt@.
+
+  #Use shell#
+  Force the use of the specified command shell in the built-in ~terminal~@Terminal@.
+  If no shell is provided, far2l will attempt to use the system shell (#$SHELL#). If the system
+shell does not meet far2l's internal requirements, #bash# will be used as a fallback.
+  You can find out the current command shell used by far2l with the ~pseudo-command~@SpecCmd@
+#far:about#.
+  Be aware that, currently, full support is available only for #bash#, and working with other
+command shells may have significant limitations or errors.
 
 @AutoCompleteSettings
 $ #Settings dialog: AutoComplete & History#
@@ -2727,73 +2839,23 @@ $ #Settings dialog: AutoComplete & History#
   #Append first matched item#
   The first matched item is append immediately after symbols in the command line.
 
-  #Exceptions wildcards# also affect which commands are stored in far2l history.
+  #Exceptions wildcards# also affect which commands are stored in far2l ~commands history~@History@.
   For example, adding #" *"# (mandatory in quotes) excludes from adding in history
   commands that start with a space (similar to the bash #$HISTCONTROL=ignorespace#).
   Info: in far2l history work like bash #$HISTCONTROL#
    with options #ignoredups# (lines which match the previous line are not saved)
    and #erasedups# (all previous lines matching the current line are removed from the history).
 
+  Actions recorded in ~commands history~@History@:
+    - Panels: files via system types (xdg-open);
+    - Panels: files via ~far2l associations~@FileAssoc@;
+    - Panels: executable files;
+    - Command line: any typed command.
+  Remove duplicates method can be chosen in the ~system settings dialog~@SystemSettings@.
+
 @InfoPanelSettings
-$ #Настройка информационной панели#
-  #Формат вывода имени компьютера#
+$ #Information Panel settings#
 
-  Задает формат вывода имени компьютера. Может быть одним из:
-
-    #Physical NetBIOS#
-      ^<wrap>NetBIOS имя локального компьютера.
-
-    #Physical DNS hostname#
-      ^<wrap>DNS имя локального компьютера.
-
-    #Physical DNS domain#
-      ^<wrap>DNS имя домена, которому принадлежит компьютер.
-
-    #Physical DNS fully-qualified#
-      ^<wrap>Полное доменное имя, которое однозначно идентифицирует этот компьютер. Имя представляет собой комбинацию DNS имени хоста и DNS имени домена (формат HostName.DomainName).
-
-    #NetBIOS#
-      ^<wrap>NetBIOS имя локального компьютера. Если компьютер является узлом кластера, то выводится NetBIOS имя кластера виртуального сервера.
-
-    #DNS hostname#
-      ^<wrap>DNS имя локального компьютера. Если компьютер является узлом кластера, то выводится DNS имя кластера виртуального сервера.
-
-    #DNS domain#
-      ^<wrap>DNS имя домена, которому принадлежит компьютер. Если компьютер является узлом кластера, то выводится DNS имя домена кластера виртуального сервера.
-
-    #DNS fully-qualified#
-      ^<wrap>Полное доменное имя, которое однозначно идентифицирует этот компьютер. Имя представляет собой комбинацию DNS имени хоста и DNS имени домена (формат HostName.DomainName). Если компьютер является узлом кластера, то выводится полное DNS имя кластера виртуального сервера.
-
-    Формат вывода зависит от наличия доменной структуры, групповых политик, настроек DNS.
-
-  #Формат вывода имени пользователя#
-
-  Задает формат вывода имени пользователя. Может быть одним из:
-
-    #По умолчанию#
-      Логин пользователя, например, JohnDoe
-    #Полностью определенное имя домена#
-      ^<wrap>FQDN (Fully Qualified Domain Name) - включает наименования всех уровней иерархии, начиная от имени конечного узла и заканчивая корневой точкой (логином), например,
-      CN=JohnDoe, OU=Software, OU=Engineering, O=Widget, C=US
-    #Sam Compatible#
-      Engineering\JohnDoe
-    #Display#
-      Probably "John Doe" but could be something else.  I.e. The display name is not necessarily the defining RDN.
-    #Уникальный идентификатор#
-      ^<wrap>Уникальный идентификатор имени пользователя (GUID), например,
-      {4fa050f0-f561-11cf-bdd9-00aa003a77b6}
-    #Канонический вид#
-      ^<wrap>ADCN (Active Directory Canonical Name) - данный формат является путем в иерархической структуре к объекту (логину), например,
-      engineering.widget.com/software/JohnDoe
-    #Основное имя пользователя#
-      ^<wrap>UPN (User Principal Name) - известен так же как адрес электронной почты, например,
-      someone@example.com
-    #Service Principal#
-      www/srv.engineering.com/engineering.com
-    #Dns Domain#
-      engineering.widget.com\JohnDoe
-
-    Формат вывода зависит от наличия доменной структуры.
 
 @CommandPrompt
 $ #Command line prompt format#
@@ -2815,27 +2877,27 @@ code words:
      $h - delete the previous character
      $l - the < character
      $## - ## character if user is root, otherwise $
-     $p - current drive and path, possible abbreviated
-     $r - current drive and path, not abbreviated
+     $p - current path, possible abbreviated
+     $r - current path, not abbreviated
      $u - login user name
      $n - computer name
      $q - the = character
      $s - space
      $t - current time in HH:MM:SS format
+     $z - the Git branch name surrounded by '{' and '} '; an empty string otherwise
      $$ - the $ character
-     $+ - глубина стека каталогов
+     $+ - the depth of the folders stack
 
-     $@@xx - ^<wrap>"Администратор", если FAR2L запущен от имени администратора.
-Вместо 'xx' необходимо указать два символа, которые будут обрамлять слово "Администратор".
+     $@@xx - ^<wrap>"Administrator", if far2l is running as root.
+xx is a placeholder for two characters that will surround the "Administrator" word.
 
    Examples.
 
-   1. ^<wrap>A prompt of the following format #[%HOSTNAME%]$S$P$G#
-will contain the computer name, current drive and path
+   1. ^<wrap>A prompt of the following format #[$HOSTNAME]$S$P$G#
+will contain the computer name, current path, ## or $ character
 
    2. ^<wrap>A prompt of the following format #[$T$H$H$H]$S$P$G# will
-display the current time in HH:MM format before the current
-drive and path
+display the current time in HH:MM format before the current path
 
    3. ^<wrap>Code "$+" displays the number of pluses (+) needed according to
 current ~PUSHD~@OSCommands@ directory stack depth, one character per each
@@ -2872,7 +2934,6 @@ $ #Viewer: control keys#
     #F5#                 Toggle raw/processed mode
     #F6#                 Switch to ~editor~@Editor@
     #Alt-F5#             Print the file
-                       ("Print manager" plugin is used).
     #F7#                 ~Search~@ViewerSearch@
     #Shift-F7, Space#    Continue search
     #Alt-F7#             Continue search in "reverse" mode
@@ -2881,7 +2942,7 @@ $ #Viewer: control keys#
     #Shift-F8#           Select code page
     #Alt-F8#             ~Change current position~@ViewerGotoPos@
     #Alt-F9#             Toggles the size of the FAR2L console window
-    #F9,Alt-Shift-F9#    Call ~Viewer settings~@EditorSettings@ dialog
+    #F9,Alt-Shift-F9#    Call ~Viewer settings~@ViewerSettings@ dialog
     #Numpad5,F3,F10,Esc# Quit
     #Ctrl-F10#           Position to the current file.
     #F11#                Call "~Plugin commands~@Plugins@" menu
@@ -2911,29 +2972,20 @@ $ #Viewer: control keys#
     1. Also to call search dialog you may just start typing the
        text to be located.
 
-    2. !! Windows legacy (not relevant on Linux/*BSD/Mac) !!
 
-       When the viewer opens a file, it permits the file to be
-       deleted by other processes. If such a deletion happens,
-       the file is actually deleted from the directory only after
-       the viewer is closed, but any operations on the deleted
-       file fail - this is a Windows feature.
-
-       !! Windows legacy end !!
-
-    3. The current version of FAR2L has a limitation on the maximum
+    2. The current version of FAR2L has a limitation on the maximum
        number of columns in the internal viewer - the number
        cannot exceed 2048. If a file contains a line that does not
        fit in this number of columns, it will be split into several
        lines, even if the word wrap mode is turned off.
 
-    4. FAR2L ~searches~@ViewerSearch@ the first occurrence of the string (#F7#) from
+    3. FAR2L ~searches~@ViewerSearch@ the first occurrence of the string (#F7#) from
        the beginning of the area currently displayed.
 
-    5. For automatic scrolling of a dynamically updating file,
+    4. For automatic scrolling of a dynamically updating file,
        position the "cursor" to the end of the file (End key).
 
-    6. Pressing Alt+PgUp/PgDn smoothly increases scrolling speed, futher releasing
+    5. Pressing Alt+PgUp/PgDn smoothly increases scrolling speed, futher releasing
        Alt while keeping PgUp/PgDn will continue scrolling with selected speed boost.
        Speed boost dismissed by releasing all keys for long time or pressing any other key.
 
@@ -3003,7 +3055,7 @@ $ #Editor#
 can be used to open the internal editor or any of the user defined external
 editors which are defined in the ~Editor settings~@EditorSettings@ dialog.
 
-    #Creating files using the editor#
+  #Creating files using the editor#
 
     If a nonexistent file name is entered after pressing the #Shift-F4# hotkey
 then a ~new file~@FileOpenCreate@ will be created.
@@ -3020,12 +3072,27 @@ will be shown.
     3. ^<wrap>The UTF-8 encoding is used by default when creating new files, this
 behavior can be changed in the ~Editor settings~@EditorSettings@ dialog.
 
+  #Title bar items#
+   - File path
+   - #*# (file modified) or empty
+   - #-# (file modification is locked) or empty         (toggled via #Ctrl-L#)
+   - #"# (during processing #Ctrl-Q#) or empty
+   - #WW# (WordWrap mode) or empty                      (toggled via #F3# or #Alt-W# or in the ~Editor settings~@EditorSettings@ dialog)
+   - #Tn# (not expand Tab) or #Sn# (expand Tab to spaces) (toggled via #Shift-F5# and #Ctrl-F5# or in the ~Editor settings~@EditorSettings@ dialog)
+   - #LF# or #CR# or #CRLF#: format of the line break       (toggled via #Shift-F2#)
+   - Codepage                                         (toggled via #F8# or #Shift-F8#)
+   - Line current/all lines
+   - Column current
+   - #RSH# or empty: file attributes (Read only, System, Hidden)
+   - Code of character under cursor
+   - Clock                                            (toggled in the ~Interface settings~@InterfSettings@ dialog)
+
   #Control keys#
 
   Cursor movement
 
    #Left#                    Character left
-   #Ctrl-S#                  ^<wrap>Move the cursor one character to the left, but don't move to the previous line if the line beginning is reached.
+   #Ctrl-S#                  ^<wrap>Move the cursor one character to the left, but don't move to the previous line if the line beginning is reached
    #Right#                   Character right
    #Up#                      Line up
    #Down#                    Line down
@@ -3047,16 +3114,20 @@ behavior can be changed in the ~Editor settings~@EditorSettings@ dialog.
    #Del#                     ^<wrap>Delete char (also may delete block, depending upon ~Editor settings~@EditorSettings@).
    #BS#                      Delete char left
    #Ctrl-Y#                  Delete line
-   #Ctrl-K#                  Delete to end of line
+   #Ctrl-K, Alt-D#           Delete to end of line
    #Ctrl-BS#                 Delete word left
    #Ctrl-T, Ctrl-Del#        Delete word right
 
   Block operations
 
    #Shift-Cursor keys#       Select block
+   Drag mouse              Select block
+   with holding left button
    #Ctrl-Shift-Cursor keys#  Select block by words
-   #Alt-Cursor keys#         Select vertical block
-   #Alt-Shift-Cursor keys#   Select vertical block (use NumLock cursor keys)
+   #Alt-Cursor keys#         Select vertical block (only when unwrap mode)
+   #Alt-Shift-Cursor keys#   Select vertical block (use NumLock cursor keys, only when unwrap mode)
+   #Alt# + drag mouse        Select vertical block (only when unwrap mode)
+   with holding left button
    #Ctrl-A#                  Select all text
    #Ctrl-U#                  Deselect block
    #Shift-Ins, Ctrl-V#       Paste block from clipboard
@@ -3064,8 +3135,8 @@ behavior can be changed in the ~Editor settings~@EditorSettings@ dialog.
    #Ctrl-Ins, Ctrl-C#        Copy block to clipboard
    #Ctrl-<Gray +>#           Append block to clipboard
    #Ctrl-D#                  Delete block
-   #Ctrl-P#                  ^<wrap>Copy block to current cursor position (in persistent blocks mode only)
-   #Ctrl-M#                  ^<wrap>Move block to current cursor position (in persistent blocks mode only)
+   #Ctrl-P#                  ^<wrap>Copy block to current cursor position (in persistent blocks mode only, clipboard is not modified)
+   #Ctrl-M#                  ^<wrap>Move block to current cursor position (in persistent blocks mode only, clipboard is not modified)
    #Alt-U#                   Shift block left
    #Alt-I#                   Shift block right
    #Shift-Tab#               Shift block left by Tab or by indent size (processed by SimpleIndent plugin)
@@ -3076,11 +3147,13 @@ behavior can be changed in the ~Editor settings~@EditorSettings@ dialog.
    #F1#                      Help
    #F2#                      Save file
    #Shift-F2#                ~Save file as...~@FileSaveAs@
+   #F3# or #Alt-W#             Toggle line wrap/unwrap
+   #Ctrl-F3#                 Toggle line numbers display
    #Shift-F4#                Edit ~new file~@FileOpenCreate@
    #F5#                      Toggle whitespace characters displaying
    #Shift-F5#                Change Tab character width
    #Ctrl-F5#                 Toggle Tab-to-spaces expansion
-   #Alt-F5#                  ^<wrap>Print file or selected block ("Print manager" plugin is used).
+   #Alt-F5#                  ^<wrap>Print file or selected block.
    #F6#                      Switch to ~viewer~@Viewer@
    #F7#                      ~Search~@EditorSearch@
    #Ctrl-F7#                 ~Replace~@EditorSearch@
@@ -3089,8 +3162,9 @@ behavior can be changed in the ~Editor settings~@EditorSettings@ dialog.
    #F8#                      Toggle UTF8/~ANSI/OEM~@CodePagesSet@ code page
    #Shift-F8#                Select code page
    #Alt-F8#                  ~Go to~@EditorGotoPos@ specified line and column
+   #F9#                      Call menu bar for the editor, with the list of available commands
    #Alt-F9#                  Toggles the size of the FAR2L console window
-   #F9, Alt-Shift-F9#        Call ~Editor settings~@EditorSettings@ dialog
+   #Alt-Shift-F9#            Call ~Editor settings~@EditorSettings@ dialog
    #F10, F4, Esc#            Quit
    #Shift-F10#               Save and quit
    #Ctrl-F10#                Position to the current file
@@ -3123,6 +3197,14 @@ keypad inserts the character that has the specified code (0-65535).
     3. ^<wrap>If no block is selected, #Ctrl-Ins#/#Ctrl-C# marks the current
 line as a block and copies it to the clipboard.
 
+    4. Print manager for Linux is unavailable. Instead, Editor has embedded 
+    support for printing text files even with text highlighting with white background
+    and recomputed colors from the Colorer theme (RGB -> LAB -> RGB conversion).
+
+    GUI version uses wxWidgets capabilities to make print preview, manage printer settings,
+    and printy itself; termibnal version expects the #lp# command works and your CUPS is
+    configured correctly. MacOS version uses native capabilities based upon WebKit 
+    printing automation.
 
 @EditorSearch
 $ #Editor: search/replace#
@@ -3146,8 +3228,9 @@ $ #Editor: search/replace#
 $ #Editor: Open/Create file#
     With #Shift-F4#, one can open the existing file or create a new file.
 
-    According to ~editor settings~@EditorSettings@, newly created file
-is assigned to OEM or ANSI codepage. You can change the codepage with #Shift-F8#.
+    For a newly created file, the code page is selected according to
+~editor settings~@EditorSettings@. If necessary, another code page can be
+selected from the #list#.
 
     For existing file, changing the codepage has sense if it hasn't been
 correctly detected at open.
@@ -3265,12 +3348,12 @@ $ #Code pages menu#
     The menu has two modes: full mode with visible #Other# section and brief
 mode with hidden #Other# section. The modes can be switched by pressing #Ctrl-H#.
 
-    #Ins# keypress moves codepage from #Other# to #Favorites#, #Del# moves the
-codepage back. Клавиша #F4# позволяет изменять отображаемые
-имена для #любимых# и #прочих# кодовых страниц (кодовые страницы для которых было
-изменено имя помечаются символом #*# перед именем).
+	#Ins# moves a code page from #Other# to #Favorites#; #Del# moves it back.
+The #F4# key allows you to change the display names for #Favorite# and #Other#
+code pages (code pages with a changed name are marked with a #*# symbol before
+the name).
 
-    Диалог ~Изменение имени кодовой страницы~@EditCodePageNameDlg@
+    ~Change code page name~@EditCodePageNameDlg@ Dialog
 
     See also: common ~menu~@MenuCmd@ keyboard commands.
 
@@ -3281,21 +3364,21 @@ $ #ANSI and OEM codepage setting#
   or, if its absence, by environment variable #LC_CTYPE#
 
 @EditCodePageNameDlg
-$ #Изменение имени кодовой страницы#
-    Диалог #Изменение имени кодовой страницы# позволяет изменить отображаемое имя для
-#любимых# и #прочих# кодовых страниц.
+$ #Changing the code page name#
+    The #Changing the code page name# dialog allows you to change the display
+name for #Favorite# and #Other# code pages.
 
-    Примечания:
+    Notes:
 
-    - ^<wrap>Если ввести пустое имя кодовой страницы, то после подтверждения ввода
-отображаемое имя кодовой страницы примет значение по умолчанию, то есть имя полученное
-от системы.
-    - ^<wrap>Так же отображаемое имя кодовой страницы принимает значение по умолчанию
-после нажатия кнопки #Сбросить#.
+    - ^<wrap>If you enter an empty code page name, after confirming the input,
+the display name of the code page will be reset to its default value, i.e.,
+the name obtained from the system.
+    - ^<wrap>The display name of the code page is also reset to its default
+value after pressing the #Reset# button.
 
 @DriveDlg
 $ #Location menu#
-    This menu allows to change the current location of a panel, unmount mountpoint 
+    This menu allows to change the current location of a panel, unmount mountpoint
 or open a new ~plugin~@Plugins@ panel.
 
     Select the item and press Enter to change the location to specified filesystem path
@@ -3357,7 +3440,7 @@ After that add more accurate patterns such as #/run/user/*#
 in order to hide garbage mountpoints from the Location menu.
 
     See also:
-      The list of ~macro keys~@KeyMacroDisksList@, available in the disk menu.
+      The list of ~macro keys~@KeyMacroDisksList@, available in the Location menu.
       Common ~menu~@MenuCmd@ keyboard commands.
 
 
@@ -3365,9 +3448,6 @@ in order to hide garbage mountpoints from the Location menu.
 $ #Disconnect network drive#
     You can unmount mountpoint by pressing #Del# in the
 ~location menu~@DriveDlg@.
-
-    The option #[x] Reconnect at logon# is enabled only for permanently
-connected network drives.
 
     The confirmation can be disabled in the ~confirmations~@ConfirmDlg@ dialog.
 
@@ -3402,14 +3482,20 @@ combinations are available:
 
   #Enter# or #F4#  - ~Edit~@HighlightEdit@ the current highlighting group
 
+  #F3#           - Show for current item file masks after expand all masks groups
+
   #Ctrl-R#       - Restore the default file highlighting groups
 
-  #Ctrl-Up#      - Move a group up.
+  #Ctrl-Up#      - Move a group up
 
-  #Ctrl-Down#    - Move a group down.
+  #Ctrl-Down#    - Move a group down
+
+  #Ctrl-M#       - Toggle attribute column view: short/long
 
     The highlighting groups are checked from top to bottom. If it is detected
-that a file belongs to a group, no further groups are checked.
+that a file belongs to a group, no further groups are checked,
+unless #[x] Continue processing# is set in the group
+(see last indicator #↓# in group list).
 
     Display of markers is controlled globally via a checkbox
 in the ~Panel settings~@PanelSettings@ dialog
@@ -3455,8 +3541,21 @@ will not be analyzed, and only file attributes will be taken into account.
 in the ~Panel settings~@PanelSettings@ dialog
 or may be switched by #Ctrl-Alt-M# in panels.
 
-    The Compressed, Encrypted, Not indexed, Sparse, Temporary attributes and
-Symbolic links are valid for NTFS drives only.
+
+@NotificationsSettings
+$ #Notifications settings#
+
+  #Notify on file operation completion#
+  Send desktop notifications when long-running operations like copying, moving,
+and searching for files are completed.
+
+  #Notify on console command completion#
+  Send desktop notification when the command in the built-in ~Terminal~@terminal@ has
+completed or failed.
+
+  #Notify only if in background#
+  Track the far2l window's state and send desktop notifications only when it is inactive.
+Works in both graphical and terminal versions of far2l.
 
 
 @ViewerSettings
@@ -3504,6 +3603,9 @@ $ #Settings dialog: viewer#
 
   #Show arrows#             Show scrolling arrows in viewer if the text
                           doesn't fit in the window horizontally.
+
+  #Enable URL links#        Recognize, highlight and make clickable
+                          URLs starting with https:, http: or mailto:.
 
   #Persistent selection#    Do not remove block selection after
                           moving the cursor.
@@ -3588,12 +3690,20 @@ $ #Settings dialog: editor#
 
   #Show scrollbar#          Show scrollbar.
 
-  #Pick up the word#        При вызове диалога поиска/замены в строку
-                          поиска будет подставляться слово, на
-                          котором стоит курсор.
+  #Pick up the word#        When the search/replace dialog is invoked,
+                          the word under the cursor will be inserted
+                          into the search string.
+
+  #Show line numbers#       Show line numbers on the left side of the
+                          editor. This option can also be toggled by
+                          pressing #Ctrl-F3# in the editor.
+
+  #Word wrap#               Word wrap. This option can also be toggled by
+                          pressing #F3# in the editor.
+
 
   #Use .editorconfig#       Processing .editorconfig parameters
-  #settings files#          (see https://editorconfig.org for details)
+  #settings files#          (see ~https://editorconfig.org~@https://editorconfig.org@ for details)
 
   #Lock editing of#         When a file with the Read-only attribute
   #read-only files#         is opened for editing, the editor also
@@ -3630,69 +3740,71 @@ non-typical text files.
 
 @FileAttrDlg
 $ #File attributes dialog#
-    With this command it is possible to change file attributes and file time.
-Either single file or group of files may be processed. If you do not want to
-process files in subfolders, clear the "Process subfolders" option.
+    This command can be applied to individual files as well as groups of files
+and directories, allowing you to view and modify permissions, ownership,
+timestamps, and some file attributes.
+    If you do not want to process files in subfolders, clear the "Process
+subfolders" option.
 
-  #File attributes#
+    The dialog has 5 sections.
 
-    Checkboxes used in the dialog can have the following 3 states:
+    1. ^<wrap>#Info#
+       ^<wrap>The type of the current object, as determined by the #file# command.
+       ^<wrap>When the current object is a symbolic link, you can switch between
+the "Info", the value of a symbolic link ("#Symlink#"), and its resolved absolute path
+("#Object#"). The "Symlink" field is editable.
 
-     #[x]# - attribute is set for all selected items
-           (set the attribute for all items)
+    2. ^<wrap>#Ownership#
+       ^<wrap>Allows to change the user and/or group that owns selected file(s).
+Select the required names from the corresponding dropdown lists.
 
-     #[ ]# - attribute is not set for all selected items
-           (clear the attribute for all items)
+    3. ^<wrap>#Permissions#
+       ^<wrap>Allows to change the access permissions (read/write/execute
+for user/group/others) and the special mode flags (setuid, setgid, and sticky) of
+selected file(s). For convenience, the information is displayed and synchronously
+updated in two notations: symbolic and numeric (octal-based).
 
-     #[?]# - attribute state is not the same for selected items
-           (don't change the attribute)
+       ^<wrap>Checkboxes used in the dialog can have the following 3 states:
 
-    When all selected files have the same attribute value, the corresponding
+       ^<wrap> #[x]# - attribute is set for all selected items
+       ^<wrap>       (set the attribute for all items)
+       ^<wrap> #[ ]# - attribute is not set for all selected items
+       ^<wrap>       (clear the attribute for all items)
+       ^<wrap> #[?]# - attribute state is not the same for selected items
+       ^<wrap>       (don't change the attribute)
+
+       ^<wrap>When all selected files have the same attribute value, the corresponding
 checkbox will be in 2-state mode - set/clear only. When there are selected
 folders, all checkboxes will always be 3-state.
-
-    Only those attributes will be changed for which the state of the
+       ^<wrap>Only those attributes will be changed for which the state of the
 corresponding checkboxes was changed from the initial state.
 
-    The #Compressed#, #Encrypted#, #Not indexed#, #Sparse#, #Temporary#,
-#Offline#, #Reparse point# and #Virtual# attributes are available only on NTFS drives. The
-#Virtual# attribute is not used in Windows 2000/XP/2003. The #Compressed#
-and #Encrypted# attributes are mutually exclusive, that is, you can set only
-one of them. You cannot clear the #Sparse# attribute in Windows 2000/XP/2003.
+    4. ^<wrap>#Attributes / Flags#
+       ^<wrap>Allows to set or unset the "Immutable", "Append", and "Hidden" (*the latter is
+on macOS and BSD only) attributes for the selected file.
 
-    For ~symbolic links~@HardSymLink@ the dialog will display the path where it refers to.
-If this information is not available, then the "#(data not available)#" message will be shown.
+    5. ^<wrap>#File date and time#
+       ^<wrap>Three different file times are supported:
 
-  #File date and time#
+       ^<wrap> - last access time (atime);
+       ^<wrap> - last modification time (mtime);
+       ^<wrap> - last status change time (ctime);
 
-    Four different file times are supported:
-
-    - last write time;
-
-    - creation time;
-
-    - last access time;
-
-    - change time.
-
-    On FAT drives the hours, minutes, seconds and milliseconds of the last access time are
-always equal to zero.
-
-    If you do not want to change the file time, leave the respective field
+       ^<wrap>If you do not want to change the file time, leave the respective field
 empty. You can push the #Blank# button to clear all the date and time fields
 and then change an individual component of the date or time, for example, only
 month or only minutes. All the other date and time components will remain
-unchanged.
+unchanged. The #Current# button fills the file time fields with the current time.
+The #Original# button fills the file time fields with their original values (available
+only when the dialog is invoked for a single file object).
 
-    The #Current# button fills the file time fields with the current time.
+       ^<wrap>Note that "last status change time" is for viewing only and cannot be modified.
+       ^<wrap>On FAT drives the hours, minutes, seconds and milliseconds of the last access time are
+always equal to zero.
 
-    The #Original# button fills the file time fields with their original
-values. Available only when the dialog is invoked for a single file object.
-
-
-    The #System properties# button invoke the system properties dialog for
-selected objects.
-
+    #Be aware that some operations may require superuser rights.#
+    You should ensure that privilege elevation is permitted in the
+~System settings~@SystemSettings@ dialog, or far2l must be run as root.
 
 
 @Bookmarks
@@ -3820,7 +3932,12 @@ change the view mode settings. First, it offers to select the desired mode from
 the list. In this list "Brief mode" item corresponds to brief panel mode
 (#LeftCtrl-1#), "Medium" corresponds to medium panel mode (#LeftCtrl-2#) and so
 on. The last item, "Alternative full", corresponds to view mode called with
-#LeftCtrl-0#. After selecting the mode, you may change the following settings:
+#LeftCtrl-0#.
+    #Enter# or #F4#      - edit selected mode
+    #Ctrl+Enter#       - apply selected mode to active panel
+    #Ctrl+Shift+Enter# - apply selected mode to passive panel
+
+    After selecting the mode, you may change the following settings:
 
   - #Column types# - column types are encoded as one or several
 characters, delimited with commas. Allowed column types are:
@@ -3833,18 +3950,20 @@ characters, delimited with commas. Allowed column types are:
                  These modifiers may be used in combination,
                  for example NMR
 
-    S[C,T,F,E] - file size
-    P[C,T,F,E] - packed file size
-    G[C,T,F,E] - size of file streams
-                 where: C - format file size;
-                        T - use 1000 instead of 1024 as a divider;
-                        F - show file sizes similar to Windows
-                            Explorer (i.e. 999 bytes will be
-                            displayed as 999 and 1000 bytes will
-                            be displayed as 0.97 K);
-                        E - economic mode, no space between file
-                            size and suffix will be shown
-                            (i.e. 0.97K);
+    S[C,T,F,E,A] - file size
+    P[C,T,F,E,A] - packed file size
+    G[C,T,F,E,A] - size of file streams
+                   where: C - format file size;
+                          T - use 1000 instead of 1024 as a divider;
+                          F - show file sizes similar to Windows
+                              Explorer (i.e. 999 bytes will be
+                              displayed as 999 and 1000 bytes will
+                              be displayed as 0.97 K);
+                          E - economic mode, no space between file
+                              size and suffix will be shown
+                              (i.e. 0.97K);
+                          A - automatic width by max number
+                              (works only if 0 in "Column widths");
 
     D          - file last write date
     T          - file last write time
@@ -3860,7 +3979,8 @@ characters, delimited with commas. Allowed column types are:
     Z          - file descriptions
 
     O[L]       - file owner
-                 where: L - show domain name;
+                 where: L - show domain name (Windows legacy);
+    U          - file group
 
     LN         - number of hard links
 
@@ -3891,20 +4011,13 @@ the file panel will be displayed in multicolumn form.
        #s#         - Socket
        #l#         - Symbolic Link
        #-#         - Regular file
+
     Unix file permissions (in each triad for owner, group, other users):
        #r# or #-#    - readable or not
        #w# or #-#    - writable or not
        #x# or #-#    - executable or not
        #s# or #S#    - setuid/setgid also executable (#s#) or not executable (#S#)
        #t# or #T#    - sticky also executable (#t#) or not executable (#T#)
-
-    The attributes are displayed in the following order - RSHALCTIOV. The
-"Sparse" attribute applies only to files and is shown instead of 'L'. The
-"Encrypted" attribute is shown instead of 'C' as a file/folder can not
-have both attributes ("Compressed" and "Encrypted") set at the same time.
-By default the size of the attributes column is 6 characters. To display
-the additional 'T', 'I', 'O' and 'V' attributes it is necessary to manually
-set the size of the column to 10 characters.
 
   - #Column widths# - used to change width of panel columns.
 If the width is equal to 0, the default value will be used. If the width of
@@ -3922,8 +4035,8 @@ to the display of seconds and milliseconds.
 
     To display years in 4-digits format increase the date column width by 2.
 
-    При указании колонок, отвечающих за показ ссылок, потоков и владельцев (G, LN, F и O) время
-отображения содержимого каталога увеличивается.
+    When specifying columns that display links, streams, and owners (G, LN, F, and O),
+    the time it takes to display the directory contents increases.
 
   - #Status line column types# and #Status line column widths# -
 similar to "Column types" and "Column widths", but for panel status line.
@@ -4030,6 +4143,36 @@ the character '#|#'.
     The comma (or semicolon) is used for separating file masks from each other,
 and the '|' character separates include masks from exclude masks.
 
+ File masks can be joined into ~groups~@MaskGroupsSettings@.
+
+
+@MaskGroupsSettings
+$ #Groups of file masks#
+ An arbirtary number of ~file masks~@FileMasks@ can be joined into a named group.
+
+ Hereinafter the group name, enclosed in angle brackets (i.e. #<#name#>#), can be used wherever masks can be used.
+
+ Groups can contain other groups.
+
+ For example, the #<arc># group contains the "*.rar,*.zip,*.[zj],*.[bg7]z,*.[bg]zip,*.tar" masks.
+To ~highlight~@Highlight@ all archives except "*.rar" #<arc>|*.rar# should be used.
+
+ Control keys:
+
+ #Ctrl+R#      - ^<wrap>restore the default predefined groups
+
+ #Ins#         - ^<wrap>add a new group
+
+ #Del#         - ^<wrap>remove the current group
+
+ #Enter#/#F4#    - ^<wrap>edit the current group
+
+ #F3#          - view the current group with wrap long line of masks
+
+ #F7#          - ^<wrap>find all groups containing the specified mask
+
+ Also see ~Options menu~@OptMenu@.
+
 
 @SelectFiles
 $ #Selecting files#
@@ -4113,17 +4256,19 @@ files will be silently copied using conventional way. If being in use this optio
 improves copy speed and reduces disk space usage. Potential downside include higher file
 fragmentation if it or original file will be overwritten in the future.
 
-    #With symlink# combobox allows to chose from any of three possible ways of handling
-symlinks during copying:
-    - Either all symlinks will be copied as is.
-    - Either far2l will check each symlink target to find out if it refers 'outer' file
-or some file also being copied. In first case link will be copied as file, in second
-it will be copied as symlink with possible adjusted destination, so it will refer copied
-target file.
-    - Either all symlinks will be copied as files.
+    #With symlink# option offers three ways to handle symlinks during copying:
+    - #Always copy link#
+    All symlinks will be copied as is, without adapting them for the new location.
+    - #Smartly copy link or target file#
+    If the symlink points to a file that is also being copied, it will be copied
+as a symlink with a possibly adjusted destination, so it will refer to the copied
+target file. If not, the original file will be copied with the symlink's name.
+    - #Always copy target file#
+    All symlinks will be saved as regular files, being precise copies of
+their target files.
 
     If you wish to create the destination folder before copying, terminate the
-name with backslash. Also in the Copy dialog you may press #F10# to select a
+name with slash. Also in the Copy dialog you may press #F10# to select a
 folder from the active file panel tree or #Alt-F10# to select from the passive
 file panel tree. #Shift-F10# allows to open the tree for the path entered in
 the input line (if several paths are entered, only the first one is taken into
@@ -4139,8 +4284,7 @@ appended with the file being copied.
     If during copying or moving the destination disk becomes full, it is
 possible to either cancel the operation or replace the disk and select the
 "Split" item. In the last case the file being copied will be split between
-disks. This feature is available only when "Use system copy routine" option in
-the ~System settings~@SystemSettings@ dialog is switched off.
+disks.
 
     The "Already existing files" option controls FAR2L behavior if a target file
 of the same name already exists.
@@ -4149,6 +4293,8 @@ of the same name already exists.
     #Overwrite# - all target files will be replaced;
     #Skip# - target files will not be replaced;
     #Append# - target file will be appended with the file being copied;
+    #Resume# - the existing target file remans, and the source is being appended
+to it (by skipping first N bytes that equal to target file size).
     #Only newer file(s)# - only files with newer write date and time
 will be copied; This option affects only the current copy session and not saved
 for later copy operations.
@@ -4183,6 +4329,9 @@ the file being copied;
 
     #Append# - target file will be appended with the file being copied;
 
+    #Resume# - the existing target file remans, and the source is being appended
+to it (by skipping first N bytes that equal to target file size).
+
     If #Remember choice# is checked, the selected action will be applied to
 all existing files and the confirmation dialog will not be displayed again for
 the current copying session.
@@ -4203,18 +4352,17 @@ $ #Hard and Symbolic link#
 
     #Hard links#
 
-    A #hard link# is an additional directory entry for the given file. When a
-hard link is created, the file is not copied itself, but receives one more name
-or location, while its previous name and location remain intact. Since the
+	A #hard link# is an additional directory entry for the given file. When a
+hard link is created, the file is not copied, but receives one more name
+or location, while its previous name and location remain intact. From the
 moment of its creation, a hard link is indistinguishable from the original
-entry. The only difference is that short file names are not created for hard
-links, and so they cannot be seen from DOS programs.
+entry.
 
     When the file size or date changes, all of the corresponding directory
 entries are updated automatically. When a file is deleted, it is not deleted
 physically until all the hard links pointing at it will be deleted. The
-deletion order doesn't matter. When a hard link is deleted into the recycle
-bin, the number of links of a file does not change.
+deletion order doesn't matter. When a hard link is deleted into the Trash,
+the number of links of a file does not change.
 
     FAR2L can create hard links and can show the number of the file's hard links
 in a separate column (by default, it's the last column in the 9th panel mode)
@@ -4238,41 +4386,6 @@ $ #Error: copy/move onto itself.#
 a ~symbolic link~@HardSymLink@ to another.
 
 
-@WarnCopyEncrypt
-$ #Warning: Losing file encryption#
-    The source file is encrypted. Copying or moving it outside of the current
-disk is possible if in the destination the file will be decrypted.
-
-    The "Ignore" (or "Ignore all") buttons ignore the given warning and copy
-the file unencrypted to the destination.
-
-    The internal copying mechanism will be used for copying encrypted files
-outside of the current disk with no regard to the "Use system copy routine"
-option.
-
-
-@WarnCopyStream
-$ #Warning: copying or moving file with multiple streams#
-
-    The source file contains more than one data stream or the destination file
-system does not support files with multiple streams.
-
-    Streams are a feature of the NTFS file system allowing to associate
-additional information with a file (for example, author's name, title, keywords
-and so on, or any other data). This information is stored together with the
-file and is invisible to programs that do not support streams. For example,
-streams are used by Windows Explorer to store additional file properties
-(summary). FAT/FAT32 file systems do not support streams.
-
-    To copy a file completely (together with all its streams), turn on the
-option "#Use system copy routine#" in the ~system settings~@SystemSettings@
-dialog.
-
-    If you are copying a file with multiple streams to a volume with a file
-system other than NTFS, you will also lose data - only the main stream will be
-copied.
-
-
 @ErrLoadPlugin
 $ #Error: plugin not loaded#
    This error message can appear in the following cases:
@@ -4283,7 +4396,7 @@ $ #Error: plugin not loaded#
    2. For some reason, the module returned an error code
       telling the system to abort plugin loading.
 
-   3. The DLL file of the plugin is corrupt.
+   3. The file of the plugin is corrupt.
 
 
 @ScrSwitch
@@ -4310,82 +4423,35 @@ $ #Apply command#
 apply a command to each selected file. The same ~special symbols~@MetaSymbols@
 as in ~File associations~@FileAssoc@ should be used to denote the file name.
 
-    For example, 'type !.!' will output to the screen all selected files, one
-at a time, and the command 'rar32 m !.!.rar !.!' will move all selected files
-into RAR archives with the same names. The command 'explorer /select,!.!' will
-start system GUI file browser and set the cursor to the current file
-or directory.
+    For example, 'cat !.!' will output to the screen all selected files, one
+at a time, and the command 'tar --remove-files -cvjf !.!.tar.bz2 !.!' will move all selected files
+into TAR/BZIP2 archives with the same names.
 
-    See also ~Special commands~@SpecCmd@
-    See also ~Operating system commands~@OSCommands@
+    See also: ~Special commands~@SpecCmd@.
+              ~Operating system commands~@OSCommands@.
+              ~Ways to run programs~@WaysToRunPrograms@.
+
 
 @OSCommands
 $ #Operating system commands#
     FAR2L by itself processes the following operating system commands:
 
-    #CLS#
+    #reset#
 
-    Clears the screen.
-
-    #disk:#
-
-    !! Windows legacy (not relevant on Linux/*BSD/Mac) !!
-
-    To change the current disk on the active panel to the specified disk.
-
-    !! Windows legacy end !!
-
-    #CD path# or #CHDIR path#
-
-    To change the current path on the active panel to the specified path.
-If the active panel shows a ~plugin~@Plugins@ emulated file system, the command
-"CD" in the command line may be used to change the folder in the plugin file
-system. Unlike "CD", "CHDIR" command always treats the specified parameter
-as a real folder name, regardless of the file panel type.
-
-    #CHCP [nnn]#
-
-    Displays or sets the active code page number. "nnn" - specifies a code
-page number. Type CHCP without a parameter to display the active code
-page number.
-
-    #SET variable=[string]#
-
-    Set environment variable "variable" to the value "string". If "string" is
-not specified, the environment variable "variable" will be removed. On startup,
-FAR2L sets several ~environment variables~@FAREnv@ by itself.
-
-    #IF [NOT] EXIST filename command#
-
-    Execute a command "command" if "filename" exists. Prefix "NOT" - execute
-the command only if the condition is false.
-
-    #IF [NOT] DEFINED variable command#
-
-    The "DEFINED" conditional works just like "EXISTS" except it takes an
-environment variable name and returns true if the environment variable is
-defined.
-
-
-    "IF" commands can be nested, for instance, command "command"
-
-    #if exist file1 if not exist file2 if defined variable command#
-
-    will be executed if the file "file1" exists, the file "file2" does not
-exist and the environment variable "variable" is defined.
+    Clears the screen of the built-in ~Terminal~@Terminal@.
 
     #pushd path#
 
-    Команда PUSHD сохраняет текущий каталог во внутреннем стеке и делает
-текущим каталог path.
+    Stores the current path on the internal stack and sets the current
+directory on the active panel to specified path.
 
     #popd#
 
-    Переходит в каталог, сохраненный командой PUSHD.
+    Changes the current path on the active panel to that stored by the “pushd” command.
 
-    #clrd#
+    #exit#
 
-    Очищает стек каталогов, сохраненных командой PUSHD.
+    Сloses the background shell of the built-in ~Terminal~@Terminal@.
 
     Notes:
 
@@ -4398,21 +4464,25 @@ system command processor.
        - ~User menu~@UserMenu@
        - ~File associations~@FileAssoc@
 
+    See also ~Special commands~@SpecCmd@
+
 
 @FAREnv
 $ #Environment variables#
     On startup, FAR2L sets the following environment variables available
 to child processes:
 
-    #FARHOME#            path to the folder from which FAR2L was started.
+    #FARHOME#            directory containing far2l resources (e.g. /usr/share/far2l)
 
     #FARLANG#            the name of the current interface language.
 
-    #FARUSER#            ^<wrap>the name of the current user given by the -u ~command line~@CmdLine@ option.
+    #FARSETTINGS#        ^<wrap>the name of user given by the -u ~command line~@CmdLine@ option.
 
-    #FARDIRSTACK#        ^<wrap>the contents of directories stack top (the stack is managed with #pushd# and #popd# commands)
+    #FARADMINMODE#       ^<wrap>equals "1" if FAR2L was run by an administrator (i.e., if its effective user ID is 0)
 
-    #FARADMINMODE#       ^<wrap>equals "1" if FAR2L was run by an administrator
+    #FARPID#             FAR2L process id
+
+    See also ~FAR2L: command line switches~@CmdLine@ for the #FAR2L_ARGS# environment variable.
 
 
 @RegExp
@@ -4582,9 +4652,14 @@ The numbers are assigned to the groups in order of opening parentheses
 sequence in regular expression. #$0# means the whole found sequence.
 #$*# is replaced with '*' character.
 
+    Both #\n# and #\r# are interpreted as line breaks, depending on
+the end-of-line style used in the file. They behave the same way.
+
+    #\t# is replaced with tab character (0x09).
+
 
 @ElevationDlg
-$ #Запрос привилегий администратора#
+$ #Request administrator privileges#
 
 
 @KeyMacro
@@ -4696,7 +4771,7 @@ and changing templates of what should be included into additional columns.
     #$f# - percents space free of total
     #$a# - percents space available of total
     #$N# - filesystem name
-    #$D# - device from which filesystem is mounted 
+    #$D# - device from which filesystem is mounted
     #$S# - filesystem status, single character that can be
        ! - for readonly FS
        ? - for erroring/unresponsive FS
@@ -4763,7 +4838,10 @@ usually does as a reaction to this combination.
     ~hotkey assignment~@KeyMacroSetting@ dialog will appear, where the hotkey that
     will be used to execute the recorded sequence can be set.
 
-    Воспроизведение макроса сопровождается отображением в левом верхнем углу экрана символа '\2FP\-'.
+    Playing the macro will display the symbol '\2FP\-' in the upper left corner of the screen.
+
+    Note: To let you see the macro in the config file or in Macro Browser, you have an ability
+    to make short description as you prefer.
 
 
 @KeyMacroDelete
@@ -4798,6 +4876,10 @@ desired options in the dialog:
    #Sequence:#
 
     Allows to edit the recorded key sequence.
+
+   #Description:#
+
+    Allows to specify user-defined brief description of the macro sequence.
 
    #Allow screen output while executing macro#
 
@@ -4873,6 +4955,57 @@ FAR2L.
     #%var#          - using variables
      and others...
 
+    Macro text can be written directly in the macro configuration file
+    #~~/.config/far2l/settings/key_macros.ini#. Each macro is a section named:
+    #KeyMacros/<Area>/<Key># where:
+    - #Area# is one of: #Common#, #Shell#, #Editor#, #Viewer#, #Dialog#, #Search#, #Tree#,
+#Info#, #QView#, #MainMenu#, #UserMenu#, #Disks#, #Help#, #Menu#, #Other#;
+    - #Key# is a key name such as #CtrlShiftF3#, #AltF1#, #F7#, etc.
+
+    Common fields inside a section:
+    #Description# - short text shown in the macro browser;
+    #DisableOutput# - #0x1# to suppress screen redraw during playback;
+    #Sequence# - macro text (may include #$If#, #$Else#, #$End#, etc.).
+
+    Example (open FAR2L internal terminal log in viewer; if the active panel is visible, temporarily hide panels):
+ #[KeyMacros/Shell/CtrlShiftF3]#
+ #DisableOutput=0x1#
+ #Sequence=$If (APanel.Visible) CtrlO F3 $Else F3 $End#
+
+    #Macro keywords (variables / conditions)#
+    General:
+      #Bof#, #Eof#, #Empty#, #Selected# - state of the current object in this area.
+      #Far.Width#, #Far.Height#, #Far.Title# - console size / title.
+      #MacroArea# - current macro area name.
+      #ItemCount#, #CurPos#, #Title#, #Height#, #Width# - current object properties.
+
+    Panels (Active/Passive):
+      #APanel.*# and #PPanel.*# are for active/passive panel.
+      #Empty#, #Bof#, #Eof#, #Root#, #Visible#, #Plugin#, #FilePanel#, #Folder#,
+      #Selected#, #Left#, #LFN#, #Filter# - panel state flags.
+      #Type#, #ItemCount#, #CurPos#, #Current#, #SelCount# - panel values.
+      #Path#, #Path0#, #UNCPath# - panel paths.
+      #Height#, #Width#, #OPIFlags#, #DriveType#, #ColumnCount# - panel geometry / mode.
+      #HostFile#, #Prefix# - plugin panel host file / prefix.
+
+    Command line:
+      #CmdLine.Bof#, #CmdLine.Eof#, #CmdLine.Empty#, #CmdLine.Selected# - state.
+      #CmdLine.ItemCount#, #CmdLine.CurPos#, #CmdLine.Value# - values.
+
+    Editor:
+      #Editor.FileName#, #Editor.CurLine#, #Editor.Lines#, #Editor.CurPos#,
+      #Editor.RealPos#, #Editor.State#, #Editor.Value#, #Editor.SelValue#.
+
+    Dialog:
+      #Dlg.ItemType#, #Dlg.ItemCount#, #Dlg.CurPos#, #Dlg.Info.Id#.
+
+    Help:
+      #Help.FileName#, #Help.Topic#, #Help.SelTopic#.
+
+    Viewer / Menu / Other:
+      #Viewer.FileName#, #Viewer.State#, #Menu.Value#,
+      #Drv.ShowPos#, #Drv.ShowMode#, #Fullscreen#, #IsUserAdmin#.
+
     Addition of macro language commands to a ~macro~@KeyMacro@ can only be done
 by manually editing the config file or by using special tools/plugins.
 
@@ -4883,170 +5016,170 @@ documentation.
     ~https://api.farmanager.com/ru/macro/~@https://api.farmanager.com/ru/macro/@
 
 @KeyMacroList
-$ #Макросы: Список установленных макросов#
-    Ниже приведен список разделов, в которых можно узнать какие ~макросы~@KeyMacro@ 
-действуют в текущей сессии Far Manager.
+$ #Macros: List of defined macros#
+    Below is a list of sections where you can find out which ~macros~@KeyMacro@
+are active in the current Far Manager session.
 
-  ~Список переменных~@KeyMacroVarList@
-  ~Список констант~@KeyMacroConstList@
+  ~List of variables~@KeyMacroVarList@
+  ~List of constants~@KeyMacroConstList@
 
-  ~Общие макросы#~@KeyMacroCommonList@
+  ~Common macros~@KeyMacroCommonList@
 
-  ~Панели~@KeyMacroShellList@
-  ~Панель быстрого просмотра~@KeyMacroQViewList@
-  ~Панель папок~@KeyMacroTreeList@
-  ~Информационная панель~@KeyMacroInfoList@
+  ~Panels~@KeyMacroShellList@
+  ~Quick view panel~@KeyMacroQViewList@
+  ~Tree panel~@KeyMacroTreeList@
+  ~Info panel~@KeyMacroInfoList@
 
-  ~Быстрый поиск в панелях~@KeyMacroSearchList@
-  ~Поиск папки~@KeyMacroFindFolderList@
+  ~Fast find in panels~@KeyMacroSearchList@
+  ~Find folder~@KeyMacroFindFolderList@
 
-  ~Диалоги~@KeyMacroDialogList@
+  ~Dialogs~@KeyMacroDialogList@
 
-  ~Главное меню~@KeyMacroMainMenuList@
-  ~Меню выбора дисков~@KeyMacroDisksList@
-  ~Меню пользователя~@KeyMacroUserMenuList@
-  ~Прочие меню~@KeyMacroMenuList@
-  
-  ~Программа просмотра~@KeyMacroViewerList@
-  ~Редактор~@KeyMacroEditList@
-  
-  ~Файл помощи#~@KeyMacroHelpList@
-  
-  ~Остальные области~@KeyMacroOtherList@
+  ~Main menu~@KeyMacroMainMenuList@
+  ~Location menu~@KeyMacroDisksList@
+  ~User menu~@KeyMacroUserMenuList@
+  ~Other menus~@KeyMacroMenuList@
+
+  ~Viewer~@KeyMacroViewerList@
+  ~Editor~@KeyMacroEditList@
+
+  ~Help file~@KeyMacroHelpList@
+
+  ~Other areas~@KeyMacroOtherList@
 
 @KeyMacroVarList
-$ #Макросы: Список переменных#
-    Ниже приведен список переменных, которые можно использовать в макросах.
+$ #Macros: List of variables#
+    Below is a list of variables that can be used in macros.
 
 <!Macro:Vars!>
 
 @KeyMacroConstList
-$ #Макросы: Список констант#
-    Ниже приведен список констант, которые можно использовать в макросах.
+$ #Macros: List of constants#
+    Below is a list of constants that can be used in macros.
 
 <!Macro:Consts!>
 
 @KeyMacroCommonList
-$ #Макросы: Общие#
-    Ниже приведены комбинации макроклавиш, действующих везде.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: Common#
+    Below are the macro key combinations that are active everywhere.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 
 @KeyMacroQViewList
-$ #Макросы: Панель быстрого просмотра#
-    Ниже приведены комбинации макроклавиш, действующих в панели быстрого просмотра.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: Quick view panel#
+    Below are the macro key combinations active for the quick view panel.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 <!Macro:Qview!>
 
 @KeyMacroMainMenuList
-$ #Макросы: Главное меню#
-    Ниже приведены комбинации макроклавиш, действующих в главном меню.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: Main menu#
+    Below are the macro key combinations active for the main menu.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 <!Macro:MainMenu!>
 
 @KeyMacroTreeList
-$ #Макросы: Панель папок#
-    Ниже приведены комбинации макроклавиш, действующих в панели папок.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: Tree panel#
+    Below are the macro key combinations active for the tree panel.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 <!Macro:Tree!>
 
 @KeyMacroDialogList
-$ #Макросы: Диалоги#
-    Ниже приведены комбинации макроклавиш, действующих в диалогах.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: Dialogs#
+    Below are the macro key combinations active in dialogs.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 <!Macro:Dialog!>
 
 @KeyMacroInfoList
-$ #Макросы: Информационная панель#
-    Ниже приведены комбинации макроклавиш, действующих в информационной панели.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: Info panel#
+    Below are the macro key combinations active for the info panel.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 <!Macro:Info!>
 
 @KeyMacroDisksList
-$ #Макросы: Меню выбора дисков#
-    Ниже приведены комбинации макроклавиш, действующих в меню выбора дисков.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: Location menu#
+    Below are the macro key combinations active for the location menu.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 <!Macro:Disks!>
 
 @KeyMacroUserMenuList
-$ #Макросы: Меню пользователя#
-    Ниже приведены комбинации макроклавиш, действующих в пользовательском меню.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: User menu#
+    Below are the macro key combinations active for the user menu.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 <!Macro:UserMenu!>
 
 @KeyMacroShellList
-$ #Макросы: Панели#
-    Ниже приведены комбинации макроклавиш, действующих в файловых панелях.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: Panels#
+    Below are the macro key combinations active for the file panels.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 <!Macro:Shell!>
 
 @KeyMacroSearchList
-$ #Макросы: Быстрый поиск в панелях#
-    Ниже приведены комбинации макроклавиш, действующих в быстром поиске файловых панелей.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: Fast find in panels#
+    Below are the macro key combinations active for the fast find mode in file panels.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 <!Macro:Search!>
 
 @KeyMacroFindFolderList
-$ #Макросы: Поиск папки#
-    Ниже приведены комбинации макроклавиш, действующих в поиске папки.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: Find folder#
+    Below are the macro key combinations active for the find folder dialog.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 <!Macro:FindFolder!>
 
 @KeyMacroEditList
-$ #Макросы: Редактор#
+$ #Macros: Editor#
     Macro-commands available in the editor are listed below. Descriptions are read from the config file.
 
 <!Macro:Common!>
 <!Macro:Editor!>
 
 @KeyMacroViewerList
-$ #Макросы: Программа просмотра#
-    Macro-commands available in the viewer are listed below. Descriptions are read from the config file.
+$ #Macros: Viewer#
+    Macro commands available in the viewer are listed below. The description for each is read from the config file.
 
 <!Macro:Common!>
 <!Macro:Viewer!>
 
 @KeyMacroMenuList
-$ #Макросы: Прочие меню#
-    Ниже приведены комбинации макроклавиш, действующих в прочих меню.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: Other menus#
+    Below are the macro key combinations active in other menus.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 <!Macro:Menu!>
 
 @KeyMacroHelpList
-$ #Макросы: Файл помощи#
-    Ниже приведены комбинации макроклавиш, действующих в файле помощи.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: Help file#
+    Below are the macro key combinations active for the help file.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 <!Macro:Help!>
 
 @KeyMacroOtherList
-$ #Макросы: Остальные области#
-    Ниже приведены комбинации макроклавиш, действующих в других областях: копировании текста с экрана, вертикальных меню.
-    Описание для каждой макроклавиши берется из файла конфигурации (поле Description).
+$ #Macros: Other areas#
+    Below are the macro key combinations active in other areas: screen text copying, vertical menus.
+    The description for each macro key is taken from the configuration file (Description field).
 
 <!Macro:Common!>
 <!Macro:Other!>
@@ -5054,3 +5187,24 @@ $ #Макросы: Остальные области#
 @Index
 $ #Index help file#
 <%INDEX%>
+
+
+@WaysToRunPrograms
+$ #Ways to run programs without blocking far2l#
+  When running programs on the internal ~Command line~@CmdLineCmd@, ~File Associations~@FileAssoc@, ~User Menu~@UserMenu@ and actions ~Apply Command~@ApplyCmd@ far2l may be blocked. The following describes how to run without blocking far2l:
+
+  Launching programs in an ~external terminal~@ExternalTerminal@ from the far2l command line:
+  - #program#: to launch in an external terminal using #Shift-Enter# (using ~$FARHOME~@FAREnv@/open.sh to launch); 
+  - #$FARHOME/open.sh exec program#: to run in an external terminal using #Enter#, exec is required as the first parameter for open.sh;
+  - #$FARHOME/open.sh exec sh -c "ls;read k"#: in this case, the ls command will be executed in the external terminal, but the terminal will not close;
+
+  Running programs from far2l:
+  - #program params &#: just add at the end & - will close the program after closing far2l;
+  - #nohup program params &#: the launch is performed by the nohup program. A nohup.out file is created in the current directory with the program output. You can delete this file later. Such a launch will keep the program running after completing far2l;
+  - #nohup program params >/dev/null 2>&1 &#: will leave the program running after completing far2l without unnecessary output;
+  - #setsid program params >/dev/null 2>/dev/null#: when used in the examples above & some programs, when closed, output information about their termination to the current terminal - using setsid avoids such clogging of the output of the current program;
+
+  See also:
+   ~Special commands~@SpecCmd@
+   ~File Masks~@FileMasks@
+   ~Metasymbols~@MetaSymbols@

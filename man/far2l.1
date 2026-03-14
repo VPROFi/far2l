@@ -1,6 +1,6 @@
 .\" -*- mode: troff; coding: UTF-8 -*-
 .\"TOPICS "Topics:"
-.TH FAR2L 1 "30-08-24" "FAR2L Version 2.6.3" "Linux fork of FAR Manager v2"
+.TH FAR2L 1 "October 2025" "FAR2L Version 2.7.0" "Linux fork of FAR Manager v2"
 .\"SKIP_SECTION"
 .SH "NAME"
 far2l \- Two-panel file manager, with built\-in terminal and other usefulness\'es.
@@ -21,7 +21,10 @@ Unix\-like operating systems.
 .SH "OPTIONS"
 .TP
 \fB\-h\fR
-Display this help and exit.
+Display short help and exit.
+.TP
+\fB\--version\fR
+Display the version of the program and exit.
 .TP
 \fB\-a\fR
 Disable display of characters with codes 0 - 31 and 255.
@@ -49,7 +52,7 @@ Do not load macros.
 Do not execute auto run macros.
 .TP
 \fB\-u\fR \fI\,IDENTITY\/\fR OR \fI\,/PATH/NAME\/\fR
-Allows to specify separate settings \fI\,IDENTITY\/\fR or FS location.
+Allows to specify separate settings \fI\,IDENTITY\/\fR or FS location (it override \fB\,FARSETTINGS\/\fR environment variable value).
 .TP
 \fB\-v\fR \fI\,FILENAME\/\fR
 View the specified file.
@@ -82,7 +85,8 @@ don't fallback to TTY backend if GUI backend failed
 don't use true (24-bit) colors
 .TP
 \fB\-\-nodetect\fP, \fB\-\-nodetect\fP=[x|xi][f][w][a][k]
-don't detect if TTY backend supports X11/Xi input and clipboard interaction extensions and/or disable detect f=FAR2l terminal extensions, w=win32, a=apple iTerm2, k=kovidgoyal's kitty input modes
+don't detect if TTY backend supports X11/Xi input and clipboard interaction extensions and/or disable detect f=FAR2l terminal extensions, w=win32, a=apple iTerm2, k=kovidgoyal's kitty input modes;
+this switch without parameters disables all this functionality, forcing plain terminal mode for TTY backend.
 .TP
 \fB\-\-mortal\fP
 terminate instead of going to background on getting SIGHUP (default if in Linux TTY)
@@ -91,13 +95,13 @@ terminate instead of going to background on getting SIGHUP (default if in Linux 
 go to background instead of terminating on getting SIGHUP (default if not in Linux TTY)
 .TP
 \fB\-\-x11\fP
-force GUI backend to run on X11
+force GUI backend to run on X11/Xwayland (force make GDK_BACKEND=x11)
 .TP
 \fB\-\-wayland\fP
-force GUI backend to run on Wayland
+force GUI backend to run on Wayland (force make GDK_BACKEND=wayland)
 .TP
-\fB\-\-ee\fP, \fB\-\-ee\fP=\fI\,N\/\fR
-ESC expiration in \fI\,N\/\fR msec (100 if unspecified) to avoid need for double ESC presses (valid only in TTY mode without FAR2L extensions)
+\fB\-\-ee\fP=\fI\,N\/\fR
+ESC expiration in msec (default is 100, 0 to disable) to avoid need for double ESC presses (valid only in TTY mode without FAR2L extensions)
 .TP
 \fB\-\-primary-selection\fP
 use PRIMARY selection instead of CLIPBOARD X11 selection (only for GUI backend)
@@ -110,10 +114,18 @@ dont maximize window upon launch even if its has saved maximized state (only for
 .TP
 \fB\-\-clipboard=\fI\,SCRIPT\/\fR\fP
 use external clipboard handler script that implements get/set text clipboard data via its stdin/stdout
-.P
-Backend-specific options also can be set via the \fB\,FAR2L_ARGS\/\fR environment variable
+.EE
+.\"NODE "ENVIRONMENT"
+.\"DONT_SPLIT"
+.SH "ENVIRONMENT"
+.TP
+\fBFARSETTINGS\fR\fP
+Override location of user settings and configuration files (see option \fB\-u\fR).
+.TP
+\fBFAR2L_ARGS\fR\fP
+All options (except \fB\-h\fR and \fB\-u\fR) also can be set via the \fB\,FAR2L_ARGS\/\fR environment variable
 .EX
-(for example: export FAR2L_ARGS="--tty --nodetect --ee" and then simple far2l to force start only TTY backend).
+(for example: export FAR2L_ARGS="--tty --nodetect" and then simple far2l to force start only TTY backend).
 .EE
 .\"NODE "FULL HELP"
 .SH "FULL HELP"

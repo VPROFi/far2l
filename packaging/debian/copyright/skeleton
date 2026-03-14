@@ -27,7 +27,7 @@ License: GPL-2
 
 Files: colorer/configs/*
 Copyright: 1999-2009 Igor Ruskih
-License: GPL-2
+License: LGPL-2.1
 
 Files: farlng/*
 Copyright: 2003-2005 WARP ItSelf
@@ -71,6 +71,10 @@ License: BSD-3-clause+FAR-Plugins-Exception
 Files: far2l/src/vt/vtansi.cpp
 Copyright: 2005-2014 Jason Hood
 License: ANSICON
+
+Files: far2l/src/shoco/*
+Copyright: 2014-2015 Christian Schramm
+License: MIT
 
 Files: multiarc/src/formats/rar/unrar/*
 Copyright: 2009-2020 Alexander L. Roshal

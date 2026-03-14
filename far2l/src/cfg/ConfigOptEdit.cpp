@@ -52,7 +52,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hilight.hpp"
 #include "interf.hpp"
 #include "keyboard.hpp"
-#include "palette.hpp"
+#include "farcolors.hpp"
 #include "message.hpp"
 #include "stddlg.hpp"
 #include "pathmix.hpp"
@@ -90,7 +90,8 @@ public:
 			case ConfigOpt::T_DWORD:
 				return (*_opt.value.dw != _opt.def.dw);
 			case ConfigOpt::T_STR:
-				return (*_opt.value.str != _opt.def.str);
+				return (_opt.def.str == nullptr ? -1
+						: (*_opt.value.str != _opt.def.str));
 			case ConfigOpt::T_BIN:
 				return (_opt.def.bin == nullptr || _opt.value.bin == nullptr ? -1
 						: ( memcmp(_opt.value.bin, _opt.def.bin, _opt.bin_size) == 0 ? 0 : 1 ));
@@ -122,6 +123,8 @@ public:
 				*_opt.value.dw = _opt.def.dw;
 				return 1;
 			case ConfigOpt::T_STR:
+				if (_opt.def.str == nullptr)
+					return -1;
 				if (*_opt.value.str == _opt.def.str)
 					return 0;
 				*_opt.value.str = _opt.def.str;
@@ -163,29 +166,43 @@ public:
 		switch (_opt.type)
 		{
 			case ConfigOpt::T_BOOL:
-				mi.strName.Format(L"%s %ls |  bool|%ls|%s",
-					(*_opt.value.b == _opt.def.b ? " " : "*"), fsn.CPtr(), fssave.CPtr(), (*_opt.value.b ? "true" : "false"));
+				mi.strName.Format(L"%s %ls %lc  bool%lc%ls%lc%s",
+					(*_opt.value.b == _opt.def.b ? " " : "*"),
+					fsn.CPtr(), BoxSymbols[BS_V1], BoxSymbols[BS_V1],
+					fssave.CPtr(), BoxSymbols[BS_V1],
+					(*_opt.value.b ? "true" : "false"));
 				break;
 			case ConfigOpt::T_INT:
-				mi.strName.Format(L"%s %ls |   int|%ls|%ld = 0x%lx",
-					(*_opt.value.i == _opt.def.i ? " " : "*"), fsn.CPtr(), fssave.CPtr(), *_opt.value.i, *_opt.value.i);
+				mi.strName.Format(L"%s %ls %lc   int%lc%ls%lc%ld = 0x%lx",
+					(*_opt.value.i == _opt.def.i ? " " : "*"),
+					fsn.CPtr(), BoxSymbols[BS_V1], BoxSymbols[BS_V1],
+					fssave.CPtr(), BoxSymbols[BS_V1],
+					*_opt.value.i, *_opt.value.i);
 				break;
 			case ConfigOpt::T_DWORD:
-				mi.strName.Format(L"%s %ls | dword|%ls|%lu = 0x%lx",
-					(*_opt.value.dw == _opt.def.dw ? " " : "*"), fsn.CPtr(), fssave.CPtr(), *_opt.value.dw, *_opt.value.dw);
+				mi.strName.Format(L"%s %ls %lc dword%lc%ls%lc%lu = 0x%lx",
+					(*_opt.value.dw == _opt.def.dw ? " " : "*"),
+					fsn.CPtr(), BoxSymbols[BS_V1], BoxSymbols[BS_V1],
+					fssave.CPtr(), BoxSymbols[BS_V1],
+					*_opt.value.dw, *_opt.value.dw);
 				break;
 			case ConfigOpt::T_STR:
-				mi.strName.Format(L"%s %ls |string|%ls|%ls",
-					(*_opt.value.str == _opt.def.str ? " " : "*"), fsn.CPtr(), fssave.CPtr(), _opt.value.str->CPtr());
+				mi.strName.Format(L"%s %ls %lcstring%lc%ls%lc%ls",
+					(_opt.def.str == nullptr ? "?"
+						: (*_opt.value.str == _opt.def.str ? " " : "*")),
+					fsn.CPtr(), BoxSymbols[BS_V1], BoxSymbols[BS_V1],
+					fssave.CPtr(), BoxSymbols[BS_V1],
+					_opt.value.str->CPtr());
 				break;
 			case ConfigOpt::T_BIN:
-				mi.strName.Format(L"%s %ls |binary|%ls|(binary has length %u bytes)",
+				mi.strName.Format(L"%s %ls %lcbinary%lc%ls%lc(binary has length %u bytes)",
 					(_opt.def.bin == nullptr || _opt.value.bin == nullptr ? "?"
 						: ( memcmp(_opt.value.bin, _opt.def.bin, _opt.bin_size) == 0 ? " " : "*")),
-					fsn.CPtr(), fssave.CPtr(), _opt.bin_size );
+					fsn.CPtr(), BoxSymbols[BS_V1], BoxSymbols[BS_V1],
+					fssave.CPtr(), BoxSymbols[BS_V1], _opt.bin_size );
 				break;
 			default:
-				mi.strName.Format(L"? %ls |unknown type ???", fsn.CPtr());
+				mi.strName.Format(L"? %ls %lcunknown type ???", fsn.CPtr(), BoxSymbols[BS_V1]);
 		}
 		if (update_id < 0) {
 			if (hide_unchanged && mi.strName.At(0)==L' ') // no hide after change item to default value
@@ -250,7 +267,7 @@ public:
 		if (IsNotDefault()==1) {
 			em.Add(L"");
 			em.Add(L"Note: some parameters after update/reset");
-			em.Add(L"      not applied immediatly in FAR2L");
+			em.Add(L"      not applied immediately in FAR2L");
 			em.Add(L"      and need relaunch feature");
 			em.Add(L"      or may be need save config & restart FAR2L");
 		}
@@ -380,7 +397,7 @@ public:
 			/*  33 */ {DI_RADIOBUTTON,	59, 10, 65,            10, {}, (is_editable ? 0 : DIF_DISABLE), L"hex"},
 			/*  34 */ {DI_TEXT,		3, 11, 20,            11, {}, DIF_SEPARATOR, L""},
 			/*  35 */ {DI_TEXT,		5, 12, DLG_WIDTH - 6, 12, {}, DIF_SHOWAMPERSAND, L"Note: some parameters after update/reset"},
-			/*  36 */ {DI_TEXT,		5, 13, DLG_WIDTH - 6, 13, {}, DIF_SHOWAMPERSAND, L"      not applied immediatly in FAR2L"},
+			/*  36 */ {DI_TEXT,		5, 13, DLG_WIDTH - 6, 13, {}, DIF_SHOWAMPERSAND, L"      not applied immediately in FAR2L"},
 			/*  37 */ {DI_TEXT,		5, 14, DLG_WIDTH - 6, 14, {}, DIF_SHOWAMPERSAND, L"      and need relaunch feature"},
 			/*  38 */ {DI_TEXT,		5, 15, DLG_WIDTH - 6, 15, {}, DIF_SHOWAMPERSAND, L"      or may be need save config & restart FAR2L"},
 			/*  39 */ {DI_TEXT,		3, 16, 20, 16, {}, DIF_SEPARATOR, L""},
@@ -511,10 +528,12 @@ public:
 
 static FARString ConfigOptEditTitle(bool hide_unchanged = false)
 {
-	FARString title = L"far:config";
+	FARString title (Msg::MenuFarConfig);
+	title+= L" - far:config";
 	if (hide_unchanged) {
 		title+= L" *";
 	}
+	RemoveChar(title, L'&');
 	return title;
 }
 

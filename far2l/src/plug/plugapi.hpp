@@ -64,12 +64,16 @@ int WINAPI farIsAlpha(wchar_t Ch);
 int WINAPI farIsAlphaNum(wchar_t Ch);
 
 int WINAPI farGetFileOwner(const wchar_t *Computer, const wchar_t *Name, wchar_t *Owner, int Size);
+int WINAPI farGetFileGroup(const wchar_t *Computer, const wchar_t *Name, wchar_t *Group, int Size);
 
 int WINAPI farConvertPath(CONVERTPATHMODES Mode, const wchar_t *Src, wchar_t *Dest, int DestSize);
 
 int WINAPI farGetReparsePointInfo(const wchar_t *Src, wchar_t *Dest, int DestSize);
 
 int WINAPI farGetPathRoot(const wchar_t *Path, wchar_t *Root, int DestSize);
+SIZE_T farAPIVTEnumBackground(HANDLE *con_hnds, SIZE_T count);
+BOOL  farAPIVTLogExportW(HANDLE con_hnd, DWORD vth_flags, const wchar_t *file);
+BOOL  farAPIVTLogExportA(HANDLE con_hnd, DWORD vth_flags, const char *file);
 
 int WINAPI FarGetPluginDirList(INT_PTR PluginNumber, HANDLE hPlugin, const wchar_t *Dir,
 		struct PluginPanelItem **pPanelItem, int *pItemsNumber);
@@ -79,7 +83,7 @@ int WINAPI FarMenuFn(INT_PTR PluginNumber, int X, int Y, int MaxHeight, DWORD Fl
 		const wchar_t *Bottom, const wchar_t *HelpTopic, const int *BreakKeys, int *BreakCode,
 		const struct FarMenuItem *Item, int ItemsNumber);
 const wchar_t *WINAPI FarGetMsgFn(INT_PTR PluginHandle, FarLangMsgID MsgId);
-int WINAPI FarMessageFn(INT_PTR PluginNumber, DWORD Flags, const wchar_t *HelpTopic,
+intptr_t WINAPI FarMessageFn(INT_PTR PluginNumber, DWORD Flags, const wchar_t *HelpTopic,
 		const wchar_t *const *Items, int ItemsNumber, int ButtonsNumber);
 int WINAPI FarControl(HANDLE hPlugin, int Command, int Param1, LONG_PTR Param2);
 HANDLE WINAPI FarSaveScreen(int X1, int Y1, int X2, int Y2);
@@ -109,8 +113,13 @@ BOOL WINAPI FarShowHelp(const wchar_t *ModuleName, const wchar_t *HelpTopic, DWO
 
 int WINAPI FarInputBox(const wchar_t *Title, const wchar_t *Prompt, const wchar_t *HistoryName,
 		const wchar_t *SrcText, wchar_t *DestText, int DestLength, const wchar_t *HelpTopic, DWORD Flags);
+
+int WINAPI FarColorDialog(const int flags, uint64_t *c);
+
 /* Функция, которая будет действовать и в редакторе, и в панелях, и... */
 INT_PTR WINAPI FarAdvControl(INT_PTR ModuleNumber, int Command, void *Param1, void *Param2);
+INT_PTR WINAPI FarAdvControlAsync(INT_PTR ModuleNumber, int Command, void *Param1, void *Param2);
+
 // Функция расширенного диалога
 HANDLE WINAPI FarDialogInit(INT_PTR PluginNumber, int X1, int Y1, int X2, int Y2, const wchar_t *HelpTopic,
 		struct FarDialogItem *Item, unsigned int ItemsNumber, DWORD Reserved, DWORD Flags, FARWINDOWPROC Proc,

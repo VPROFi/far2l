@@ -5,7 +5,6 @@
 #include "TTYInputSequenceParser.h"
 #include "Backend.h"
 
-
 //See:
 // http://www.manmrk.net/tutorials/ISPF/XE/xehelp/html/HID00000579.htm
 // http://www.leonerd.org.uk/hacks/fixterms/
@@ -179,7 +178,7 @@ TTYInputSequenceParser::TTYInputSequenceParser(ITTYInputSpecialSequenceHandler *
 	AddStrF1F5(VK_F2, "Q"); AddStr(VK_F2, 0, "[[B");
 	AddStrF1F5(VK_F3, "R"); AddStr(VK_F3, 0, "[[C");
 	AddStrF1F5(VK_F4, "S"); AddStr(VK_F4, 0, "[[D");
-	AddStrF1F5(VK_F5, "E"); AddStr(VK_F5, 0, "[[E");
+	AddStrF1F5(VK_CLEAR, "E"); AddStr(VK_F5, 0, "[[E"); // VK_CLEAR is NumPad center (5)
 
 	AddStrTilde(VK_HOME, 1);
 	AddStrTilde(VK_INSERT, 2);
@@ -302,6 +301,9 @@ void TTYInputSequenceParser::ParseAPC(const char *s, size_t l)
 	} else if (strncmp(s, "far2l", 5) == 0) {
 		_tmp_stk_ser.FromBase64(s + 5, l - 5);
 		_handler->OnFar2lReply(_tmp_stk_ser);
+
+	} else if (*s == 'G') {
+		_handler->OnKittyGraphicsResponse(std::string(s + 1, l - 1));
 	}
 }
 
@@ -315,7 +317,13 @@ size_t TTYInputSequenceParser::ParseEscapeSequence(const char *s, size_t l)
 	fprintf(stderr, "\n");
 	*/
 
+	if (l > 1 && s[0] == '[' && (s[1] == 'I' || s[1] == 'O')) { // focus
+		_handler->OnFocusChange(s[1] == 'I');
+		return 2;
+	}
+
 	if (l > 2 && s[0] == '[' && s[2] == 'n') {
+		_handler->OnStatusResponse(s[1]);
 		return 3;
 	}
 
@@ -325,8 +333,12 @@ size_t TTYInputSequenceParser::ParseEscapeSequence(const char *s, size_t l)
 				ParseAPC(s + 1, i - 1);
 				return i + 1;
 			}
+			if (s[i] == '\e' && i + 1 < l && s[i + 1] == '\\' ) {
+				ParseAPC(s + 1, i - 1);
+				return i + 2;
+			}
 		}
-		return 0;
+		return TTY_PARSED_WANTMORE;
 	}
 
 	if (l > 4 && s[0] == '[' && s[1] == '2' && s[2] == '0' && (s[3] == '0' || s[3] == '1') && s[4] == '~') {
@@ -352,6 +364,17 @@ size_t TTYInputSequenceParser::ParseEscapeSequence(const char *s, size_t l)
 		}
 	}
 
+	if (l > 5 && s[0] == '[' && s[1] == '6' && s[2] == ';') { // Response to ESC [ 16 t
+		unsigned int h=0, w=0;
+		if (sscanf(s, "[6;%u;%ut", &h, &w) == 2) {
+			_handler->OnGetCellSize(w, h);
+			// find 't'
+			for (size_t i = 3; i < l; ++i) {
+				if (s[i] == 't') return i + 1;
+			}
+		}
+	}
+
 	if (l > 5 && s[0] == ']' && s[1] == '1' && s[2] == '3' && s[3] == '3' && s[4] == '7' && s[5] == ';') {
 		r = TryParseAsITerm2EscapeSequence(s, l);
 		if (r != TTY_PARSED_BADSEQUENCE) {
@@ -364,15 +387,13 @@ size_t TTYInputSequenceParser::ParseEscapeSequence(const char *s, size_t l)
 		return r;
 	}
 
-	//win32-input-mode must be checked before kitty
 	if (l > 1 && s[0] == '[') {
+		//win32-input-mode must be checked before kitty
 		r = TryParseAsWinTermEscapeSequence(s, l);
 		if (r != TTY_PARSED_BADSEQUENCE) {
 			return r;
 		}
-	}
 
-	if (l > 1 && s[0] == '[') {
 		r = TryParseAsKittyEscapeSequence(s, l);
 		if (r != TTY_PARSED_BADSEQUENCE) {
 			return r;
@@ -420,6 +441,13 @@ size_t TTYInputSequenceParser::ParseIntoPending(const char *s, size_t l)
 		case 0x01: case 0x02: case 0x03: case 0x04: case 0x05: case 0x06: case 0x07: case 0x08:
 		case 0x0a: case 0x0b: case 0x0c: case 0x0e: case 0x0f: case 0x10: case 0x11: case 0x12:
 		case 0x13: case 0x14: case 0x15: case 0x16: case 0x17: case 0x18: case 0x19: case 0x1a:
+
+			// workaround for \x0a received instead of \x0d in kitty and wezterm in bracketed paste mode
+			if (_bracketed_paste_mode && *s == 0x0a) {
+				AddPendingKeyEvent(TTYInputKey{VK_RETURN, 0});
+				return 1;
+			}
+
 			AddPendingKeyEvent(TTYInputKey{WORD('A' + (*s - 0x01)), LEFT_CTRL_PRESSED});
 			return 1;
 
@@ -518,7 +546,8 @@ void TTYInputSequenceParser::AddPendingKeyEvent(const TTYInputKey &k)
 	ir.Event.KeyEvent.wVirtualKeyCode = k.vk;
 	ir.Event.KeyEvent.dwControlKeyState = k.control_keys | _extra_control_keys;
 	ir.Event.KeyEvent.wVirtualScanCode = WINPORT(MapVirtualKey)(k.vk,MAPVK_VK_TO_VSC);
-	_handler->OnInspectKeyEvent(ir.Event.KeyEvent);
+	if (!_bracketed_paste_mode)
+		_handler->OnInspectKeyEvent(ir.Event.KeyEvent);
 	_ir_pending.emplace_back(ir); // g_winport_con_in->Enqueue(&ir, 1);
 	ir.Event.KeyEvent.bKeyDown = FALSE;
 	_ir_pending.emplace_back(ir); // g_winport_con_in->Enqueue(&ir, 1);
@@ -661,6 +690,8 @@ void TTYInputSequenceParser::OnBracketedPaste(bool start)
 	ir.EventType = BRACKETED_PASTE_EVENT;
 	ir.Event.BracketedPaste.bStartPaste = start ? TRUE : FALSE;
 	_ir_pending.emplace_back(ir);
+
+	_bracketed_paste_mode = start;
 }
 
 //work-around for double encoded events in win32-input mode
@@ -675,7 +706,7 @@ void TTYInputSequenceParser::ParseWinDoubleBuffer(bool idle)
 		_win32_accumulate = true;
 		return;
 	}
-	
+
 	if (_win_double_buffer.size() > 2 && _win_double_buffer.back() >= '@' && _win_double_buffer.back() <= '~') {
 		// end of sequence, whatever is it
 		_win32_accumulate = false;

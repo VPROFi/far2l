@@ -104,6 +104,7 @@ struct PanelOptions
 	int NumericSort;
 	int CaseSensitiveSort;
 	int DirectoriesFirst;
+	int ExecutablesFirst;
 };
 
 struct AutoCompleteOptions
@@ -219,13 +220,16 @@ struct EditorOptions
 	DWORD FileSizeLimitHi;
 	int ShowKeyBar;
 	int ShowTitleBar;
+	int ShowMenuBar;
 	int ShowScrollBar;
 	int UseEditorConfigOrg;
 	int SearchSelFound;
 	int SearchRegexp;
 	int SearchPickUpWord;
 	int ShowWhiteSpace;
+	int ShowLineNumbers;
 
+	int WordWrap;
 	FARString strWordDiv;
 };
 
@@ -239,6 +243,7 @@ struct ViewerOptions
 	int AutoDetectCodePage;
 	int ShowScrollbar;		// $ 18.07.2000 tran пара настроек для viewer
 	int ShowArrows;
+	int ClickableURLs;
 	int PersistentBlocks;	// $ 14.05.2002 VVM Постоянные блоки во вьюере
 	int ViewerIsWrap;		// (Wrap|WordWarp)=1 | UnWrap=0
 	int ViewerWrap;			// Wrap=0|WordWarp=1
@@ -249,6 +254,7 @@ struct ViewerOptions
 	UINT DefaultCodePage;
 	int ShowTitleBar;
 	int SearchRegexp;
+	int ShowMenuBar;
 };
 
 // "Полиция"
@@ -269,6 +275,7 @@ struct DialogsOptions
 	int MouseButton;		// Отключение восприятия правой/левой кнопки мыши как команд закрытия окна диалога
 	int DelRemovesBlocks;
 	int CBoxMaxHeight;		// максимальный размер открываемого списка (по умолчанию=8)
+	bool ShowArrowsInEdit;	// show arrows on text overflow in edit controls
 };
 
 struct VMenuOptions
@@ -291,6 +298,7 @@ struct CommandLineOptions
 	int VTLogLimit;
 	FARString strPromptFormat;
 	FARString strShell;
+	bool AskOnMultilinePaste;
 };
 
 struct NowellOptions
@@ -355,6 +363,9 @@ struct TreeOptions
 	int MinTreeCount;		// Минимальное количество папок для сохранения дерева в файле.
 	int AutoChangeFolder;	// автосмена папок при перемещении по дереву
 	DWORD TreeFileAttr;		// файловые атрибуты для файлов-деревях
+	FARString ExclSubTreeMask;
+	bool ScanDepthEnabled;
+	int DefaultScanDepth;
 };
 
 struct CopyMoveOptions
@@ -380,8 +391,8 @@ struct MacroOptions
 {
 	int MacroReuseRules;			// Правило на счет повторно использования забинденных клавиш
 	DWORD DisableMacro;				// параметры /m или /ma или /m....
-	DWORD KeyMacroCtrlDot;			// аля KEY_CTRLDOT
-	DWORD KeyMacroCtrlShiftDot;		// аля KEY_CTRLSHIFTDOT
+	FARString strKeyMacroCtrlDot;		// аля KEY_CTRLDOT
+	FARString strKeyMacroCtrlShiftDot;	// аля KEY_CTRLSHIFTDOT
 	int CallPluginRules;			// 0 - блокировать макросы при вызове плагина, 1 - разрешить макросы (ахтунг!)
 	FARString strMacroCONVFMT;		// формат преобразования double в строку
 	FARString strDateFormat;		// Для $Date
@@ -401,7 +412,11 @@ struct Options
 
 	int ShowFilenameMarks;
 	int FilenameMarksAlign;
+	int FilenameMarksInStatusBar;
 	DWORD MinFilenameIndentation, MaxFilenameIndentation;
+	DWORD DirNameStyle;
+	DWORD DirNameStyleColumnWidthAlways;
+	DWORD ShowSymlinkSize;
 
 	int Highlight;
 	int CursorBlinkTime;
@@ -415,6 +430,7 @@ struct Options
 	int RightSelectedFirst;
 	int LeftSelectedFirst;
 	int SelectFolders;
+	int AttrStrStyle;
 	int PanelCaseSensitiveCompareSelect;
 	int ReverseSort;
 	int SortFolderExt;
@@ -480,6 +496,7 @@ struct Options
 	int LeftHeightDecrement;
 	int RightHeightDecrement;
 	int WidthDecrement;
+	int PanelsDisposition;
 
 	int ShowColumnTitles;
 	int ShowPanelStatus;
@@ -516,10 +533,9 @@ struct Options
 	FARString strLanguage;
 	int SmallIcon;
 	FARString strRegRoot;
+	int ClassicHotkeyLinkResolving;
 	int PanelRightClickRule;	// задает поведение правой клавиши мыши
 	int PanelCtrlAltShiftRule;	// задает поведение Ctrl-Alt-Shift для панелей.
-	// Panel/CtrlFRule в реестре - задает поведение Ctrl-F. Если = 0, то штампуется файл как есть, иначе - с учетом отображения на панели
-	int PanelCtrlFRule;
 	/*
 		битовые флаги, задают поведение Ctrl-Alt-Shift
 			бит установлен - функция включена:
@@ -632,7 +648,14 @@ struct Options
 	FARString strTimeSeparator;
 	FARString strDecimalSeparator;
 
+	DWORD OwnerGroupShowId;
+
 	bool IsFirstStart;
+
+    // Theme support: theme name and flag indicating we need to save colors
+	FARString CurrentTheme;
+	bool IsColorsChanged;    /* transient, do not need to store in file */
+	bool IsSystemTheme;
 
 	std::vector<std::wstring> CmdLineStrings;
 };
@@ -658,3 +681,4 @@ void SetFolderInfoFiles();
 void InfoPanelSettings();
 void AutoCompleteSettings();
 void LanguageSettings();
+void DirectoryNameSettings();

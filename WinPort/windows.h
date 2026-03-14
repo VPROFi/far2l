@@ -104,9 +104,6 @@
 #define    FindNextFile           WINPORT(FindNextFile)
 #define    FindClose              WINPORT(FindClose)
 
-#define    GetTempFileName        WINPORT(GetTempFileName)
-#define    GetFullPathName        WINPORT(GetFullPathName)
-
 #define    EvaluateAttributes     WINPORT(Sleep)
 
 #define    Sleep                      WINPORT(Sleep)
@@ -155,6 +152,20 @@
 #define    IsClipboardFormatAvailable    WINPORT(IsClipboardFormatAvailable)
 #define    GetClipboardData              WINPORT(GetClipboardData)
 #define    SetClipboardData              WINPORT(SetClipboardData)
+
+//printer support
+#define    PrintTextFragment                WINPORT(PrintTextFragment)
+#define    PrintHtmlFragment                WINPORT(PrintHtmlFragment)
+#define    PrintTextFile                    WINPORT(PrintTextFile)
+#define    PrintHtmlFile                    WINPORT(PrintHtmlFile)
+#define    PrintPreviewTextFragment         WINPORT(PrintPreviewTextFragment)
+#define    PrintPreviewHtmlFragment         WINPORT(PrintPreviewHtmlFragment)
+#define    PrintPreviewTextFile             WINPORT(PrintPreviewTextFile)
+#define    PrintPreviewHtmlFile             WINPORT(PrintPreviewHtmlFile)
+#define    PrintSettingsDialog              WINPORT(PrintSettingsDialog)
+#define    PrintIsHTMLSupported             WINPORT(PrintIsHTMLSupported)
+#define    PrintIsPreviewSupported          WINPORT(PrintIsPreviewSupported)
+#define    PrintIsSettingsDialogSupported   WINPORT(PrintIsSettingsDialogSupported)
 
 //keyboard
 #define    GetKeyboardLayoutList  WINPORT(GetKeyboardLayoutList)

@@ -64,11 +64,12 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "constitle.hpp"
 #include "chgmmode.hpp"
 #include "vtshell.h"
+#include "vtlog.h"
 #include "InterThreadCall.hpp"
 #include "ScopeHelpers.h"
 #include <set>
 #include <sys/wait.h>
-#if defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 #include <signal.h>
 #endif
 
@@ -144,6 +145,24 @@ public:
 			int r = read(f, buf, sizeof(buf));
 			if (r > 4 && buf[0] == 0x7f && buf[1] == 'E' && buf[2] == 'L' && buf[3] == 'F') {
 				fprintf(stderr, "ExecClassifier('%s') - ELF executable\n", cmd);
+				_executable = true;
+			// Mach-O thin
+			} else if (r > 4 &&
+			  (
+				!memcmp(buf, "\xCE\xFA\xED\xFE", 4) || // MH_MAGIC
+				!memcmp(buf, "\xCF\xFA\xED\xFE", 4) || // MH_MAGIC_64
+				!memcmp(buf, "\xFE\xED\xFA\xCE", 4) || // MH_CIGAM
+				!memcmp(buf, "\xFE\xED\xFA\xCF", 4)    // MH_CIGAM_64
+			  )) {
+				fprintf(stderr, "ExecClassifier('%s') - Mach-O executable\n", cmd);
+				_executable = true;
+			// Mach-O FAT
+			} else if (r > 4 &&
+			  (
+				!memcmp(buf, "\xCA\xFE\xBA\xBE", 4) || // FAT_MAGIC
+				!memcmp(buf, "\xBE\xBA\xFE\xCA", 4)    // FAT_CIGAM
+			  )) {
+				fprintf(stderr, "ExecClassifier('%s') - Mach-O universal binary\n", cmd);
 				_executable = true;
 
 			} else if (r > 2 && buf[0] == '#' && buf[1] == '!') {
@@ -251,18 +270,25 @@ class FarExecuteScope
 public:
 	FarExecuteScope(const char *cmd_str)
 	{
+		WINPORT(GetConsoleMode)(NULL, &_saved_mode); // enable processed output so ShowBackground will do line recomposition as needed
+		WINPORT(SetConsoleMode) (NULL, _saved_mode | ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT
+			| ENABLE_EXTENDED_FLAGS | ENABLE_MOUSE_INPUT | ENABLE_INSERT_MODE | ENABLE_ECHO_INPUT);
 		ProcessShowClock++;
 		if (CtrlObject && CtrlObject->CmdLine) {
-			CtrlObject->CmdLine->ShowBackground();
+			CtrlObject->CmdLine->ShowBackground(true);
 			CtrlObject->CmdLine->RedrawWithoutComboBoxMark();
 		}
 		//		CtrlObject->CmdLine->SetString(L"", TRUE);
 		ScrBuf.Flush();
-		WINPORT(GetConsoleMode)(NULL, &_saved_mode);
-		WINPORT(SetConsoleMode) (NULL, _saved_mode | ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT
-			| ENABLE_EXTENDED_FLAGS | ENABLE_MOUSE_INPUT | ENABLE_INSERT_MODE | ENABLE_ECHO_INPUT);	// ENABLE_QUICK_EDIT_MODE
+		VTLog::Register(NULL); // enable logging
 		if (cmd_str) {
-			const std::wstring &ws = MB2Wide(cmd_str);
+			std::wstring ws = MB2Wide(cmd_str);
+			size_t pos = 0;
+			while ((pos = ws.find('\n', pos)) != std::string::npos) {
+				ws.insert(pos, 1, '\r');
+				pos += 2;
+			}
+
 			WINPORT(WriteConsole)(NULL, ws.c_str(), ws.size(), &_dw, NULL);
 			WINPORT(WriteConsole)(NULL, &eol[0], ARRAYSIZE(eol), &_dw, NULL);
 		}
@@ -274,6 +300,7 @@ public:
 		WINPORT(SetConsoleMode)(NULL, _saved_mode | ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT);
 		WINPORT(WriteConsole)(NULL, &eol[0], ARRAYSIZE(eol), &_dw, NULL);
 		WINPORT(SetConsoleMode)(NULL, _saved_mode);
+		VTLog::Unregister(NULL); // disable logging
 		ScrBuf.FillBuf();
 		if (CtrlObject && CtrlObject->CmdLine) {
 			CtrlObject->CmdLine->SaveBackground();
@@ -298,6 +325,13 @@ static int farExecuteASynched(const char *CmdStr, unsigned int ExecFlags)
 		return farExecuteASynched(OpenCmd.c_str(), ExecFlags & (~EF_OPEN));
 	}
 
+	if (ExecFlags & EF_EXTERNALTERM) {
+		std::string OpenCmd = GetOpenShVerb("exec");
+		OpenCmd+= ' ';
+		OpenCmd+= CmdStr;
+		return farExecuteASynched(OpenCmd.c_str(), ExecFlags & (~EF_EXTERNALTERM));
+	}
+
 	const bool may_notify = (ExecFlags & (EF_NOTIFY | EF_NOWAIT)) == EF_NOTIFY && Opt.NotifOpt.OnConsole;
 	if (ExecFlags & (EF_HIDEOUT | EF_NOWAIT)) {
 		r = NotVTExecute(CmdStr, (ExecFlags & EF_NOWAIT) != 0, (ExecFlags & EF_SUDO) != 0);
@@ -309,6 +343,7 @@ static int farExecuteASynched(const char *CmdStr, unsigned int ExecFlags)
 		}
 
 	} else {
+		UnlockScreen Unlock;
 		FarExecuteScope fes((ExecFlags & EF_NOCMDPRINT) ? "" : CmdStr);
 		r = VTShell_Execute(CmdStr, (ExecFlags & EF_SUDO) != 0, (ExecFlags & EF_MAYBGND) != 0, may_notify);
 	}

@@ -72,6 +72,7 @@ int PreMouseEventFlags = 0, MouseEventFlags = 0;
 // только что был ввод Alt-Цифира?
 int ReturnAltValue = 0;
 bool BracketedPasteMode = false;
+FARString GPastedText;
 
 /* end Глобальные переменные */
 
@@ -85,7 +86,7 @@ static MOUSE_EVENT_RECORD lastMOUSE_EVENT_RECORD;
 static int ShiftPressedLast = FALSE, AltPressedLast = FALSE, CtrlPressedLast = FALSE;
 static BOOL IsKeyCASPressed = FALSE;	// CtrlAltShift - нажато или нет?
 
-static int RightShiftPressedLast = FALSE, RightAltPressedLast = FALSE, RightCtrlPressedLast = FALSE;
+static int /*RightShiftPressedLast = FALSE,*/ RightAltPressedLast = FALSE, RightCtrlPressedLast = FALSE;
 static BOOL IsKeyRCASPressed = FALSE;	// Right CtrlAltShift - нажато или нет?
 
 static clock_t PressedLastTime, KeyPressedLastTime;
@@ -365,7 +366,7 @@ bool KeyToKeyLayoutCompare(FarKey Key, FarKey CompareKey)
 	//	Key = KeyToVKey[Key&0xFFFF]&0xFF;
 	//	CompareKey = KeyToVKey[CompareKey&0xFFFF]&0xFF;
 
-	return (Key && (Key == CompareKey || Xlator(0).Transcode((wchar_t)Key) == (wchar_t)CompareKey));
+	return (Key && (Key == CompareKey || XlatOneChar((wchar_t)Key) == (wchar_t)CompareKey));
 }
 
 // Должно вернуть клавишный Eng эквивалент Key
@@ -374,7 +375,7 @@ FarKey KeyToKeyLayout(FarKey Key)
 	_KEYMACRO(CleverSysLog Clev(L"KeyToKeyLayout()"));
 	_KEYMACRO(SysLog(L"Param: Key=%08X", Key));
 	if (uint32_t(Key) > 0x7f) {
-		return Xlator(0).Transcode(Key);
+		return XlatOneChar(Key);
 	}
 	return Key;
 	/*
@@ -486,12 +487,11 @@ static DWORD KeyMsClick2ButtonState(DWORD Key, DWORD &Event)
 	return 0;
 }
 
-DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bool AllowSynchro)
+static DWORD GetInputRecordInner(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bool AllowSynchro)
 {
 	_KEYMACRO(CleverSysLog Clev(L"GetInputRecord()"));
 	static int LastEventIdle = FALSE;
 	DWORD CalcKey;
-	DWORD ReadKey = 0;
 	int NotMacros = FALSE;
 	static int LastMsClickMacroKey = 0;
 	static clock_t sLastIdleDelivered = 0;
@@ -625,6 +625,24 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 				Console.ReadInput(pinp);
 				continue;
 			}
+			if (rec->EventType == KEY_EVENT && BracketedPasteMode) {
+				Console.ReadInput(*rec);
+				if (rec->Event.KeyEvent.bKeyDown) {
+					WCHAR wc = rec->Event.KeyEvent.uChar.UnicodeChar;
+					if (wc)
+						GPastedText += wc;
+					else if (rec->Event.KeyEvent.wVirtualKeyCode == VK_RETURN)
+						GPastedText += L'\n';
+					else if (rec->Event.KeyEvent.wVirtualKeyCode == VK_TAB)
+						GPastedText += L'\t';
+				}
+				if (!GPastedText.IsEmpty()) {
+					memset(rec, 0, sizeof(*rec));
+					rec->EventType = NOOP_EVENT; // Fake key event
+					return KEY_OP_PLAINTEXT;
+				}
+				continue;
+			}
 
 			// // _SVS(INPUT_RECORD_DumpBuffer());
 #if 0
@@ -678,7 +696,15 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 		}
 
 		ScrBuf.Flush();
-		WINPORT(WaitConsoleInput)(NULL, 160);
+
+		static DWORD sLastIdleWaitConsoleInput = 0;
+		DWORD WaitConsoleInputTmout = (sLastIdleWaitConsoleInput < 5) ? 10 : 160;
+//		fprintf(stderr, " WaitConsoleInputTmout=%u\n", WaitConsoleInputTmout);
+		if (WINPORT(WaitConsoleInput)(NULL, WaitConsoleInputTmout)) {
+			sLastIdleWaitConsoleInput = 0;
+		} else {
+			++sLastIdleWaitConsoleInput;
+		}
 
 		// Позволяет избежать ситуации блокирования мыши
 		if (Opt.Mouse)	// А нужно ли это условие???
@@ -769,7 +795,48 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 
 	if (rec->EventType == BRACKETED_PASTE_EVENT) {
 		Console.ReadInput(*rec);
-		BracketedPasteMode = (rec->Event.BracketedPaste.bStartPaste != FALSE);
+		bool start = (rec->Event.BracketedPaste.bStartPaste != FALSE);
+		BracketedPasteMode = start;
+
+		if (start) {
+			GPastedText.Clear();
+			INPUT_RECORD tmprec;
+			while (true) {
+				// Wait briefly for input to avoid busy looping, but assume stream is fast
+				if (!WINPORT(WaitConsoleInput)(NULL, 100))
+					break;
+
+				if (!Console.PeekInput(tmprec))
+					break;
+
+				if (tmprec.EventType == BRACKETED_PASTE_EVENT) {
+					Console.ReadInput(tmprec);
+					if (!tmprec.Event.BracketedPaste.bStartPaste) {
+						BracketedPasteMode = false;
+						break;
+					}
+				} else if (tmprec.EventType == KEY_EVENT) {
+					Console.ReadInput(tmprec);
+					if (tmprec.Event.KeyEvent.bKeyDown) {
+						WCHAR wc = tmprec.Event.KeyEvent.uChar.UnicodeChar;
+						if (wc)
+							GPastedText += wc;
+						else if (tmprec.Event.KeyEvent.wVirtualKeyCode == VK_RETURN)
+							GPastedText += L'\n';
+						else if (tmprec.Event.KeyEvent.wVirtualKeyCode == VK_TAB)
+							GPastedText += L'\t';
+					}
+				} else {
+					Console.ReadInput(tmprec); // Consume other events to avoid blocking
+				}
+			}
+
+			if (!GPastedText.IsEmpty()) {
+				memset(rec, 0, sizeof(*rec));
+				rec->EventType = NOOP_EVENT; // Fake key event
+				return KEY_OP_PLAINTEXT;
+			}
+		}
 		return KEY_NONE;
 	}
 
@@ -787,7 +854,7 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 			$ 28.04.2001 VVM
 			+ Не только обработаем сами смену фокуса, но и передадим дальше
 		*/
-		ShiftPressed = RightShiftPressedLast = ShiftPressedLast = FALSE;
+		ShiftPressed = /*RightShiftPressedLast =*/ ShiftPressedLast = FALSE;
 		CtrlPressed = CtrlPressedLast = RightCtrlPressedLast = FALSE;
 		AltPressed = AltPressedLast = RightAltPressedLast = FALSE;
 		MouseButtonState = 0;
@@ -797,11 +864,12 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 		CalcKey = rec->Event.FocusEvent.bSetFocus ? KEY_GOTFOCUS : KEY_KILLFOCUS;
 		memset(rec, 0, sizeof(*rec));
 		rec->EventType = KEY_EVENT;
-		// чтоб решить баг винды приводящий к появлению скролов и т.п. после потери фокуса
+		/* // чтоб решить баг винды приводящий к появлению скролов и т.п. после потери фокуса
 		if (CalcKey == KEY_GOTFOCUS)
 			RestoreConsoleWindowRect();
 		else
 			SaveConsoleWindowRect();
+   		*/
 
 		return CalcKey;
 	}
@@ -990,7 +1058,7 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 		else
 			ShiftPressed = (CtrlState & SHIFT_PRESSED);
 
-		if ((KeyCode == VK_F16 && ReadKey == VK_F16) || !KeyCode)
+		if (!KeyCode)
 			return (KEY_NONE);
 
 		if (!rec->Event.KeyEvent.bKeyDown
@@ -999,13 +1067,13 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 			uint32_t Key{std::numeric_limits<uint32_t>::max()};
 
 			if (ShiftPressedLast && KeyCode == VK_SHIFT) {
-				if (ShiftPressedLast) {
+				//if (ShiftPressedLast) {
 					Key = KEY_SHIFT;
 					//// // _SVS(SysLog(L"ShiftPressedLast, Key=KEY_SHIFT"));
-				} else if (RightShiftPressedLast) {
+				/*} else if (RightShiftPressedLast) {
 					Key = KEY_RSHIFT;
 					//// // _SVS(SysLog(L"RightShiftPressedLast, Key=KEY_RSHIFT"));
-				}
+				}*/
 			}
 
 			if (KeyCode == VK_CONTROL) {
@@ -1045,7 +1113,7 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 				return (Key);
 		}
 
-		ShiftPressedLast = RightShiftPressedLast = FALSE;
+		ShiftPressedLast = /*RightShiftPressedLast =*/ FALSE;
 		CtrlPressedLast = RightCtrlPressedLast = FALSE;
 		AltPressedLast = RightAltPressedLast = FALSE;
 		ShiftPressedLast = (KeyCode == VK_SHIFT && rec->Event.KeyEvent.bKeyDown)
@@ -1256,11 +1324,6 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 		}
 	}
 
-	int GrayKey = (CalcKey == KEY_ADD || CalcKey == KEY_SUBTRACT || CalcKey == KEY_MULTIPLY);
-
-	if (ReadKey && !GrayKey)
-		CalcKey = ReadKey;
-
 	{
 		_KEYMACRO(SysLog(L"[%d] CALL CtrlObject->Macro.ProcessKey(%ls)", __LINE__, _FARKEY_ToName(CalcKey)));
 		if (LIKELY(FrameManager)) {
@@ -1273,6 +1336,18 @@ DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bo
 	}
 	return (CalcKey);
 }
+
+DWORD GetInputRecord(INPUT_RECORD *rec, bool ExcludeMacro, bool ProcessMouse, bool AllowSynchro)
+{
+	DWORD out = GetInputRecordInner(rec, ExcludeMacro, ProcessMouse, AllowSynchro);
+	if ((out & (KEY_CTRL | KEY_ALT | KEY_RCTRL | KEY_RALT)) == 0) { // && out < 0xffff
+		if ( (out & KEY_MASKF) != 0 && (out & KEY_MASKF) < 0xffff) {
+			XlatTrackKeypress(out);
+		}
+	}
+	return out;
+}
+
 
 DWORD PeekInputRecord(INPUT_RECORD *rec, bool ExcludeMacro)
 {
@@ -2232,7 +2307,10 @@ FarKey CalcKeyCode(INPUT_RECORD *rec, int RealKey, int *NotMacros)
 				return '9';
 
 			return Modif | (Opt.UseNumPad ? KEY_NUMPAD9 : KEY_PGUP);
+#ifndef __APPLE__
+		// Clear button is used as NumLock emulator on OSX
 		case VK_CLEAR:
+#endif
 		case VK_NUMPAD5:
 
 			if (CtrlState & ENHANCED_KEY) {

@@ -34,39 +34,25 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <WinCompat.h>
+#include <vector>
 
 class SaveScreen
 {
-	friend class Grabber;
-
-private:
-	PCHAR_INFO ScreenBuf;
+	std::vector<CHAR_INFO> ScreenBuf;
 	SHORT CurPosX, CurPosY;
 	bool CurVisible;
 	DWORD CurSize;
-
-	void CleanupBuffer(PCHAR_INFO Buffer, size_t BufSize);
-	int ScreenBufCharCount();
-	void CharCopy(PCHAR_INFO ToBuffer, PCHAR_INFO FromBuffer, int Count);
+	int X1, Y1, X2, Y2;
 
 public:
-	int X1, Y1, X2, Y2;
-	int W, H;
-
 	SaveScreen();
 	SaveScreen(int X1, int Y1, int X2, int Y2);
 	~SaveScreen();
 
-public:
-	CHAR_INFO *GetBufferAddress() { return ScreenBuf; };
-	void CorrectRealScreenCoord();
-	void SaveArea(int X1, int Y1, int X2, int Y2);
-	void SaveArea();
+	void SaveArea(int nX1, int nY1, int nX2, int nY2);
 	void RestoreArea(int RestoreCursor = TRUE);
 	void Discard();
 	void AppendArea(SaveScreen *NewArea);
-	/*$ 18.05.2001 OT */
-	void Resize(int ScrX, int ScrY, DWORD Corner, bool SyncWithConsole);
-
 	void DumpBuffer(const wchar_t *Title);
+	const CHAR_INFO &Read(int X, int Y) const;
 };

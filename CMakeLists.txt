@@ -1,8 +1,9 @@
-cmake_minimum_required (VERSION 3.0.2)
+cmake_minimum_required (VERSION 3.5.0)
 
 project (far2l)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
+include(${PROJECT_SOURCE_DIR}/cmake/FuncCopyResources.cmake)
 
 set(APP_NAME "far2l")
 set(APP_IDENTIFIER "com.far2l")
@@ -40,7 +41,8 @@ if(GIT_FOUND)
     execute_process(COMMAND "${GIT_EXECUTABLE}" describe --tag
         WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
         OUTPUT_VARIABLE GIT_TAG
-        OUTPUT_STRIP_TRAILING_WHITESPACE)
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
 endif()
 
 if(NOT "${GIT_TAG}" STREQUAL "v_${VERSION}")
@@ -74,7 +76,7 @@ set(VERSION_PATCH "${VERSION_PATCH}-beta")
 set(VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -86,7 +88,7 @@ message(STATUS "Build Type: ${CMAKE_BUILD_TYPE} Version: ${VERSION}")
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
    if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
       set(CMAKE_INSTALL_PREFIX "/usr/local")
-   elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
+   elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD|NetBSD")
       set(CMAKE_INSTALL_PREFIX "/usr/local")
    else()
       set(CMAKE_INSTALL_PREFIX "/usr")
@@ -140,13 +142,18 @@ endif()
 
 if(${CMAKE_VERSION} VERSION_LESS "3.1.0")
     message("Please consider to switch to newer CMake")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+endif()
+
+if("${ICU_MODE}" STREQUAL "runtime")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DRUNTIME_ICU")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DRUNTIME_ICU")
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fPIC -Wno-unused-function -D_FILE_OFFSET_BITS=64") #  -fsanitize=address
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -std=c99 -fPIC -Wno-unused-function -D_FILE_OFFSET_BITS=64") #  -fsanitize=address
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O2")
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS} -O2")
+set(CMAKE_CXX_FLAGS_RELEASE "-O2")
+set(CMAKE_C_FLAGS_RELEASE "-O2")
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(APP_DIR ${CMAKE_BINARY_DIR}/install)
@@ -196,6 +203,7 @@ include_directories(utils/include)
 add_subdirectory (WinPort)
 add_subdirectory (utils)
 add_subdirectory (far2l)
+add_subdirectory (themes)
 
 if (NOT ${USEWX})
     message(STATUS "Building without GUI/wxWidgets backend due to USEWX=${USEWX}")
@@ -225,7 +233,10 @@ else()
         endif()
 
     elseif (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-        if (EXISTS "/opt/local/Library/Frameworks/wxWidgets.framework/Versions/wxWidgets/3.2/bin/wx-config")
+        if (DEFINED wxWidgets_CONFIG_EXECUTABLE)
+            message(STATUS "Using pre-defined wx config: ${wxWidgets_CONFIG_EXECUTABLE}")
+
+        elseif (EXISTS "/opt/local/Library/Frameworks/wxWidgets.framework/Versions/wxWidgets/3.2/bin/wx-config")
             # MacPorts
             set(wxWidgets_CONFIG_EXECUTABLE "/opt/local/Library/Frameworks/wxWidgets.framework/Versions/wxWidgets/3.2/bin/wx-config")
             set(wxWidgets_wxrc_EXECUTABLE "/opt/local/Library/Frameworks/wxWidgets.framework/Versions/wxWidgets/3.2/bin/wxrc")
@@ -283,6 +294,7 @@ install(DIRECTORY "${INSTALL_DIR}/" DESTINATION "lib/far2l" USE_SOURCE_PERMISSIO
     PATTERN "far2l_ttyx.broker"
     PATTERN "plug/*.far-plug-*"
     PATTERN "plug/*.broker"
+    PATTERN "python/plugins" EXCLUDE
 )
 
 install(DIRECTORY "${INSTALL_DIR}/" DESTINATION "share/far2l" USE_SOURCE_PERMISSIONS COMPONENT base FILES_MATCHING
@@ -291,7 +303,7 @@ install(DIRECTORY "${INSTALL_DIR}/" DESTINATION "share/far2l" USE_SOURCE_PERMISS
     PATTERN "far2l_*" EXCLUDE
     PATTERN "*.far-plug-*" EXCLUDE
     PATTERN "*.broker" EXCLUDE
-    PATTERN "python/plug/python" EXCLUDE
+    PATTERN "python/plug/far2l" EXCLUDE
     PATTERN "*"
 )
 

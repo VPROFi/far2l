@@ -49,9 +49,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "panel.hpp"
 #include "chgmmode.hpp"
 #include "interf.hpp"
-#include "palette.hpp"
+#include "farcolors.hpp"
 #include "config.hpp"
-
 #include "pick_color.hpp"
 
 static void SetItemColors(MenuDataEx *Items, int *PaletteItems, int Size, int TypeSub);
@@ -60,7 +59,7 @@ static VMenu *MenuToRedraw1 = nullptr, *MenuToRedraw2 = nullptr, *MenuToRedraw3 
 
 // 0,1 - dialog,warn List
 // 2,3 - dialog,warn Combobox
-static int ListPaletteItems[4][13] = {
+static int ListPaletteItems[4][15] = {
 	// Listbox
 	{
 		// normal
@@ -72,6 +71,8 @@ static int ListPaletteItems[4][13] = {
 		COL_DIALOGLISTARROWSDISABLED,		// Arrow disabled
 		COL_DIALOGLISTGRAY,					// "серый"
 		COL_DIALOGLISTSELECTEDGRAYTEXT,		// выбранный "серый"
+		COL_DIALOGLISTPREFIX,               // префикс пункта меню
+		COL_DIALOGLISTSELPREFIX,            // выбранный префикс пункта меню
 	},
 	{
 		// warn
@@ -83,6 +84,8 @@ static int ListPaletteItems[4][13] = {
 		COL_WARNDIALOGLISTARROWSDISABLED,		// Arrow disabled
 		COL_WARNDIALOGLISTGRAY,					// "серый"
 		COL_WARNDIALOGLISTSELECTEDGRAYTEXT,		// выбранный "серый"
+		COL_WARNDIALOGLISTPREFIX,               // префикс пункта меню
+		COL_WARNDIALOGLISTSELPREFIX,            // выбранный префикс пункта меню
 	},
 	// Combobox
 	{
@@ -95,6 +98,8 @@ static int ListPaletteItems[4][13] = {
 		COL_DIALOGCOMBOARROWSDISABLED,		// Arrow disabled
 		COL_DIALOGCOMBOGRAY,				// "серый"
 		COL_DIALOGCOMBOSELECTEDGRAYTEXT,	// выбранный "серый"
+		COL_DIALOGCOMBOPREFIX,              // префикс пункта меню
+		COL_DIALOGCOMBOSELPREFIX,           // выбранный префикс пункта меню
 	},
 	{
 		// warn
@@ -106,12 +111,19 @@ static int ListPaletteItems[4][13] = {
 		COL_WARNDIALOGCOMBOARROWSDISABLED,		// Arrow disabled
 		COL_WARNDIALOGCOMBOGRAY,				// "серый"
 		COL_WARNDIALOGCOMBOSELECTEDGRAYTEXT,	// выбранный "серый"
+		COL_WARNDIALOGCOMBOPREFIX,              // префикс пункта меню
+		COL_WARNDIALOGCOMBOSELPREFIX,           // выбранный префикс пункта меню
 	},
 };
 
 void SetColors()
 {
-	MenuDataEx Groups[] = {
+	std::vector<std::string> v   = FarColors::GetKnownUserThemes ();
+	std::vector<std::string> v2  = FarColors::GetKnownSystemThemes ();
+
+	std::vector<std::wstring> stringBuffer;
+
+	MenuDataEx BaseGroups[] = {
 		{(const wchar_t *)Msg::SetColorPanel,       LIF_SELECTED,  0},
 		{(const wchar_t *)Msg::SetColorDialog,      0,             0},
 		{(const wchar_t *)Msg::SetColorWarning,     0,             0},
@@ -123,11 +135,83 @@ void SetColors()
 		{(const wchar_t *)Msg::SetColorViewer,      0,             0},
 		{(const wchar_t *)Msg::SetColorEditor,      0,             0},
 		{(const wchar_t *)Msg::SetColorHelp,        0,             0},
-		{L"",                                       LIF_SEPARATOR, 0},
+		{Msg::ColorThemesPreinstalledSection,       LIF_SEPARATOR, 0},
 		{(const wchar_t *)Msg::SetDefaultColors,    0,             0},
 		{(const wchar_t *)Msg::SetDefaultColorsRGB, 0,             0},
-		{(const wchar_t *)Msg::SetBW,               0,             0}
+		{(const wchar_t *)Msg::SetBW,               0,             0},
+     // {L"",                                       LIF_SEPARATOR, 0},
+		{Msg::ColorThemesNoTheme,                   0,             0},
+        {L"",                                       LIF_SEPARATOR, 0},
 	};
+
+	size_t BaseGroupLen = ARRAYSIZE(BaseGroups);
+	int noThemeIndex = BaseGroupLen - 2;
+
+	size_t GroupsLen = BaseGroupLen + 
+		(v.size() > 0 ? v.size() + 1 : 0) +   		/* user themes */
+		(v2.size() > 0 ? v2.size() + 0 : 0); 	/* system themes */
+	MenuDataEx Groups[GroupsLen];
+
+    /* copy from temnplate */
+	for(size_t i = 0; i < BaseGroupLen; ++i) {
+		Groups[i].Name = BaseGroups[i].Name;
+		Groups[i].Flags = BaseGroups[i].Flags;
+		Groups[i].AccelKey = BaseGroups[i].AccelKey;
+	}
+
+	if (Opt.CurrentTheme.IsEmpty()) /* built-in check */
+		Groups[noThemeIndex].SetCheck(1);
+
+    /* add user themes (if exists) */
+	size_t ptr = BaseGroupLen;
+
+	size_t startOfSystemThemes = ptr;
+	if (v2.size() > 0) {
+		// Groups[ptr].Name = Msg::ColorThemesPreinstalledSection;
+		// Groups[ptr].Flags = LIF_SEPARATOR;
+		// Groups[ptr].AccelKey = 0;
+        // ++ptr;
+        // ++startOfSystemThemes;
+
+    	for(size_t j = 0; j < v2.size(); ++j) {
+    	    int Length = v2[j].length();
+    	   	std::wstring _tmpwstr;
+    	    MB2Wide(v2[j].c_str(), Length, _tmpwstr);
+
+            stringBuffer.push_back(_tmpwstr);
+			Groups[ptr].Name = stringBuffer[stringBuffer.size() - 1].c_str();
+			Groups[ptr].Flags = 0;
+			Groups[ptr].AccelKey = 0;
+
+			if (!wcscmp(Opt.CurrentTheme.GetBuffer(), Groups[ptr].Name) && Opt.IsSystemTheme) 
+				Groups[ptr].SetCheck(1);
+            ++ptr;
+    	}
+	}
+
+	size_t startOfUserThemes = ptr;
+	if (v.size() > 0) {
+		Groups[ptr].Name = Msg::ColorThemesUserSection;
+		Groups[ptr].Flags = LIF_SEPARATOR;
+		Groups[ptr].AccelKey = 0;
+		++ptr;
+        ++startOfUserThemes;
+
+    	for(size_t j = 0; j < v.size(); ++j) {
+    	    int Length = v[j].length();
+    	   	std::wstring _tmpwstr;
+    	    MB2Wide(v[j].c_str(), Length, _tmpwstr);
+            stringBuffer.push_back(_tmpwstr);
+			Groups[ptr].Name = stringBuffer[stringBuffer.size() - 1].c_str();
+			Groups[ptr].Flags = 0;
+			Groups[ptr].AccelKey = 0;
+
+			if (!wcscmp(Opt.CurrentTheme.GetBuffer(), Groups[ptr].Name) && !Opt.IsSystemTheme) 
+				Groups[ptr].SetCheck(1);
+            ++ptr;
+    	}
+	}
+
 	MenuDataEx PanelItems[] = {
 		{(const wchar_t *)Msg::SetColorPanelNormal,          LIF_SELECTED, 0},
 		{(const wchar_t *)Msg::SetColorPanelSelected,        0,            0},
@@ -167,6 +251,7 @@ void SetColors()
 		{(const wchar_t *)Msg::SetColorDialogSelectedDefaultButton,            0,            0},
 		{(const wchar_t *)Msg::SetColorDialogHighlightedDefaultButton,         0,            0},
 		{(const wchar_t *)Msg::SetColorDialogSelectedHighlightedDefaultButton, 0,            0},
+		{(const wchar_t *)Msg::SetColorDialogOverflowArrow,                    0,            0},
 		{(const wchar_t *)Msg::SetColorDialogListBoxControl,                   0,            0},
 		{(const wchar_t *)Msg::SetColorDialogComboBoxControl,                  0,            0}
 	};
@@ -189,6 +274,7 @@ void SetColors()
 		COL_DIALOGSELECTEDDEFAULTBUTTON,
 		COL_DIALOGHIGHLIGHTDEFAULTBUTTON,
 		COL_DIALOGHIGHLIGHTSELECTEDDEFAULTBUTTON,
+		COL_DIALOGOVERFLOWARROW,
 		0,
 		2,
 	};
@@ -211,6 +297,7 @@ void SetColors()
 		{(const wchar_t *)Msg::SetColorDialogSelectedDefaultButton,            0,            0},
 		{(const wchar_t *)Msg::SetColorDialogHighlightedDefaultButton,         0,            0},
 		{(const wchar_t *)Msg::SetColorDialogSelectedHighlightedDefaultButton, 0,            0},
+		{(const wchar_t *)Msg::SetColorDialogOverflowArrow,                    0,            0},
 		{(const wchar_t *)Msg::SetColorDialogListBoxControl,                   0,            0},
 		{(const wchar_t *)Msg::SetColorDialogComboBoxControl,                  0,            0}
 	};
@@ -233,6 +320,7 @@ void SetColors()
 		COL_WARNDIALOGSELECTEDDEFAULTBUTTON,
 		COL_WARNDIALOGHIGHLIGHTDEFAULTBUTTON,
 		COL_WARNDIALOGHIGHLIGHTSELECTEDDEFAULTBUTTON,
+		COL_WARNDIALOGOVERFLOWARROW,
 		1,
 		3,
 	};
@@ -249,7 +337,10 @@ void SetColors()
 		{(const wchar_t *)Msg::SetColorMenuArrowsSelected,      0,            0},
 		{(const wchar_t *)Msg::SetColorMenuArrowsDisabled,      0,            0},
 		{(const wchar_t *)Msg::SetColorMenuGrayed,              0,            0},
-		{(const wchar_t *)Msg::SetColorMenuSelectedGrayed,      0,            0}
+		{(const wchar_t *)Msg::SetColorMenuSelectedGrayed,      0,            0},
+		{(const wchar_t *)Msg::SetColorMenuPrefix,              0,            0},
+		{(const wchar_t *)Msg::SetColorMenuPrefixSelected,      0,            0}
+
 	};
 	int MenuPaletteItems[] = {
 		COL_MENUTEXT, COL_MENUSELECTEDTEXT, COL_MENUHIGHLIGHT, COL_MENUSELECTEDHIGHLIGHT,
@@ -259,6 +350,8 @@ void SetColors()
 		COL_MENUARROWSDISABLED,
 		COL_MENUGRAYTEXT,				// "серый"
 		COL_MENUSELECTEDGRAYTEXT,		// выбранный "серый"
+		COL_MENUPREFIX,                 // префикс пункта меню
+		COL_MENUSELPREFIX,              // выбранный префикс пункта меню
 	};
 	MenuDataEx HMenuItems[] = {
 		{(const wchar_t *)Msg::SetColorHMenuNormal,              LIF_SELECTED, 0},
@@ -301,10 +394,11 @@ void SetColors()
 		{(const wchar_t *)Msg::SetColorEditorNormal,    LIF_SELECTED, 0},
 		{(const wchar_t *)Msg::SetColorEditorSelected,  0,            0},
 		{(const wchar_t *)Msg::SetColorEditorStatus,    0,            0},
-		{(const wchar_t *)Msg::SetColorEditorScrollbar, 0,            0}
+		{(const wchar_t *)Msg::SetColorEditorScrollbar, 0,            0},
+		{(const wchar_t *)Msg::SetColorEditorLineNumber,0,            0}
 	};
 	int EditorPaletteItems[] = {COL_EDITORTEXT, COL_EDITORSELECTEDTEXT, COL_EDITORSTATUS,
-			COL_EDITORSCROLLBAR};
+			COL_EDITORSCROLLBAR, COL_EDITORLINENUMBER};
 	MenuDataEx HelpItems[] = {
 		{(const wchar_t *)Msg::SetColorHelpNormal,            LIF_SELECTED, 0},
 		{(const wchar_t *)Msg::SetColorHelpHighlighted,       0,            0},
@@ -318,7 +412,7 @@ void SetColors()
 			COL_HELPBOX, COL_HELPBOXTITLE, COL_HELPSCROLLBAR};
 	{
 		int GroupsCode;
-		VMenu GroupsMenu(Msg::SetColorGroupsTitle, Groups, ARRAYSIZE(Groups), 0);
+		VMenu GroupsMenu(Msg::SetColorGroupsTitle, Groups, GroupsLen, 0);
 		MenuToRedraw1 = &GroupsMenu;
 
 		for (;;) {
@@ -332,33 +426,63 @@ void SetColors()
 
 			// Set default 8 bit colors
 			if (GroupsCode == 12) {
-				for(size_t i = 0; i < SIZE_ARRAY_PALETTE; i++) {
-					Palette[i] = DefaultPalette8bit[i];
-				}
+				Opt.CurrentTheme = L"";
+				Opt.IsColorsChanged = false;
+				Opt.IsSystemTheme = false;
+				FarColors::FARColors.ResetToDefaultIndex();
+				FarColors::FARColors.Set();
 				break;
 			}
 
 			// Set default RGB
 			if (GroupsCode == 13) {
-				uint32_t basepalette[32];
-				WINPORT(GetConsoleBasePalette)(NULL, basepalette);
-
-				for(size_t i = 0; i < SIZE_ARRAY_PALETTE; i++) {
-					uint8_t color = DefaultPalette8bit[i];
-					Palette[i] = ((uint64_t)basepalette[16 + (color & 0xF)] << 16);
-					Palette[i] += ((uint64_t)basepalette[color >> 4] << 40);
-					Palette[i] += FOREGROUND_TRUECOLOR + BACKGROUND_TRUECOLOR;
-					Palette[i] += color;
-				}
-
+				Opt.CurrentTheme = L"";
+				Opt.IsColorsChanged = false;
+				Opt.IsSystemTheme = false;
+				FarColors::FARColors.ResetToDefaultIndexRGB();
+				FarColors::FARColors.Set();
 				break;
 			}
 
 			// Set black & white 8 bit colors
 			if (GroupsCode == 14) {
-				for(size_t i = 0; i < SIZE_ARRAY_PALETTE; i++) {
-					Palette[i] = BlackPalette8bit[i];
-				}
+				Opt.CurrentTheme = L"";
+				Opt.IsColorsChanged = false;
+				Opt.IsSystemTheme = false;
+				FarColors::FARColors.ResetToDefaultIndex(BlackColorsIndex16);
+				FarColors::FARColors.Set();
+				break;
+			}
+
+			if (GroupsCode == noThemeIndex) { // "No theme" selected
+				Opt.CurrentTheme = "";
+				Opt.IsColorsChanged = false;
+				Opt.IsSystemTheme = false;
+
+				FarColors::InitFarColors();
+				FarColors::FARColors.Set();
+				break;
+			}
+
+			size_t k1 = GroupsCode - startOfUserThemes;
+			size_t k2 = GroupsCode - startOfSystemThemes;
+			if (v2.size() > 0 && k2 >= 0 && k2 < v2.size()) {
+				Opt.CurrentTheme = v2[k2];
+				Opt.IsColorsChanged = false;
+				Opt.IsSystemTheme = true;
+
+				FarColors::InitFarColorsFromTheme(Opt.CurrentTheme, Opt.IsSystemTheme);
+				FarColors::FARColors.Set();
+				break;
+			}
+
+			if (v.size() > 0 && k1 >= 0 && k1 < v.size()) {
+				Opt.CurrentTheme = v[k1];
+				Opt.IsColorsChanged = false;
+				Opt.IsSystemTheme = false;
+
+				FarColors::InitFarColorsFromTheme(Opt.CurrentTheme, Opt.IsSystemTheme);
+				FarColors::FARColors.Set();
 				break;
 			}
 
@@ -421,7 +545,9 @@ static void SetItemColors(MenuDataEx *Items, int *PaletteItems, int Size, int Ty
 		{Msg::SetColorDialogListArrowsSelected,    0,            0},
 		{Msg::SetColorDialogListArrowsDisabled,    0,            0},
 		{Msg::SetColorDialogListGrayed,            0,            0},
-		{Msg::SetColorDialogSelectedListGrayed,    0,            0}
+		{Msg::SetColorDialogSelectedListGrayed,    0,            0},
+		{Msg::SetColorDialogListPrefix,            0,            0},
+		{Msg::SetColorDialogListPrefixSelected,    0,            0}
 	};
 
 	int ItemsCode;
@@ -451,14 +577,16 @@ static void SetItemColors(MenuDataEx *Items, int *PaletteItems, int Size, int Ty
 	}
 }
 
-void GetColor(int PaletteIndex)
+void GetColor(int ColorIndex)
 {
 	ChangeMacroMode chgMacroMode(MACRO_MENU);
-	uint64_t NewColor = Palette[PaletteIndex];
+	uint64_t NewColor = FarColors::FARColors.colors[ColorIndex];
 
 	if (GetColorDialog(&NewColor, false)) {
-		Palette[PaletteIndex] = NewColor;
-		Palette8bit[PaletteIndex] = static_cast<uint8_t>(NewColor);
+		FarColors::FARColors.colors[ColorIndex] = NewColor;
+		FarColors::setcolors[ColorIndex] = NewColor;
+
+		Opt.IsColorsChanged = true;
 
 		ScrBuf.Lock();	// отменяем всякую прорисовку
 		CtrlObject->Cp()->LeftPanel->Update(UPDATE_KEEP_SELECTION);

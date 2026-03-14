@@ -27,6 +27,12 @@
 #include "TTYNegotiateFar2l.h"
 #include "FarTTY.h"
 #include "../FSClipboardBackend.h"
+#include "../NotifySh.h"
+#include "base64.h"
+#include "TTYPrinterSupport.h"
+
+
+#define PROBE_IMAGE_ID "tty-backend-image-probe"
 
 static uint16_t g_far2l_term_width = 80, g_far2l_term_height = 25;
 static volatile long s_terminal_size_change_id = 0;
@@ -128,6 +134,18 @@ TTYBackend::~TTYBackend()
 	DetachNotifyPipe();
 }
 
+static unsigned short GetWinSizeEnv(const char *env, unsigned short def)
+{
+	const char *psz = getenv(env);
+	if (psz && *psz) { // use it if it contains sane integer value
+		int v = atoi(psz);
+		if (v > 10 && v < 4096) {
+			return (unsigned short)v;
+		}
+	}
+	return def;
+}
+
 void TTYBackend::GetWinSize(struct winsize &w)
 {
 	int r = ioctl(_stdout, TIOCGWINSZ, &w);
@@ -135,9 +153,16 @@ void TTYBackend::GetWinSize(struct winsize &w)
 		r = ioctl(_stdin, TIOCGWINSZ, &w);
 		if (UNLIKELY(r != 0)) {
 			perror("TIOCGWINSZ");
-			w.ws_row = g_far2l_term_height;
-			w.ws_col = g_far2l_term_width;
 		}
+	}
+	if (UNLIKELY(r != 0) || (w.ws_row == 0 && w.ws_col == 0)) {
+		// when running over serial console 0:0 is returned always and far2l unusable
+		// try to use $LINES and $COLUMNS if they contain sane values,
+		// otherwise fallback to hardcoded 80:25
+		w.ws_row = GetWinSizeEnv("LINES", g_far2l_term_height);
+		w.ws_col = GetWinSizeEnv("COLUMNS", g_far2l_term_width);
+		fprintf(stderr, "%s: fallback size %u:%u\n",
+			__FUNCTION__, (unsigned int)w.ws_row, (unsigned int)w.ws_col);
 	}
 }
 
@@ -167,44 +192,15 @@ bool TTYBackend::Startup()
 		return false;
 	}
 
+	_printer_backend_setter.Set<ttyPrinterSupportBackend>();
+
 	return true;
 }
 
-static wchar_t s_backend_identification[8] = L"TTY";
-
-static void AppendBackendIdentificationChar(char ch)
+void TTYBackend::BackendInfoChanged()
 {
-	const size_t l = wcslen(s_backend_identification);
-	if (l + 1 >= ARRAYSIZE(s_backend_identification)) {
-		abort();
-	}
-	s_backend_identification[l + 1] = 0;
-	s_backend_identification[l] = (unsigned char)ch;
-}
-
-void TTYBackend::UpdateBackendIdentification()
-{
-	s_backend_identification[3] = 0;
-
-	if (_far2l_tty || _ttyx || _using_extension) {
-		AppendBackendIdentificationChar('|');
-	}
-
-	if (_far2l_tty) {
-		AppendBackendIdentificationChar('F');
-
-	} else if (_ttyx || _using_extension) {
-		if (_ttyx) {
-			AppendBackendIdentificationChar('X');
-		}
-		if (_using_extension) {
-			AppendBackendIdentificationChar(_using_extension);
-		} else if (_ttyx && _ttyx->HasXi()) {
-			AppendBackendIdentificationChar('i');
-		}
-	}
-
-	g_winport_backend = s_backend_identification;
+	std::lock_guard<std::mutex> lock(_backend_info);
+	_backend_info.flavor.clear();
 }
 
 static bool UnderWayland()
@@ -221,6 +217,14 @@ void TTYBackend::ReaderThread()
 {
 	bool prev_far2l_tty = false;
 	while (!_exiting) {
+		{
+			std::unique_lock<std::mutex> lock(_async_mutex);
+			_pix_per_cell.X = _pix_per_cell.Y = 0;
+			_images_kitty_status = IKS_UNKNOWN;
+			for (const auto &it : _images) {
+				_images_to_display.insert(it.first);
+			}
+		}
 		_far2l_cursor_height = -1; // force cursor height update on next output dispatch
 		_fkeys_support = _far2l_tty ? FKS_UNKNOWN : FKS_NOT_SUPPORTED;
 
@@ -245,7 +249,7 @@ void TTYBackend::ReaderThread()
 				ChooseSimpleClipboardBackend();
 			}
 		}
-		UpdateBackendIdentification();
+		BackendInfoChanged();
 		prev_far2l_tty = _far2l_tty;
 
 		{
@@ -274,6 +278,7 @@ void TTYBackend::ReaderThread()
 			std::unique_lock<std::mutex> lock(_async_mutex);
 			_deadio = true;
 			_async_cond.notify_all();
+			_images_kitty_status_cond.notify_all();
 		}
 
 		pthread_join(writer_trd, nullptr);
@@ -379,6 +384,7 @@ void TTYBackend::WriterThread()
 {
 	bool gone_background = false;
 	try {
+		_focused = !_far2l_tty; // assume starting focused unless far2l_tty, this trick allows notification to work in best effort under old far2l that didnt support focus change notifications
 		TTYOutput tty_out(_stdout, _far2l_tty, _norgb, _nodetect);
 		DispatchPalette(tty_out);
 //		DispatchTermResized(tty_out);
@@ -386,16 +392,15 @@ void TTYBackend::WriterThread()
 			AsyncEvent ae{};
 			do {
 				std::unique_lock<std::mutex> lock(_async_mutex);
-				if (!_ae.HasAny()) {
-					_async_cond.wait(lock);
-				}
 				if (_ae.HasAny()) {
 					std::swap(ae, _ae);
-					if (ae.palette) {
-						_async_cond.notify_all();
-					}
 					break;
 				}
+				if (_ae_idle_wait_confirm != _ae_idle_wait_request) {
+					_ae_idle_wait_confirm = _ae_idle_wait_request;
+					_ae_idle_wait_cond.notify_all();
+				}
+				_async_cond.wait(lock);
 			} while (!_exiting && !_deadio);
 
 			if (ae.palette) {
@@ -420,6 +425,15 @@ void TTYBackend::WriterThread()
 			if (ae.osc52clip_set) {
 				DispatchOSC52ClipSet(tty_out);
 			}
+			if (ae.images_probe) {
+				DispatchImagesProbe(tty_out);
+			}
+			if (ae.images_probe_del) {
+				DispatchImagesProbeDelete(tty_out);
+			}
+			if (ae.images_changed) {
+				DispatchImages(tty_out);
+			}
 
 			// iTerm2 cmd+v workaround
 			if (_iterm2_cmd_state || _iterm2_cmd_ts) {
@@ -438,14 +452,53 @@ void TTYBackend::WriterThread()
 	} catch (const std::exception &e) {
 		fprintf(stderr, "WriterThread: %s <%d>\n", e.what(), errno);
 	}
-	_deadio = true;
+
+	{
+		std::unique_lock<std::mutex> lock(_async_mutex);
+		_deadio = true;
+		_ae_idle_wait_cond.notify_all();
+	}
 
 	if (gone_background) {
 		OnSigHup(SIGHUP);
 	}
 }
 
+void TTYBackend::DispatchImagesProbe(TTYOutput &tty_out)
+{
+	tty_out.RequestCellSize();
+	TTYConsoleImage probe_img;
+	probe_img.width = probe_img.height = 1;
+	probe_img.pixel_data.resize(probe_img.width * probe_img.height * (probe_img.fmt / 8));
+	unsigned int kitty_id = tty_out.SendKittyImage(PROBE_IMAGE_ID, probe_img, 'q');
+	tty_out.RequestStatus();
+	fprintf(stderr, "%s: kitty_id=%u\n", __FUNCTION__, kitty_id);
+}
 
+void TTYBackend::DispatchImagesProbeDelete(TTYOutput &tty_out)
+{
+	unsigned int kitty_id = tty_out.DeleteKittyImage(PROBE_IMAGE_ID);
+	fprintf(stderr, "%s: kitty_id=%u\n", __FUNCTION__, kitty_id);
+}
+
+void TTYBackend::DispatchImages(TTYOutput &tty_out)
+{
+	std::lock_guard<std::mutex> lock(_async_mutex);
+	for (const auto &id : _images_to_display) {
+		auto it = _images.find(id);
+		if (it != _images.end()) {
+			unsigned int kitty_id = tty_out.SendKittyImage(id, it->second);
+			fprintf(stderr, "%s: added kitty_id=%u for '%s'\n", __FUNCTION__, kitty_id, id.c_str());
+		}
+	}
+	_images_to_display.clear();
+
+	for (const auto &id : _images_to_delete) {
+		unsigned int kitty_id = tty_out.DeleteKittyImage(id);
+		fprintf(stderr, "%s: delete kitty_id=%u for '%s'\n", __FUNCTION__, kitty_id, id.c_str());
+	}
+	_images_to_delete.clear();
+}
 /////////////////////////////////////////////////////////////////////////
 
 void TTYBackend::DispatchPalette(TTYOutput &tty_out)
@@ -600,7 +653,7 @@ void TTYBackend::DispatchFar2lInteract(TTYOutput &tty_out)
 			if (_far2l_interacts_sent.size() >= 0xff) {
 				fprintf(stderr,
 					"TTYBackend::DispatchFar2lInteract: too many sent interacts - %ld\n",
-					_far2l_interacts_sent.size());
+					(unsigned long)_far2l_interacts_sent.size());
 				i->stk_ser.Clear();
 				i->evnt.Signal();
 				return;
@@ -770,29 +823,27 @@ void TTYBackend::OnConsoleAdhocQuickEdit()
 
 DWORD64 TTYBackend::OnConsoleSetTweaks(DWORD64 tweaks)
 {
-	const auto prev_osc52clip_set = _osc52clip_set;
-	_osc52clip_set = (tweaks & CONSOLE_OSC52CLIP_SET) != 0;
+	if (tweaks != TWEAKS_ONLY_QUERY_SUPPORTED) {
+		const auto prev_osc52clip_set = _osc52clip_set;
+		_osc52clip_set = (tweaks & CONSOLE_OSC52CLIP_SET) != 0;
 
-	if (_osc52clip_set != prev_osc52clip_set && !_far2l_tty && !_ttyx) {
-		ChooseSimpleClipboardBackend();
-	}
+		if (_osc52clip_set != prev_osc52clip_set && !_far2l_tty && !_ttyx) {
+			ChooseSimpleClipboardBackend();
+		}
 
-	bool override_default_palette = (tweaks & CONSOLE_TTY_PALETTE_OVERRIDE) != 0;
-	{
-		std::lock_guard<std::mutex> lock(_palette_mtx);
-		std::swap(override_default_palette, _override_default_palette);
-	}
+		bool override_default_palette = (tweaks & CONSOLE_TTY_PALETTE_OVERRIDE) != 0;
+		{
+			std::lock_guard<std::mutex> lock(_palette_mtx);
+			std::swap(override_default_palette, _override_default_palette);
+		}
 
-	if (override_default_palette != ((tweaks & CONSOLE_TTY_PALETTE_OVERRIDE) != 0)) {
-		std::unique_lock<std::mutex> lock(_async_mutex);
-		_ae.palette = true;
-		_async_cond.notify_all();
-		while (_ae.palette) {
-			_async_cond.wait(lock);
+		if (override_default_palette != ((tweaks & CONSOLE_TTY_PALETTE_OVERRIDE) != 0)) {
+			std::unique_lock<std::mutex> lock(_async_mutex);
+			_ae.palette = true;
+			WaitForOutputIdleOrDead(lock);
 		}
 	}
 
-//
 
 	DWORD64 out = TWEAK_STATUS_SUPPORT_TTY_PALETTE;
 
@@ -848,10 +899,7 @@ void TTYBackend::OnConsoleOverrideColor(DWORD Index, DWORD *ColorFG, DWORD *Colo
 	if (palette_changed) {
 		std::unique_lock<std::mutex> lock(_async_mutex);
 		_ae.palette = true;
-		_async_cond.notify_all();
-		while (_ae.palette) {
-			_async_cond.wait(lock);
-		}
+		WaitForOutputIdleOrDead(lock);
 	}
 }
 
@@ -873,11 +921,7 @@ bool TTYBackend::OnConsoleSetBasePalette(void *pbuff)
 
 	std::unique_lock<std::mutex> lock(_async_mutex);
 	_ae.palette = true;
-	_async_cond.notify_all();
-	while (_ae.palette) {
-		_async_cond.wait(lock);
-	}
-
+	WaitForOutputIdleOrDead(lock);
 	return true;
 }
 
@@ -892,6 +936,25 @@ void TTYBackend::OnConsoleSaveWindowState()
 void TTYBackend::OnConsoleSetCursorBlinkTime(DWORD interval)
 {
 
+}
+
+void TTYBackend::WaitForOutputIdleOrDead(std::unique_lock<std::mutex> &lock)
+{
+	if (!_deadio) {
+		do {
+			++_ae_idle_wait_request;
+		} while (_ae_idle_wait_request == _ae_idle_wait_confirm);
+		do {
+			_async_cond.notify_all();
+			_ae_idle_wait_cond.wait(lock);
+		} while (!_deadio && _ae_idle_wait_request != _ae_idle_wait_confirm);
+	}
+}
+
+void TTYBackend::OnConsoleOutputFlushDrawing()
+{
+	std::unique_lock<std::mutex> lock(_async_mutex);
+	WaitForOutputIdleOrDead(lock);
 }
 
 void TTYBackend::OnConsoleSetMaximized(bool maximized)
@@ -962,13 +1025,14 @@ void TTYBackend::OnConsoleExit()
 		std::unique_lock<std::mutex> lock(_async_mutex);
 		_exiting = true;
 		_async_cond.notify_all();
+		_images_kitty_status_cond.notify_all();
 	}
 	KickAss();
 }
 
 bool TTYBackend::OnConsoleIsActive()
 {
-	return false;//true;
+	return _focused;
 }
 
 void TTYBackend_OnTerminalDamaged(bool flush_input_queue)
@@ -1057,7 +1121,7 @@ void TTYBackend::OnUsingExtension(char extension)
 {
 	if (_using_extension != extension) {
 		_using_extension = extension;
-		UpdateBackendIdentification();
+		BackendInfoChanged();
 	}
 }
 
@@ -1089,6 +1153,16 @@ void TTYBackend::OnInspectKeyEvent(KEY_EVENT_RECORD &event)
 	if (!event.uChar.UnicodeChar && IsEnhancedKey(event.wVirtualKeyCode)) {
 		event.dwControlKeyState|= ENHANCED_KEY;
 	}
+}
+
+void TTYBackend::OnFocusChange(bool focused)
+{
+	fprintf(stderr, "OnFocusChange: %u\n", (unsigned)!!focused);
+	_focused = focused;
+	INPUT_RECORD ir = {};
+	ir.EventType = FOCUS_EVENT;
+	ir.Event.FocusEvent.bSetFocus = focused ? TRUE : FALSE;
+	g_winport_con_in->Enqueue(&ir, 1);
 }
 
 void TTYBackend::OnFar2lEvent(StackSerializer &stk_ser)
@@ -1143,6 +1217,29 @@ void TTYBackend::OnFar2lReply(StackSerializer &stk_ser)
 	}
 }
 
+void TTYBackend::OnKittyGraphicsResponse(const std::string &s)
+{
+	fprintf(stderr, "OnKittyGraphicsResponse: '%s'\n", s.c_str());
+	std::lock_guard<std::mutex> lock(_async_mutex);
+	if (_images_kitty_status == IKS_PROBING) {
+		_ae.images_probe_del = true;
+		_async_cond.notify_all();
+	}
+	_images_kitty_status = IKS_SUPPORTED;
+	_images_kitty_status_cond.notify_all();
+}
+
+
+void TTYBackend::OnStatusResponse(char c)
+{
+	fprintf(stderr, "OnStatusResponse: '%c'\n", c);
+	std::lock_guard<std::mutex> lock(_async_mutex);
+	if (_images_kitty_status == IKS_PROBING) {
+		_images_kitty_status = IKS_UNSUPPORTED;
+	}
+	_images_kitty_status_cond.notify_all();
+}
+
 void TTYBackend::OnInputBroken()
 {
 	std::unique_lock<std::mutex> lock_sent(_far2l_interacts_sent);
@@ -1151,6 +1248,14 @@ void TTYBackend::OnInputBroken()
 		i.second->evnt.Signal();
 	}
 	_far2l_interacts_sent.clear();
+}
+
+void TTYBackend::OnGetCellSize(unsigned int w, unsigned int h)
+{
+	fprintf(stderr, "TTYBackend: Received cell size: %u x %u pixels\n", w, h);
+	std::lock_guard<std::mutex> lock(_async_mutex);
+	_pix_per_cell.X = w;
+	_pix_per_cell.Y = h;
 }
 
 DWORD TTYBackend::QueryControlKeys()
@@ -1215,13 +1320,23 @@ DWORD TTYBackend::QueryControlKeys()
 
 void TTYBackend::OnConsoleDisplayNotification(const wchar_t *title, const wchar_t *text)
 {
-	try {
-		StackSerializer stk_ser;
-		stk_ser.PushStr(Wide2MB(text));
-		stk_ser.PushStr(Wide2MB(title));
-		stk_ser.PushNum(FARTTY_INTERACT_DESKTOP_NOTIFICATION);
-		Far2lInteract(stk_ser, false);
-	} catch (std::exception &) {}
+	if (_far2l_tty) {
+		try {
+			StackSerializer stk_ser;
+			stk_ser.PushStr(Wide2MB(text));
+			stk_ser.PushStr(Wide2MB(title));
+			stk_ser.PushNum(FARTTY_INTERACT_DESKTOP_NOTIFICATION);
+			Far2lInteract(stk_ser, false);
+		} catch (std::exception &) {}
+
+	} else if (getenv("DISPLAY") != NULL || UnderWayland()) {
+		const std::string &str_title = Wide2MB(title);
+		const std::string &str_text = Wide2MB(text);
+		Far2l_NotifySh(_full_exe_path, str_title.c_str(), str_text.c_str());
+
+	} else {
+		fprintf(stderr, "OnConsoleDisplayNotification('%ls', '%ls') - unsupported\n", title, text);
+	}
 }
 
 bool TTYBackend::OnConsoleBackgroundMode(bool TryEnterBackgroundMode)
@@ -1237,6 +1352,37 @@ bool TTYBackend::OnConsoleBackgroundMode(bool TryEnterBackgroundMode)
 	}
 
 	return true;
+}
+
+const char *TTYBackend::OnConsoleBackendInfo(int entity)
+{
+	if (entity != -1)
+		return nullptr;
+
+	std::lock_guard<std::mutex> lock(_backend_info);
+	if (_backend_info.flavor.empty()) {
+		_backend_info.flavor.reserve(16); // avoid reallocation ever then
+		_backend_info.flavor = "TTY";
+
+		if (_far2l_tty || _ttyx || _using_extension) {
+			_backend_info.flavor+= '|';
+		}
+
+		if (_far2l_tty) {
+			_backend_info.flavor+= 'F';
+		} else if (_ttyx || _using_extension) {
+			if (_ttyx) {
+				_backend_info.flavor+= 'X';
+			}
+			if (_using_extension) {
+				_backend_info.flavor+= _using_extension;
+			} else if (_ttyx && _ttyx->HasXi()) {
+				_backend_info.flavor+= 'i';
+			}
+		}
+	}
+
+	return _backend_info.flavor.c_str();
 }
 
 
@@ -1295,6 +1441,202 @@ static void OnSigHup(int signo)
 	}
 }
 
+void TTYBackend::OnGetConsoleImageCaps(WinportGraphicsInfo *wgi)
+{
+	memset(wgi, 0, sizeof(*wgi));
+	if (_far2l_tty) {
+		try {
+			StackSerializer stk_ser;
+			stk_ser.PushNum(FARTTY_INTERACT_IMAGE_CAPS);
+			stk_ser.PushNum(FARTTY_INTERACT_IMAGE);
+			if (Far2lInteract(stk_ser, true)) {
+				stk_ser.PopNum(wgi->PixPerCell.Y);
+				stk_ser.PopNum(wgi->PixPerCell.X);
+				stk_ser.PopNum(wgi->Caps);
+			}
+		} catch(std::exception &) {
+			memset(wgi, 0, sizeof(*wgi));
+		}
+
+	} else if (CheckKittyImagesSupport()) {
+		wgi->PixPerCell = _pix_per_cell;
+		wgi->Caps = WP_IMGCAP_RGBA;
+	}
+}
+
+bool TTYBackend::CheckKittyImagesSupport()
+{
+	if ( (_nodetect & NODETECT_K) != 0) {
+		fprintf(stderr, "%s: nodetect\n", __FUNCTION__);
+		return false;
+	}
+	const auto reply_timeout_msec = 1000;
+	for (clock_t wait_begin = GetProcessUptimeMSec();;) {
+		std::unique_lock<std::mutex> lock(_async_mutex);
+		if (_images_kitty_status == IKS_SUPPORTED) {
+			if (_pix_per_cell.X <= 0 || _pix_per_cell.Y <= 0) {
+				fprintf(stderr, "%s: bad cell size\n", __FUNCTION__);
+				return false;
+			}
+			fprintf(stderr, "%s: supported\n", __FUNCTION__);
+			return true;
+		}
+		if (_images_kitty_status == IKS_UNSUPPORTED || _deadio || _exiting) {
+			fprintf(stderr, "%s: unsupported\n", __FUNCTION__);
+			_images_kitty_status = IKS_UNSUPPORTED;
+			return false;
+		}
+		if (_images_kitty_status == IKS_UNKNOWN) {
+			fprintf(stderr, "%s: probing\n", __FUNCTION__);
+			_images_kitty_status = IKS_PROBING;
+			_ae.images_probe = true;
+			_async_cond.notify_all();
+		} else if (GetProcessUptimeMSec() - wait_begin >= reply_timeout_msec) {
+			fprintf(stderr, "%s: kitty reply wait timed out\n", __FUNCTION__);
+			_images_kitty_status = IKS_UNSUPPORTED;
+			return false;
+		}
+		_images_kitty_status_cond.wait_for(lock, std::chrono::milliseconds(reply_timeout_msec));
+	}
+}
+
+bool TTYBackend::OnSetConsoleImage(const char *id, DWORD64 flags, const SMALL_RECT *area, DWORD width, DWORD height, const void *buffer)
+{
+	size_t buffer_size;
+	const auto fmt = (flags & WP_IMG_MASK_FMT);
+	switch (fmt) {
+		case WP_IMG_PNG: case WP_IMG_JPG: buffer_size = size_t(width); break;
+		case WP_IMG_RGB: buffer_size = size_t(width) * height * 3; break;
+		case WP_IMG_RGBA: buffer_size = size_t(width) * height * 4; break;
+		default:
+			fprintf(stderr, "%s: bad flags 0x%llx\n", __FUNCTION__, (unsigned long long)flags);
+			return false;
+	}
+
+	if (_far2l_tty) {
+		uint8_t ok = 0;
+		SMALL_RECT def_area = {-1, -1, -1, -1};
+		if (!area) {
+			area = &def_area;
+		}
+		try {
+			StackSerializer stk_ser;
+			if (buffer_size) {
+				stk_ser.Push(buffer, buffer_size);
+			}
+			stk_ser.PushNum(height);
+			stk_ser.PushNum(width);
+			stk_ser.PushNum(area->Bottom);
+			stk_ser.PushNum(area->Right);
+			stk_ser.PushNum(area->Top);
+			stk_ser.PushNum(area->Left);
+			stk_ser.PushNum(flags);
+			stk_ser.PushStr(id);
+			stk_ser.PushNum(FARTTY_INTERACT_IMAGE_SET);
+			stk_ser.PushNum(FARTTY_INTERACT_IMAGE);
+			if (Far2lInteract(stk_ser, true)) {
+				stk_ser.PopNum(ok);
+			}
+		} catch(std::exception &) {
+		}
+		return ok != 0;
+	}
+
+	if (CheckKittyImagesSupport()) {
+		try {
+			auto cur_pos = g_winport_con_out->GetCursor();
+			std::string str_id(id);
+			std::lock_guard<std::mutex> lock(_async_mutex);
+			auto &img = _images[str_id];
+
+			img.pixel_data.assign(static_cast<const uint8_t*>(buffer), static_cast<const uint8_t*>(buffer) + buffer_size);
+
+			switch (fmt) {
+				case WP_IMG_RGBA: img.fmt = 32; break;
+				case WP_IMG_RGB: img.fmt = 24; break;
+				case WP_IMG_PNG: img.fmt = 100; break;
+				default:
+					return false;
+			}
+			img.width = width;
+			img.height = height;
+			img.pixel_offset = (flags & WP_IMG_PIXEL_OFFSET) != 0;
+			MakeImageArea(img.area, area, cur_pos);
+			_images_to_display.insert(str_id);
+		} catch (...) {
+			return false;
+		}
+	} else {
+		return false;
+	}
+
+	std::lock_guard<std::mutex> lock(_async_mutex);
+	_ae.images_changed = true;
+	_async_cond.notify_all(); // Wake up the writer thread
+	return true;
+}
+
+bool TTYBackend::OnTransformConsoleImage(const char *id, const SMALL_RECT *area, uint16_t tf)
+{
+	if (_far2l_tty) {
+		uint8_t ok = 0;
+		try {
+			SMALL_RECT def_area = {-1, -1, -1, -1};
+			if (!area) {
+				area = &def_area;
+			}
+			StackSerializer stk_ser;
+			stk_ser.PushNum(tf);
+			stk_ser.PushNum(area->Bottom);
+			stk_ser.PushNum(area->Right);
+			stk_ser.PushNum(area->Top);
+			stk_ser.PushNum(area->Left);
+			stk_ser.PushStr(id);
+			stk_ser.PushNum(FARTTY_INTERACT_IMAGE_TRANSFORM);
+			stk_ser.PushNum(FARTTY_INTERACT_IMAGE);
+			if (Far2lInteract(stk_ser, true)) {
+				stk_ser.PopNum(ok);
+			}
+		} catch(std::exception &) {
+		}
+		return ok != 0;
+	}
+	return false;
+}
+
+bool TTYBackend::OnDeleteConsoleImage(const char *id)
+{
+	if (_far2l_tty) {
+		uint8_t ok = 0;
+		try {
+			StackSerializer stk_ser;
+			stk_ser.PushStr(id);
+			stk_ser.PushNum(FARTTY_INTERACT_IMAGE_DEL);
+			stk_ser.PushNum(FARTTY_INTERACT_IMAGE);
+			if (Far2lInteract(stk_ser, true)) {
+				stk_ser.PopNum(ok);
+			}
+		} catch(std::exception &) {
+		}
+		return ok != 0;
+	}
+
+	if (CheckKittyImagesSupport()) {
+		std::string str_id(id);
+		std::lock_guard<std::mutex> lock(_async_mutex);
+		if (!_images.erase(str_id)) {
+			return false;
+		}
+		_images_to_delete.insert(str_id);
+	} else {
+		return false;
+	}
+
+	std::lock_guard<std::mutex> lock(_async_mutex);
+	_ae.images_changed = true;
+	_async_cond.notify_all(); // Wake up the writer thread
+	return true;
+}
 
 bool WinPortMainTTY(const char *full_exe_path, int std_in, int std_out, bool ext_clipboard, bool norgb, DWORD nodetect, bool far2l_tty, unsigned int esc_expiration, int notify_pipe, int argc, char **argv, int(*AppMain)(int argc, char **argv), int *result)
 {

@@ -6,7 +6,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <sys/stat.h>
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 	#include <sys/mount.h>
 #elif !defined(__HAIKU__)
 	#include <sys/statfs.h>
@@ -30,12 +30,12 @@
 #include <utimens_compat.h>
 #include "sudo_private.h"
 
-namespace Sudo 
+namespace Sudo
 {
 	template <class OBJ> class Opened
 	{
 		std::set<OBJ> _set;
-		
+
 	public:
 		void Put(OBJ obj)
 		{
@@ -46,7 +46,7 @@ namespace Sudo
 		{
 			return (_set.find(obj) != _set.end());
 		}
-		
+
 		bool Remove(OBJ obj)
 		{
 			return (_set.erase(obj) != 0);
@@ -100,10 +100,10 @@ namespace Sudo
 			bt.SendInt(r ? r : -1);
 		}
 	}
-	
+
 	template <class STAT_STRUCT>
 		static void OnSudoDispatch_StatCommon(int (*pfn)(const char *path, STAT_STRUCT *buf), BaseTransaction &bt)
-	{		
+	{
 		std::string path;
 		bt.RecvStr(path);
 		STAT_STRUCT s = {};
@@ -114,13 +114,13 @@ namespace Sudo
 	}
 
 	static void OnSudoDispatch_CloseDir(BaseTransaction &bt, OpenedDirs &dirs)
-	{		
+	{
 		DIR *d;
 		bt.RecvPOD(d);
 		int r = dirs.Remove(d) ? closedir(d) : -1;
 		bt.SendPOD(r);
 	}
-	
+
 	static void OnSudoDispatch_OpenDir(BaseTransaction &bt, OpenedDirs &dirs)
 	{
 		std::string path;
@@ -131,7 +131,7 @@ namespace Sudo
 		if (!d)
 			bt.SendErrno();
 	}
-	
+
 	static void OnSudoDispatch_ReadDir(BaseTransaction &bt, OpenedDirs &dirs)
 	{
 		DIR *d;
@@ -154,21 +154,21 @@ namespace Sudo
 			bt.SendInt(err ? err : -1);
 		}
 	}
-	
+
 	static void OnSudoDispatch_MkDir(BaseTransaction &bt)
 	{
 		std::string path;
 		mode_t mode;
-		
+
 		bt.RecvStr(path);
 		bt.RecvPOD(mode);
-		
+
 		int r = mkdir(path.c_str(), mode);
 		bt.SendInt(r);
 		if (r==-1)
 			bt.SendErrno();
 	}
-	
+
 	static void OnSudoDispatch_OnePathCommon(int (*pfn)(const char *path), BaseTransaction &bt)
 	{
 		std::string path;
@@ -178,7 +178,7 @@ namespace Sudo
 		if (r==-1)
 			bt.SendErrno();
 	}
-	
+
 	static void OnSudoDispatch_ChDir(BaseTransaction &bt)
 	{
 		std::string path;
@@ -194,46 +194,45 @@ namespace Sudo
 			bt.SendStr(cwd);
 		}
 	}
-	
+
 	static void OnSudoDispatch_ChMod(BaseTransaction &bt)
 	{
 		std::string path;
 		mode_t mode;
-		
+
 		bt.RecvStr(path);
 		bt.RecvPOD(mode);
-		
+
 		int r = chmod(path.c_str(), mode);
 		bt.SendInt(r);
 		if (r==-1)
 			bt.SendErrno();
 	}
-				
-	static void OnSudoDispatch_ChOwn(BaseTransaction &bt)
+
+	template <typename API>
+		static void OnSudoDispatch_XChOwn(API api, BaseTransaction &bt)
 	{
 		std::string path;
-		uid_t owner;
-		gid_t group;
-		
+		uid_t owner{};
+		gid_t group{};
 		bt.RecvStr(path);
 		bt.RecvPOD(owner);
 		bt.RecvPOD(group);
-		
-		int r = chown(path.c_str(), owner, group);
+		int r = api(path.c_str(), owner, group);
 		bt.SendInt(r);
 		if (r==-1)
 			bt.SendErrno();
 	}
-				
+
 	static void OnSudoDispatch_UTimens(BaseTransaction &bt)
 	{
 		std::string path;
 		struct timespec times[2];
-		
+
 		bt.RecvStr(path);
 		bt.RecvPOD(times[0]);
 		bt.RecvPOD(times[1]);
-		
+
 		int r = utimens(path.c_str(), times);
 		bt.SendInt(r);
 		if (r==-1)
@@ -261,16 +260,16 @@ namespace Sudo
 	static void OnSudoDispatch_TwoPaths(int (*pfn)(const char *, const char *), BaseTransaction &bt)
 	{
 		std::string path1, path2;
-		
+
 		bt.RecvStr(path1);
 		bt.RecvStr(path2);
-		
+
 		int r = pfn(path1.c_str(), path2.c_str());
 		bt.SendInt(r);
 		if (r==-1)
 			bt.SendErrno();
 	}
-	
+
 	static void OnSudoDispatch_RealPath(BaseTransaction &bt)
 	{
 		std::string path;
@@ -284,7 +283,7 @@ namespace Sudo
 			bt.SendInt( err ? err : -1 );
 		}
 	}
-	
+
 	static void OnSudoDispatch_ReadLink(BaseTransaction &bt)
 	{
 		std::string path;
@@ -299,10 +298,10 @@ namespace Sudo
 		} else
 			bt.SendErrno();
 	}
-	
+
 	static void OnSudoDispatch_FSFlagsGet(BaseTransaction &bt)
 	{
-#if !defined(__APPLE__) && !defined(__FreeBSD__)  && !defined(__DragonFly__) && !defined(__CYGWIN__) && !defined(__HAIKU__)
+#if !defined(__APPLE__) && !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__DragonFly__) && !defined(__CYGWIN__) && !defined(__HAIKU__)
 		std::string path;
 		bt.RecvStr(path);
 		int r = -1;
@@ -321,15 +320,15 @@ namespace Sudo
 		bt.SendErrno();
 #endif
 	}
-	
+
 	static void OnSudoDispatch_FSFlagsSet(BaseTransaction &bt)
 	{
 		std::string path;
 		unsigned long flags;
 		bt.RecvStr(path);
 		bt.RecvPOD(flags);
-		
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)
+
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 		if (chflags(path.c_str(), flags) == 0) {
 			bt.SendInt(0);
 			return;
@@ -392,6 +391,19 @@ namespace Sudo
 			bt.SendErrno();
 		}
 	}
+
+	static void OnSudoDispatch_LUtimes(BaseTransaction &bt)
+	{
+		std::string path;
+		struct timeval times[2];
+		bt.RecvStr(path);
+		bt.RecvPOD(times[0]);
+		bt.RecvPOD(times[1]);
+		int r = lutimes(path.c_str(), times);
+		bt.SendInt(r);
+		if (r == -1)
+			bt.SendErrno();
+	}
 	
 	void OnSudoDispatch(SudoCommand cmd, BaseTransaction &bt, OpenedDirs &dirs)
 	{
@@ -399,15 +411,15 @@ namespace Sudo
 		switch (cmd) {
 			case SUDO_CMD_PING:
 				break;
-				
+
 			case SUDO_CMD_EXECUTE:
 				OnSudoDispatch_Execute(bt);
 				break;
-				
+
 			case SUDO_CMD_OPEN:
 				OnSudoDispatch_Open(bt);
 				break;
-#ifndef __HAIKU__
+#if !defined(__HAIKU__) && !defined(__NetBSD__)
 			case SUDO_CMD_STATFS:
 				OnSudoDispatch_StatCommon<struct statfs>(&statfs, bt);
 				break;
@@ -415,11 +427,11 @@ namespace Sudo
 			case SUDO_CMD_STATVFS:
 				OnSudoDispatch_StatCommon<struct statvfs>(&statvfs, bt);
 				break;
-				
+
 			case SUDO_CMD_STAT:
 				OnSudoDispatch_StatCommon<struct stat>(&stat, bt);
 				break;
-				
+
 			case SUDO_CMD_LSTAT:
 				OnSudoDispatch_StatCommon<struct stat>(&lstat, bt);
 				break;
@@ -427,59 +439,63 @@ namespace Sudo
 			case SUDO_CMD_CLOSEDIR:
 				OnSudoDispatch_CloseDir(bt, dirs);
 				break;
-				
+
 			case SUDO_CMD_OPENDIR:
 				OnSudoDispatch_OpenDir(bt, dirs);
 				break;
-				
+
 			case SUDO_CMD_READDIR:
 				OnSudoDispatch_ReadDir(bt, dirs);
 				break;
-				
+
 			case SUDO_CMD_MKDIR:
 				OnSudoDispatch_MkDir(bt);
 				break;
-				
+
 			case SUDO_CMD_CHDIR:
 				OnSudoDispatch_ChDir(bt);
 				break;
-				
+
 			case SUDO_CMD_RMDIR:
 				OnSudoDispatch_OnePathCommon(&rmdir, bt);
 				break;
-			
+
 			case SUDO_CMD_REMOVE:
 				OnSudoDispatch_OnePathCommon(&remove, bt);
 				break;
-			
+
 			case SUDO_CMD_UNLINK:
 				OnSudoDispatch_OnePathCommon(&unlink, bt);
 				break;
-			
+
 			case SUDO_CMD_CHMOD:
 				OnSudoDispatch_ChMod(bt);
 				break;
-				
+
 			case SUDO_CMD_CHOWN:
-				OnSudoDispatch_ChOwn(bt);
+				OnSudoDispatch_XChOwn(chown, bt);
 				break;
-				
+
+			case SUDO_CMD_LCHOWN:
+				OnSudoDispatch_XChOwn(lchown, bt);
+				break;
+
 			case SUDO_CMD_UTIMENS:
 				OnSudoDispatch_UTimens(bt);
 				break;
 
-            case SUDO_CMD_FUTIMENS:
-                OnSudoDispatch_FUTimens(bt);
-                break;
+			case SUDO_CMD_FUTIMENS:
+				OnSudoDispatch_FUTimens(bt);
+				break;
 
-            case SUDO_CMD_RENAME:
+			case SUDO_CMD_RENAME:
 				OnSudoDispatch_TwoPaths(&rename, bt);
 				break;
 
 			case SUDO_CMD_SYMLINK:
 				OnSudoDispatch_TwoPaths(&symlink, bt);
 				break;
-				
+
 			case SUDO_CMD_LINK:
 				OnSudoDispatch_TwoPaths(&link, bt);
 				break;
@@ -491,11 +507,11 @@ namespace Sudo
 			case SUDO_CMD_READLINK:
 				OnSudoDispatch_ReadLink(bt);
 				break;
-				
+
 			case SUDO_CMD_FSFLAGSGET:
 				OnSudoDispatch_FSFlagsGet(bt);
 				break;
-				
+
 			case SUDO_CMD_FSFLAGSSET:
 				OnSudoDispatch_FSFlagsSet(bt);
 				break;
@@ -511,16 +527,20 @@ namespace Sudo
 			case SUDO_CMD_MKNOD:
 				OnSudoDispatch_MkNod(bt);
 				break;
+
+			case SUDO_CMD_LUTIMES:
+				OnSudoDispatch_LUtimes(bt);
+				break;
 				
 			default:
 				throw std::runtime_error("OnSudoDispatch - bad command");
 		}
 	}
-	
+
 	static void sudo_dispatcher_with_socket(LocalSocket &sock)
 	{
 		fprintf(stderr, "sudo_dispatcher\n");
-		
+
 		SudoCommand cmd = SUDO_CMD_INVALID;
 		try {
 			OpenedDirs dirs;
@@ -535,8 +555,8 @@ namespace Sudo
 
 		}
 	}
-	
-	
+
+
 	extern "C" __attribute__ ((visibility("default"))) int sudo_main_dispatcher(int argc, char *argv[])
 	{
 		setlocale(LC_ALL, "");//otherwise non-latin keys missing with XIM input method
@@ -559,6 +579,6 @@ namespace Sudo
 		unlink(ipc_client.c_str());
 		unlink(argv[0]);
 
-		return 0;	
+		return 0;
 	}
 }

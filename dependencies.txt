@@ -2,7 +2,7 @@ cmake
 g++
 pkg-config
 
-libwxgtk3.0-gtk3-dev
+libwxgtk3.2-dev
 libx11-dev
 libxi-dev
 
@@ -12,4 +12,5 @@ libxml2-dev
 libarchive-dev
 libssh-dev
 
-python3
+python3-dev
+python3-cffi

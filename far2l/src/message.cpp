@@ -41,7 +41,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "scrbuf.hpp"
 #include "keys.hpp"
 #include "interf.hpp"
-#include "palette.hpp"
+#include "farcolors.hpp"
 #include "config.hpp"
 #include "mix.hpp"
 #include "InterThreadCall.hpp"
@@ -95,9 +95,8 @@ LONG_PTR WINAPI MsgDlgProc(HANDLE hDlg, int Msg, int Param1, LONG_PTR Param2)
 static int ShowMessageSynched(DWORD Flags, int Buttons, const wchar_t *Title, const wchar_t *const *Items,
 		int ItemsNumber, INT_PTR PluginNumber)
 {
-	FARString strTempStr;
 	int X1, Y1, X2, Y2;
-	int Length, BtnLength, J;
+	int Length, BtnLength;
 	DWORD I, MaxLength, StrCount;
 	BOOL ErrorSets = FALSE;
 	wchar_t *PtrStr;
@@ -136,13 +135,14 @@ static int ShowMessageSynched(DWORD Flags, int Buttons, const wchar_t *Title, co
 	}
 
 	for (MaxLength = BtnLength, I = 0; I < StrCount; I++) {
-		if (static_cast<DWORD>(Length = StrLength(Items[I])) > MaxLength)
-			MaxLength = Length;
+		auto Len = StrZCellsCount(Items[I]);
+		if (Len > MaxLength)
+			MaxLength = Len;
 	}
 
 	// учтем так же размер заголовка
 	if (Title && *Title) {
-		I = (DWORD)StrLength(Title) + 2;
+		I = (DWORD)StrZCellsCount(Title) + 2;
 
 		if (MaxLength < I)
 			MaxLength = I;
@@ -231,14 +231,14 @@ static int ShowMessageSynched(DWORD Flags, int Buttons, const wchar_t *Title, co
 		ItemsNumber++;
 	}
 
-	for (J = 0; J < ItemsNumber - (EmptyText ? 1 : 0); ++J, ++I) {
+	for (int J = 0; J < ItemsNumber - (EmptyText ? 1 : 0); ++J, ++I) {
 		Str[I] = Items[J];
 	}
 
 	StrCount+= CountErrorLine;
 	MessageX1 = X1 = (ScrX - MaxLength) / 2 - 4;
 	MessageX2 = X2 = X1 + MaxLength + 9;
-	Y1 = (int(ScrY) - int(StrCount)) / 2 - 2;
+	Y1 = (int(ScrY) - int(StrCount) - 1) / 2 - 2;
 
 	if (Y1 < 0)
 		Y1 = 0;
@@ -318,7 +318,7 @@ static int ShowMessageSynched(DWORD Flags, int Buttons, const wchar_t *Title, co
 					if (I == StrCount) {
 						StrSeparator = true;
 					}
-				} else if (StrLength(CPtrStr) > X2 - X1 - 9) {
+				} else if (StrZCellsCount(CPtrStr) > size_t(X2 - X1 - 9)) {
 					PtrMsgDlg->Type = DI_EDIT;
 					PtrMsgDlg->Flags|= DIF_READONLY | DIF_BTNNOCLOSE | DIF_SELECTONENTRY;
 					PtrMsgDlg->X1 = 5;
@@ -563,6 +563,34 @@ Messager &FN_NOINLINE ExMessager::AddDup(const wchar_t *v)
 {
 	_owneds.emplace_back(v);
 	Add(_owneds.back().CPtr());
+	return *this;
+}
+
+// dumb wrap long string
+Messager &FN_NOINLINE ExMessager::AddDupWrap(const wchar_t *v)
+{
+	size_t maxlen = wcslen(v);
+	if( maxlen <= MAX_WIDTH_MESSAGE )
+		return AddDup(v);
+
+	FARString fs = v;
+	for(size_t chars_pos = 0, chars_len, cells_n; chars_pos < maxlen; chars_pos += chars_len) {
+		cells_n = MAX_WIDTH_MESSAGE;
+		chars_len = StrSizeOfCells(&v[chars_pos], maxlen - chars_pos, cells_n, false);
+		if (cells_n <= 0)
+			break;
+		AddDup( fs.SubStr(chars_pos, chars_len).CPtr() );
+	}
+	return *this;
+}
+
+Messager &FN_NOINLINE ExMessager::AddMultiline(const wchar_t *v, const wchar_t *divs)
+{
+	std::wstring source_str = v;
+	std::vector<std::wstring> lines;
+	StrExplode(lines, source_str, divs, false);
+	for (const auto &current_line : lines)
+		AddDup(current_line.c_str());
 	return *this;
 }
 

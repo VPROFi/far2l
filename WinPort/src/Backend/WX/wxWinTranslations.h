@@ -8,7 +8,6 @@
 #include <wx/wx.h>
 #include <wx/display.h>
 
-
 class KeyTracker
 {
 	std::set<int> _pressed_keys;
@@ -55,3 +54,5 @@ WinPortRGB WxConsoleBackground2RGB(DWORD64 attributes);
 DWORD WxKeyboardLedsState();
 
 void WinPortWxAssertHandler(const wxString& file, int line, const wxString& func, const wxString& cond, const wxString& msg);
+
+int wxKeyCode2WinKeyCode(int code);

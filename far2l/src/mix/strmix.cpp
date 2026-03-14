@@ -354,18 +354,29 @@ wchar_t *WINAPI RemoveTrailingSpaces(wchar_t *Str)
 	return Str;
 }
 
-FARString &WINAPI RemoveTrailingSpaces(FARString &strStr)
+FARString &WINAPI RemoveTrailingSpaces(FARString &strStr, bool keep_escaping)
 {
 	if (strStr.IsEmpty())
 		return strStr;
 
 	const wchar_t *Str = strStr;
 	const wchar_t *ChPtr = Str + strStr.GetLength() - 1;
+	unsigned nSpaces = 0;
 
 	for (; ChPtr >= Str && (IsSpace(*ChPtr) || IsEol(*ChPtr)); ChPtr--)
-		;
+		nSpaces++;
 
-	strStr.Truncate(ChPtr < Str ? 0 : ChPtr - Str + 1);
+	if (nSpaces) {
+		if (keep_escaping && ChPtr >= Str && *ChPtr == L'\\') { // taking into account last escaping symbol
+			bool bEscape = true;
+			for (ChPtr--; ChPtr >= Str && *ChPtr == L'\\'; ChPtr--)
+				bEscape = !bEscape;
+			if (bEscape) // revert last symbol only if odd number of symbols '\\'
+				nSpaces--;
+		}
+		if (nSpaces)
+			strStr.Truncate(strStr.GetLength() - nSpaces);
+	}
 	return strStr;
 }
 
@@ -665,6 +676,7 @@ FARString &WINAPI FileSizeToStr(FARString &strDestStr, uint64_t Size, int Width,
 		strStr.Format(L"%llu", Sz);
 
 	if ((!UseMinSizeIndex && strStr.GetLength() <= static_cast<size_t>(Width)) || Width < 5) {
+
 		if (ShowBytesIndex) {
 			Width-= (Economic ? 1 : 2);
 
@@ -677,6 +689,7 @@ FARString &WINAPI FileSizeToStr(FARString &strDestStr, uint64_t Size, int Width,
 				strDestStr.Format(L"%*.*ls %1.1ls", Width, Width, strStr.CPtr(), UnitStr[0][IndexDiv]);
 		} else
 			strDestStr.Format(L"%*.*ls", Width, Width, strStr.CPtr());
+
 	} else {
 		Width-= (Economic ? 1 : 2);
 		IndexB = 0;

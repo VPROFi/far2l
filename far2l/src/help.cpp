@@ -38,7 +38,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "lang.hpp"
 #include "keys.hpp"
 #include "colors.hpp"
-#include "palette.hpp"
+#include "farcolors.hpp"
 #include "scantree.hpp"
 #include "savescr.hpp"
 #include "manager.hpp"
@@ -54,6 +54,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "exitcode.hpp"
 #include "filestr.hpp"
 #include "stddlg.hpp"
+#include "farversion.h"
 
 // Стек возврата
 class CallBackStack
@@ -107,6 +108,18 @@ static const wchar_t *FoundContents = L"__FoundContents__";
 static const wchar_t *PluginContents = L"__PluginContents__";
 static const wchar_t *HelpOnHelpTopic = L":Help";
 static const wchar_t *HelpContents = L"Contents";
+
+void SubstituteRuntimePlaceholders(FARString& line)
+{
+	if (!line.Contains(L'%'))
+		return;
+
+	static const FARString build(MB2Wide(FAR_BUILD).c_str());
+	static const FARString platform(MB2Wide(FAR_PLATFORM).c_str());
+
+	ReplaceStrings(line, L"%FAR_BUILD%", build.CPtr(), -1);
+	ReplaceStrings(line, L"%FAR_PLATFORM%", platform.CPtr(), -1);
+}
 
 void Help::Present(const wchar_t *Topic, const wchar_t *Mask, DWORD Flags)
 {
@@ -321,7 +334,7 @@ int Help::ReadHelp(const wchar_t *Mask)
 
 			if (CtrlObject->Macro.GetMacroKeyInfo(true, CtrlObject->Macro.GetSubKey(strMacroArea), MI,
 						strKeyName, strDescription)
-					== -1) {
+					<= 0) {
 				MacroProcess = false;
 				MI = 0;
 				continue;
@@ -571,6 +584,7 @@ void Help::AddLine(const wchar_t *Line)
 	}
 
 	strLine+= Line;
+	SubstituteRuntimePlaceholders(strLine);
 
 	{
 		HelpRecord AddRecord(strLine);
@@ -1265,7 +1279,7 @@ int Help::JumpTopic(const wchar_t *JumpTopic)
 		strFullPath = StackData.strHelpPath;
 		// уберем _все_ конечные слеши и добавим один
 		DeleteEndSlash(strFullPath, true);
-		strFullPath+= L"/";
+		strFullPath+= WGOOD_SLASH;
 		strFullPath+= strNewTopic.CPtr() + (IsSlash(strNewTopic.At(0)) ? 1 : 0);
 		bool addSlash = DeleteEndSlash(strFullPath);
 		ConvertNameToFull(strFullPath, strNewTopic);

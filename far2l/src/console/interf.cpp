@@ -48,7 +48,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "manager.hpp"
 #include "scrbuf.hpp"
 #include "syslog.hpp"
-#include "palette.hpp"
+#include "farcolors.hpp"
 #include "strmix.hpp"
 #include "console.hpp"
 #include "vtshell.h"
@@ -510,7 +510,22 @@ void Text(const WCHAR Ch, uint64_t Color, size_t Length)
 	if ( !Length )
 		return;
 
-	ScrBuf.FillRect(CurX, CurY, CurX + Length, CurY, Ch, Color);
+	int X1 = CurX;
+	int Y1 = CurY;
+	int X2 = CurX + Length;
+	int Y2 = CurY;
+
+	if (X1 < 0)
+		X1 = 0;
+	if (Y1 < 0)
+		Y1 = 0;
+
+	if (X2 > ScrX)
+		X2 = ScrX;
+	if (Y2 > ScrY)
+		Y2 = ScrY;
+
+	ScrBuf.FillRect(X1, Y1, X2, Y2, Ch, Color);
 	CurX += Length;
 }
 
@@ -536,7 +551,7 @@ void Text(const WCHAR *Str, size_t Length)
 		BufPtr = HeapBuffer;
 	}
 
-	int nCells = 0;
+	int nCells = 0, Skipped = 0;
 	std::wstring wstr;
 	for (size_t i = 0; i < Length; ++nCells) {
 		const size_t nG = StrSizeOfCell(&Str[i], Length - i);
@@ -547,14 +562,16 @@ void Text(const WCHAR *Str, size_t Length)
 			CI_SET_WCHAR(BufPtr[nCells], Str[i]);
 		}
 		CI_SET_ATTR(BufPtr[nCells], CurColor);
-		if (IsCharFullWidth(Str[i])) {
+		if (CharClasses::IsFullWidth(&Str[i])) {
 			++nCells;
 			CI_SET_WCATTR(BufPtr[nCells], 0, CurColor);
+		} else if (CharClasses::IsXxxfix(Str[i])) {
+			++Skipped;
 		}
 		i+= nG;
 	}
 
-	ScrBuf.Write(CurX, CurY, BufPtr, nCells);
+	ScrBuf.Write(CurX, CurY, BufPtr, nCells + Skipped);
 	if (HeapBuffer) {
 		delete[] HeapBuffer;
 	}
@@ -578,7 +595,7 @@ void TextEx(const WCHAR *Str, size_t Length)
 		BufPtr = HeapBuffer;
 	}
 
-	int nCells = 0;
+	int nCells = 0, Skipped = 0;
 	std::wstring wstr;
 	for (size_t i = 0; i < Length; ++nCells) {
 
@@ -590,19 +607,20 @@ void TextEx(const WCHAR *Str, size_t Length)
 			CI_SET_ATTR(BufPtr[nCells], CurColor);
 		} else {
 			CI_SET_WCHAR(BufPtr[nCells], Str[i]);
-			CI_SET_ATTR(BufPtr[nCells], CurColor & (0xFFFFFFFFFFFFFFFF ^ (COMMON_LVB_STRIKEOUT | COMMON_LVB_UNDERSCORE)) );
+			CI_SET_ATTR(BufPtr[nCells], CurColor & (0xFFFFFFFFFFFFFFFF ^ (IMPORTANT_LINE_CHAR | EXPLICIT_LINE_BREAK | COMMON_LVB_STRIKEOUT | COMMON_LVB_UNDERSCORE)) );
 		}
 
 //		CI_SET_ATTR(BufPtr[nCells], CurColor);
-
-		if (IsCharFullWidth(Str[i])) {
+		if (CharClasses::IsFullWidth(&Str[i])) {
 			++nCells;
 			CI_SET_WCATTR(BufPtr[nCells], 0, CurColor);
+		} else	if (CharClasses::IsXxxfix(Str[i])) {
+			++Skipped;
 		}
 		i+= nG;
 	}
 
-	ScrBuf.Write(CurX, CurY, BufPtr, nCells);
+	ScrBuf.Write(CurX, CurY, BufPtr, nCells + Skipped);
 	if (HeapBuffer) {
 		delete[] HeapBuffer;
 	}
@@ -1148,9 +1166,9 @@ int HiStrCellsCount(const wchar_t *Str)
 
 				Length+= Count / 2;
 			} else {
-				if (IsCharFullWidth(*Str))
+				if (CharClasses::IsFullWidth(Str))
 					Length+= 2;
-				else if (!IsCharXxxfix(*Str))
+				else if (!CharClasses::IsXxxfix(*Str))
 					Length+= 1;
 				Str++;
 			}
@@ -1191,9 +1209,9 @@ int HiFindRealPos(const wchar_t *Str, int Pos, BOOL ShowAmp)
 				}
 			}
 
-			if (IsCharFullWidth(*Str))
+			if (CharClasses::IsFullWidth(Str))
 				VisPos+= 2;
-			else if (!IsCharXxxfix(*Str))
+			else if (!CharClasses::IsXxxfix(*Str))
 				VisPos+= 1;
 			Str++;
 			RealPos++;
@@ -1228,7 +1246,7 @@ int HiFindNextVisualPos(const wchar_t *Str, int Pos, int Direct)
 					return Pos - 2;
 				}
 
-				if (Pos > 1 && IsCharFullWidth(Str[Pos - 1]))
+				if (Pos > 1 && CharClasses::IsFullWidth(&Str[Pos - 1]))
 					return Pos - 2;
 
 				return Pos - 1;
@@ -1248,7 +1266,7 @@ int HiFindNextVisualPos(const wchar_t *Str, int Pos, int Direct)
 
 				return Pos + 2;
 			} else {
-				return IsCharFullWidth(*Str) ? Pos + 2 : Pos + 1;
+				return CharClasses::IsFullWidth(Str) ? Pos + 2 : Pos + 1;
 			}
 		}
 	}

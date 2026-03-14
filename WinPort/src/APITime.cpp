@@ -50,7 +50,7 @@ static void TM2Systemtime(LPSYSTEMTIME lpSystemTime, const struct tm *ptm)
 	lpSystemTime->wDayOfWeek = ptm->tm_wday;
 	lpSystemTime->wMilliseconds = 0;
 }
-		
+
 static void Systemtime2TM(const SYSTEMTIME *lpSystemTime, struct tm *ptm)
 {
 	ptm->tm_sec = lpSystemTime->wSecond;
@@ -84,7 +84,7 @@ WINPORT_DECL(FileTime_UnixToWin32, VOID, (struct timespec ts, FILETIME *lpFileTi
 		tm+= add_ns;
 		ts.tv_nsec-= add_ns * 1000000000;
 	}
-	
+
 	SYSTEMTIME sys_time = {};
 	TM2Systemtime(&sys_time, gmtime(&tm));
 	sys_time.wMilliseconds+= ts.tv_nsec/1000000;
@@ -97,7 +97,7 @@ WINPORT_DECL(FileTime_Win32ToUnix, VOID, (const FILETIME *lpFileTime, struct tim
 
 	SYSTEMTIME sys_time = {};
 	WINPORT(FileTimeToSystemTime)(lpFileTime, &sys_time);
-	struct tm tm = {};	
+	struct tm tm = {};
 	Systemtime2TM(&sys_time, &tm);
 	ts->tv_sec = timegm(&tm);
 	ts->tv_nsec = sys_time.wMilliseconds;
@@ -123,7 +123,7 @@ WINPORT_DECL(SystemTimeToFileTime, BOOL, (const SYSTEMTIME *lpSystemTime, LPFILE
 	* First start counting years from March. This way the leap days
 	* are added at the end of the year, not somewhere in the middle.
 	* Formula's become so much less complicate that way.
-	* To convert: add 12 to the month numbers of Jan and Feb, and 
+	* To convert: add 12 to the month numbers of Jan and Feb, and
 	* take 1 from the year */
 	if(lpSystemTime->wMonth < 3) {
 		month = lpSystemTime->wMonth + 13;
@@ -140,8 +140,8 @@ WINPORT_DECL(SystemTimeToFileTime, BOOL, (const SYSTEMTIME *lpSystemTime, LPFILE
 	/* done */
 
 	LARGE_INTEGER liTime;
-	liTime.QuadPart = (((((LONGLONG) day * HOURSPERDAY + 
-		lpSystemTime->wHour) * MINSPERHOUR + 
+	liTime.QuadPart = (((((LONGLONG) day * HOURSPERDAY +
+		lpSystemTime->wHour) * MINSPERHOUR +
 		lpSystemTime->wMinute) * SECSPERMIN +
 		lpSystemTime->wSecond ) * 1000 +
 		lpSystemTime->wMilliseconds ) * TICKSPERMSEC;
@@ -188,11 +188,13 @@ static int LocalMinusUTC()
 	unsigned long long gt_secs = ((gt.tm_yday * 24 + gt.tm_hour) * 60 + gt.tm_min) * 60 + gt.tm_sec;
 	unsigned long long lt_secs = ((lt.tm_yday * 24 + lt.tm_hour) * 60 + lt.tm_min) * 60 + lt.tm_sec;
 	if (gt.tm_year > lt.tm_year) {
-		gt_secs+= 366 * 24 * 60 * 60;
+			int days = IsLeapYear(lt.tm_year + 1900) ? 366 : 365;
+			gt_secs+= days * 24 * 60 * 60;
 
-	} else if (gt.tm_year < lt.tm_year) {
-		lt_secs+= 366 * 24 * 60 * 60;
-	}
+		} else if (gt.tm_year < lt.tm_year) {
+			int days = IsLeapYear(gt.tm_year + 1900) ? 366 : 365;
+			lt_secs+= days * 24 * 60 * 60;
+		}
 
 	int bias = (int)(long long)(lt_secs - gt_secs);
 
@@ -329,7 +331,7 @@ WINPORT_DECL(FileTimeToSystemTime, BOOL, (const FILETIME *lpFileTime, LPSYSTEMTI
 		lpSystemTime->wYear = years + 1525;
 	}
 	/* calculation of day of month is based on the wonderful
-	* sequence of INT( n * 30.6): it reproduces the 
+	* sequence of INT( n * 30.6): it reproduces the
 	* 31-30-31-30-31-31 month lengths exactly for small n's */
 	lpSystemTime->wDay = yearday - (1959 * months) / 64 ;
 	return TRUE;
@@ -377,11 +379,11 @@ WINPORT_DECL(DosDateTimeToFileTime, BOOL, ( WORD fatdate, WORD fattime, LPFILETI
 
 static unsigned s_time_failmask = 0;
 
-WINPORT_DECL(GetTickCount, DWORD, ())
+static DWORD64 GetTickCountInner()
 {
 	(void)s_time_failmask;
 #ifdef _WIN32
-	return ::GetTickCount();
+	return ::GetTickCount64();
 #elif defined(__APPLE__)
 	static mach_timebase_info_data_t g_timebase_info;
 	if (g_timebase_info.denom == 0)
@@ -397,9 +399,9 @@ WINPORT_DECL(GetTickCount, DWORD, ())
 # else
 		if (LIKELY(clock_gettime(CLOCK_REALTIME_COARSE, &spec) == 0)) {
 # endif
-			DWORD rv = spec.tv_sec;
+			DWORD64 rv = spec.tv_sec;
 			rv*= 1000;
-			rv+= (DWORD)(spec.tv_nsec / 1000000);
+			rv+= (DWORD64)(spec.tv_nsec / 1000000);
 			return rv;
 		}
 		fprintf(stderr, "%s: clock_gettime error %u\n", __FUNCTION__, errno);
@@ -409,17 +411,23 @@ WINPORT_DECL(GetTickCount, DWORD, ())
 	if (LIKELY((s_time_failmask & 2) == 0)) {
 		struct timeval tv{};
 		if (LIKELY(gettimeofday(&tv, NULL) == 0)) {
-			DWORD rv = tv.tv_sec;
+			DWORD64 rv = tv.tv_sec;
 			rv*= 1000;
-			rv+= (DWORD)(tv.tv_usec / 1000);
+			rv+= (DWORD64)(tv.tv_usec / 1000);
 			return rv;
 		}
 		fprintf(stderr, "%s: gettimeofday error %u\n", __FUNCTION__, errno);
 		s_time_failmask|= 2;
 	}
 
-	return DWORD(time(NULL) * 1000);
+	return DWORD64(time(NULL) * 1000);
 #endif
+}
+
+WINPORT_DECL(GetTickCount, DWORD, ())
+{
+	DWORD out = (DWORD)GetTickCountInner();
+	return LIKELY(out != 0) ? out : 1;
 }
 
 WINPORT_DECL(Sleep, VOID, (DWORD dwMilliseconds))
@@ -436,10 +444,11 @@ WINPORT_DECL(Sleep, VOID, (DWORD dwMilliseconds))
 #endif
 }
 
-static clock_t g_process_start_stamp = WINPORT(GetTickCount)();
+static DWORD64 g_process_start_stamp = GetTickCountInner();
+
 SHAREDSYMBOL clock_t GetProcessUptimeMSec()
 {
-	clock_t now = WINPORT(GetTickCount)();
-	return (now - g_process_start_stamp);
+	clock_t out = (clock_t)(GetTickCountInner() - g_process_start_stamp);
+	return LIKELY(out != 0) ? out : 1;
 }
 

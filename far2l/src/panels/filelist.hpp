@@ -155,6 +155,7 @@ struct PluginsListItem
 	int PrevNumericSort;
 	int PrevCaseSensitiveSort;
 	int PrevDirectoriesFirst;
+	int PrevExecutablesFirst;
 	PanelViewSettings PrevViewSettings;
 };
 
@@ -194,12 +195,17 @@ private:
 	uint64_t SelFileSize;
 	uint64_t TotalFileSize;
 	uint64_t FreeDiskSize;
+	uint64_t TotalFilePhysSize;
+	uint64_t LargestFilSize;
+	uint64_t LargestFilSizeL;
+	uint64_t LargestFilPhysSize;
 	size_t	MarkLM;
 	clock_t LastUpdateTime;
 	int Height, Columns;
 	std::deque<std::string> _symlinks_backlog;
 
 	int ColumnsInGlobal;
+	int AutoColumnWidth[32];
 
 	int LeftPos;
 	int ShiftSelection;
@@ -224,7 +230,7 @@ private:
 	void Scroll(int Count);
 	void CorrectPosition();
 	void ShowFileList(int Fast);
-	void ShowList(int ShowStatus, int StartColumn);
+	void ShowList(int ShowStatus, int StartColumn, OpenPluginInfo &Info);
 	void SetShowColor(int Position, int ColorType = HIGHLIGHTCOLORTYPE_FILE);
 	DWORD64 GetShowColor(int Position, int ColorType);
 	void ShowSelectedSize();
@@ -262,7 +268,7 @@ private:
 	void PushPlugin(HANDLE hPlugin, const wchar_t *HostFile);
 	int PopPlugin(int EnableRestoreViewMode);
 	void CopyFiles();
-	void CopyNames(bool FullPathName, bool UNC);
+	void CopyNames(bool FullPathName, bool RealName);
 	void SelectSortMode();
 	bool ApplyCommand();
 	void DescribeFiles();
@@ -270,7 +276,7 @@ private:
 	HANDLE OpenPluginForFile(const wchar_t *FileName, DWORD FileAttr, OPENFILEPLUGINTYPE Type);
 	int PreparePanelView(PanelViewSettings *PanelView);
 	int PrepareColumnWidths(unsigned int *ColumnTypes, int *ColumnWidths, int *ColumnWidthsTypes,
-			int &ColumnCount, int FullScreen);
+			int &ColumnCount, int FullScreen, bool bStatus);
 	void PrepareViewSettings(int ViewMode, OpenPluginInfo *PlugInfo);
 
 	void PluginDelete();
@@ -323,12 +329,14 @@ public:
 	virtual void CloseChangeNotification();
 	virtual void SortFileList(int KeepPosition);
 	virtual void SetViewMode(int ViewMode);
+
 	virtual void SetSortMode(int SortMode);
 	void SetSortMode0(int SortMode);
 	virtual void ChangeSortOrder(int NewOrder);
 	virtual void ChangeNumericSort(int Mode);
 	virtual void ChangeCaseSensitiveSort(int Mode);
 	virtual void ChangeDirectoriesFirst(int Mode);
+	virtual void ChangeExecutablesFirst(int Mode);
 	virtual BOOL SetCurDir(const wchar_t *NewDir, int ClosePlugin);
 	virtual int GetPrevSortMode();
 	virtual int GetPrevSortOrder();
@@ -336,6 +344,9 @@ public:
 	virtual int GetPrevNumericSort();
 	virtual int GetPrevCaseSensitiveSort();
 	virtual int GetPrevDirectoriesFirst();
+	virtual int GetPrevExecutablesFirst();
+
+	void UpdateAutoColumnWidth();
 
 	HANDLE OpenFilePlugin(const wchar_t *FileName, int PushPrev, OPENFILEPLUGINTYPE Type);
 	virtual int GetFileName(FARString &strName, int Pos, DWORD &FileAttr);
@@ -391,7 +402,8 @@ public:
 	int PluginPanelHelp(HANDLE hPlugin);
 	virtual long GetFileCount() { return ListData.Count(); }
 
-	FARString &CreateFullPathName(const wchar_t *Name, DWORD FileAttr, FARString &strDest, int UNC);
+	FARString &CreateFullPathName(const wchar_t *Name, FARString &strDest, bool RealName);
+	FARString &PluginGetURL(const wchar_t *Name, FARString &strDest);
 
 	virtual const void *GetItem(int Index);
 	virtual BOOL UpdateKeyBar();

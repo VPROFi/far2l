@@ -62,8 +62,8 @@ template <class CHAR_T>
 	return str;
 }
 
-std::string EscapeCmdStr(const std::string &str, const char *escaped_chars) {return EscapeCmdStrT<char>(str, escaped_chars); }
-std::wstring EscapeCmdStr(const std::wstring &str, const wchar_t *escaped_chars) {return EscapeCmdStrT<wchar_t>(str, escaped_chars); }
+std::string EscapeCmdStr(std::string str, const char *escaped_chars) {return EscapeCmdStrT<char>(std::move(str), escaped_chars); }
+std::wstring EscapeCmdStr(std::wstring str, const wchar_t *escaped_chars) {return EscapeCmdStrT<wchar_t>(std::move(str), escaped_chars); }
 
 std::string EscapeEscapes(std::string str)
 {
@@ -91,14 +91,14 @@ void QuoteCmdArg(std::wstring &str) { QuoteCmdArgT(str); }
 
 void QuoteCmdArgIfNeed(std::string &str)
 {
-	if (str.find_first_of(" \\\"\'\r\n\t&|;,()`$") != std::string::npos) {
+	if (str.find_first_of(" \\\"\'\r\n\t&|;,()`$#<>") != std::string::npos) {
 		QuoteCmdArg(str);
 	}
 }
 
 void QuoteCmdArgIfNeed(std::wstring &str)
 {
-	if (str.find_first_of(L" \\\"\'\r\n\t&|;,()`$") != std::wstring::npos) {
+	if (str.find_first_of(L" \\\"\'\r\n\t&|;,()`$#<>") != std::wstring::npos) {
 		QuoteCmdArg(str);
 	}
 }

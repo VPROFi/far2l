@@ -97,12 +97,8 @@ static void FilterGrabbedText(std::wstring &grabbed_text)
 				default:   ch = L'+';
 			}
 
-			if (Opt.NoBoxes) switch (orig_ch) {
-				case 0xB3: // fallthrough
-				case 0xBA: ch = L' '; break;
-				case 0xC4: ch = L' '; break;
-				case 0xCD: ch = L' '; break;
-				default:   ch = L' ';
+			else if (Opt.NoBoxes) {
+				ch = L' ';
 			}
 		}
 	}
@@ -187,14 +183,13 @@ void Grabber::DisplayObject()
 			const size_t width = size_t(area.right + 1 - area.left);
 			std::vector<CHAR_INFO> char_info(width * (area.bottom + 1 - area.top));
 
-			CHAR_INFO *prev_buf = _save_scr->GetBufferAddress();
 			GetText(area.left, area.top, area.right, area.bottom, char_info.data(), sizeof(CHAR_INFO) * char_info.size());
 
 			for (auto x = area.left; x <= area.right; ++x)
 				for (auto y = area.top; y <= area.bottom; ++y) {
 					DWORD64 new_attrs;
-					
-					if ((prev_buf[size_t(y) * (ScrX + 1) + size_t(x)].Attributes & B_LIGHTGRAY) == B_LIGHTGRAY)
+
+					if ((_save_scr->Read(x, y).Attributes & B_LIGHTGRAY) == B_LIGHTGRAY)
 						new_attrs = B_BLACK | F_LIGHTGRAY;
 					else
 						new_attrs = B_LIGHTGRAY | F_BLACK;
@@ -361,7 +356,7 @@ int Grabber::ProcessKey(FarKey key)
 			if ((_area.cur_y+= 5) > ScrY)
 				_area.cur_y = ScrY;
 
-			if (key == KEY_CTRLSHIFTDOWN || key == KEY_CTRLSHIFTNUMPAD8)
+			if (key == KEY_CTRLSHIFTDOWN || key == KEY_CTRLSHIFTNUMPAD2)
 				_area.top = _area.cur_y;
 
 			break;

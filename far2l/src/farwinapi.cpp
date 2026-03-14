@@ -37,7 +37,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/statvfs.h>
 #include <fcntl.h>
 #include <errno.h>
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__CYGWIN__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__) || defined(__CYGWIN__)
 #include <sys/mount.h>
 #elif !defined(__HAIKU__)
 #include <sys/statfs.h>
@@ -473,7 +473,7 @@ bool apiExpandEnvironmentStrings(const wchar_t *src, FARString &strDest)
 
 BOOL apiGetVolumeInformation(const wchar_t *lpwszRootPathName, FARString *pVolumeName,
 		DWORD64 *lpVolumeSerialNumber, LPDWORD lpMaximumComponentLength, LPDWORD lpFileSystemFlags,
-		FARString *pFileSystemName)
+		FARString *pFileSystemName, FARString *pFileSystemMountPoint)
 {
 	struct statvfs svfs {};
 	const std::string &path = Wide2MB(lpwszRootPathName);
@@ -486,7 +486,7 @@ BOOL apiGetVolumeInformation(const wchar_t *lpwszRootPathName, FARString *pVolum
 	if (lpVolumeSerialNumber)
 		*lpVolumeSerialNumber = (DWORD)svfs.f_fsid;
 	if (lpFileSystemFlags)
-		*lpFileSystemFlags = 0;		// TODO: svfs.f_flags;
+		*lpFileSystemFlags = (DWORD)svfs.f_flag;
 
 	if (pVolumeName) {
 		pVolumeName->Clear();
@@ -506,6 +506,9 @@ BOOL apiGetVolumeInformation(const wchar_t *lpwszRootPathName, FARString *pVolum
 
 	if (pFileSystemName) {
 		*pFileSystemName = MountInfo().GetFileSystem(path);
+	}
+	if (*pFileSystemMountPoint) {
+		*pFileSystemMountPoint = MountInfo().GetFileSystemMountPoint(lpwszRootPathName);
 	}
 
 	return TRUE;

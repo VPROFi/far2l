@@ -230,8 +230,8 @@ private:
 	int ReadMacroFunction(int ReadMode, FARString &strBuffer);
 	int WriteVarsConst(int WriteMode);
 	int ReadMacros(int ReadMode, FARString &strBuffer);
-	DWORD AssignMacroKey();
-	int GetMacroSettings(uint32_t Key, DWORD &Flags);
+	DWORD AssignMacroKey(FARString& macroNameHolder);
+	int GetMacroSettings(uint32_t Key, DWORD &Flags, FARString& macroDescription);
 	void InitInternalVars(BOOL InitedRAM = TRUE);
 	void InitInternalLIBVars();
 	void ReleaseWORKBuffer(BOOL All = FALSE);	// удалить временный буфер
@@ -242,7 +242,7 @@ private:
 	BOOL CheckEditSelected(DWORD CurFlags);
 	BOOL CheckInsidePlugin(DWORD CurFlags);
 	BOOL CheckPanel(int PanelMode, DWORD CurFlags, BOOL IsPassivePanel);
-	BOOL CheckCmdLine(int CmdLength, DWORD Flags);
+	BOOL CheckCmdLine(bool CmdIsNotEmpty, DWORD Flags);
 	BOOL CheckFileFolder(Panel *ActivePanel, DWORD CurFlags, BOOL IsPassivePanel);
 	BOOL CheckAll(int CheckMode, DWORD CurFlags);
 	void Sort();
@@ -259,7 +259,7 @@ public:
 	~KeyMacro();
 
 public:
-	int ProcessKey(FarKey Key);
+	bool ProcessKey(FarKey Key);
 	FarKey GetKey();
 	FarKey PeekKey();
 	bool IsOpCode(DWORD p);
@@ -324,6 +324,9 @@ public:
 	static void RegisterMacroIntFunction();
 	static TMacroFunction *RegisterMacroFunction(const TMacroFunction *tmfunc);
 	static bool UnregMacroFunction(size_t Index);
+
+	void MacroBrowser();
+	friend class MacroBrowser;
 };
 
 BOOL WINAPI KeyMacroToText(uint32_t Key, FARString &strKeyText0);

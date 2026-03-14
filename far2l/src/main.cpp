@@ -75,6 +75,11 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ConfigRW.hpp"
 #include "ConfigOptSaveLoad.hpp"
 #include "help.hpp"
+#include "farversion.h"
+#include "mix/panelmix.hpp"
+#include "farcolors.hpp"
+
+#include "message.hpp"
 
 #ifdef DIRECT_RT
 int DirectRT = 0;
@@ -82,8 +87,9 @@ int DirectRT = 0;
 
 static void print_help(const char *self)
 {
-	bool is_far2ledit = strstr(self, "far2ledit") != NULL;
-	printf("FAR2L - two-panel file manager, with built-in terminal and other usefulness'es\n"
+	bool is_far2ledit = strstr(self, "edit") != NULL;
+	printf("FAR2L Version: %s\n"
+			"FAR2L - two-panel file manager, with built-in terminal and other usefulness'es\n"
 			"Usage: %s [switches] [-cd apath [-cd ppath]]\n"
 			"   or: far2ledit [switches] [filename]\n\n"
 			"where\n"
@@ -92,7 +98,8 @@ static void print_help(const char *self)
 			"  ppath - path to a folder (or a file or an archive or command with prefix)\n"
 			"          for the passive panel\n\n"
 			"The following switches may be used in the command line:\n\n"
-			" -h   This help.\n"
+			" -h   This help and exit.\n"
+			" --version  Displays the current version and exit.\n"
 			" -a   Disable display of characters with codes 0 - 31 and 255.\n"
 			" -ag  Disable display of pseudographics with codes > 127.\n"
 			" -an  Disable display of pseudographics characters completely.\n"
@@ -103,7 +110,8 @@ static void print_help(const char *self)
 			//		" -p[<path>]\n"
 			//		"      Search for \"common\" plugins in the directory, specified by <path>.\n"
 			" -u <identity> OR </path/name>\n"
-			"      Allows to specify separate settings identity or FS location.\n"
+			"      Allows to specify separate settings identity or FS location\n"
+			"      (it override FARSETTINGS environment variable value).\n"
 			" -v <filename>\n"
 			"      View the specified file.\n"
 			" -v - <command line>\n"
@@ -117,7 +125,7 @@ static void print_help(const char *self)
 			"      Example: far2l -set:Language.Main=English -set:Screen.Clock=0 -set:XLat.Flags=0xff -set:System.FindFolders=false\n"
 			"Switches -cd, -v and -e are not applicable if far2ledit.\n"
 			"\n",
-			is_far2ledit ? "far2l" : self);
+			FAR_BUILD, is_far2ledit ? "far2l" : self);
 	WinPortHelp();
 	// Console.Write(HelpMsg, ARRAYSIZE(HelpMsg)-1);
 }
@@ -138,8 +146,61 @@ static FARString ReconstructCommandLine(int argc, char **argv)
 	return cmd;
 }
 
+static void UpdatePathOptions(const FARString &strDestName, bool IsActivePanel)
+{
+	FARString *outFolder, *outCurFile;
+
+	// Та панель, которая имеет фокус - активна (начнем по традиции с Левой Панели ;-)
+	if ((IsActivePanel && Opt.LeftPanel.Focus) || (!IsActivePanel && !Opt.LeftPanel.Focus)) {
+		Opt.LeftPanel.Type = FILE_PANEL;  // сменим моду панели
+		Opt.LeftPanel.Visible = TRUE;     // и включим ее
+		outFolder = &Opt.strLeftFolder;
+		outCurFile = &Opt.strLeftCurFile;
+	}
+	else {
+		Opt.RightPanel.Type = FILE_PANEL;
+		Opt.RightPanel.Visible = TRUE;
+		outFolder = &Opt.strRightFolder;
+		outCurFile = &Opt.strRightCurFile;
+	}
+
+	auto Attr = apiGetFileAttributes(strDestName);
+	if (Attr != INVALID_FILE_ATTRIBUTES) {
+		if (Attr & FILE_ATTRIBUTE_DIRECTORY) {
+			outCurFile->Clear();
+			*outFolder = strDestName;
+		}
+		else {
+			*outCurFile = PointToName(strDestName);
+			*outFolder = strDestName;
+			CutToSlash(*outFolder, true);
+			if (outFolder->IsEmpty())
+				*outFolder = WGOOD_SLASH;
+		}
+	}
+}
+
+static void Write_FAR2L_CWD()
+{
+	const char *far2l_cwd = getenv("FAR2L_CWD");
+	if (far2l_cwd && *far2l_cwd) {
+		int fd = open(far2l_cwd, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+		if (fd != -1) {
+			FARString cur_dir;
+			if (apiGetCurrentDirectory(cur_dir)) {
+				const auto &cwd = cur_dir.GetMB();
+				if (write(fd, cwd.c_str(), cwd.size()) == -1) {
+					perror("write cwd");
+				}
+			}
+			close(fd);
+		}
+	}
+}
+
+
 static int MainProcess(FARString strEditViewArg, FARString strDestName1, FARString strDestName2,
-		int StartLine, int StartChar)
+		int StartLine, int StartChar, bool cfgNeedSave)
 {
 	InterThreadCallsDispatcherThread itc_dispatcher_thread;
 
@@ -202,46 +263,12 @@ static int MainProcess(FARString strEditViewArg, FARString strDestName1, FARStri
 
 			// воспользуемся тем, что ControlObject::Init() создает панели
 			// юзая Opt.*
-			if (strDestName1.GetLength())		// актиная панель
+			if (strDestName1.GetLength())  // активная панель
 			{
-				Opt.SetupArgv++;
-				strPath = strDestName1;
+				UpdatePathOptions(strDestName1, true);
 
-				if (strPath != "/") {
-					DeleteEndSlash(strPath);	// BUGBUG!! если конечный слешь не убрать - получаем забавный эффект - отсутствует ".."
-				}
-
-				// Та панель, которая имеет фокус - активна (начнем по традиции с Левой Панели ;-)
-				if (Opt.LeftPanel.Focus) {
-					Opt.LeftPanel.Type = FILE_PANEL;	// сменим моду панели
-					Opt.LeftPanel.Visible = TRUE;		// и включим ее
-					Opt.strLeftFolder = strPath;
-				} else {
-					Opt.RightPanel.Type = FILE_PANEL;
-					Opt.RightPanel.Visible = TRUE;
-					Opt.strRightFolder = strPath;
-				}
-
-				if (strDestName2.GetLength())		// пассивная панель
-				{
-					Opt.SetupArgv++;
-					strPath = strDestName2;
-
-					if (strPath != "/") {
-						DeleteEndSlash(strPath);	// BUGBUG!! если конечный слешь не убрать - получаем забавный эффект - отсутствует ".."
-					}
-
-					// а здесь с точнотью наоборот - обрабатываем пассивную панель
-					if (Opt.LeftPanel.Focus) {
-						Opt.RightPanel.Type = FILE_PANEL;	// сменим моду панели
-						Opt.RightPanel.Visible = TRUE;		// и включим ее
-						Opt.strRightFolder = strPath;
-					} else {
-						Opt.LeftPanel.Type = FILE_PANEL;
-						Opt.LeftPanel.Visible = TRUE;
-						Opt.strLeftFolder = strPath;
-					}
-				}
+				if (strDestName2.GetLength())  // пассивная панель
+					UpdatePathOptions(strDestName2, false);
 			}
 
 			// теперь все готово - создаем панели!
@@ -263,14 +290,14 @@ static int MainProcess(FARString strEditViewArg, FARString strDestName1, FARStri
 						AnotherPanel->SetFocus();
 						CtrlObject->CmdLine->ExecString(strDestName2, 0);
 						ActivePanel->SetFocus();
-					} else {
+					} /* else { // positioning on the file in UpdatePathOptions() is enough
 						strPath = strDestName2;
 
 						if (!strPath.IsEmpty()) {
 							if (AnotherPanel->GoToFile(strPath))
 								AnotherPanel->ProcessKey(KEY_CTRLPGDN);
 						}
-					}
+					} */
 				}
 
 				ActivePanel->GetCurDir(strCurDir);
@@ -278,14 +305,18 @@ static int MainProcess(FARString strEditViewArg, FARString strDestName1, FARStri
 
 				if (IsPluginPrefixPath(strDestName1)) {
 					CtrlObject->CmdLine->ExecString(strDestName1, 0);
-				} else {
+				} /* else { // positioning on the file in UpdatePathOptions() is enough
 					strPath = strDestName1;
 
 					if (!strPath.IsEmpty()) {
 						if (ActivePanel->GoToFile(strPath))
 							ActivePanel->ProcessKey(KEY_CTRLPGDN);
 					}
-				}
+				} */
+
+				// Update pointers as the above prefixed plugin calls could recreate one or both panels
+				ActivePanel=CtrlObject->Cp()->ActivePanel;
+				AnotherPanel=CtrlObject->Cp()->GetAnotherPanel(ActivePanel);
 
 				// !!! ВНИМАНИЕ !!!
 				// Сначала редравим пассивную панель, а потом активную!
@@ -294,9 +325,35 @@ static int MainProcess(FARString strEditViewArg, FARString strDestName1, FARStri
 			}
 
 			fprintf(stderr, "STARTUP: %llu\n", (unsigned long long)(clock() - cl_start));
-			if( Opt.IsFirstStart )
+
+			if( Opt.IsFirstStart ) {
 				Help::Present(L"Far2lGettingStarted",L"",FHELP_NOSHOWERROR);
+
+				DWORD tweaks = WINPORT(SetConsoleTweaks)(TWEAKS_ONLY_QUERY_SUPPORTED);
+				if (tweaks & TWEAK_STATUS_SUPPORT_OSC52CLIP_SET) {
+					SetMessageHelp(L"Far2lGettingStarted");
+
+					ExMessager em;
+					em.AddMultiline(Msg::OSC52Confirm);
+					em.AddDup(Msg::Yes);
+					em.AddDup(Msg::No);
+
+					if (em.Show(0, 2)) {
+						if (Opt.OSC52ClipSet != 0)
+						{ Opt.OSC52ClipSet = 0; cfgNeedSave = true; }
+					} else {
+						if (Opt.OSC52ClipSet != 1)
+						{ Opt.OSC52ClipSet = 1; cfgNeedSave = true; }
+					}
+				}
+			}
+
+			if (cfgNeedSave) {
+				ConfigOptSave(false);
+			}
+
 			FrameManager->EnterMainLoop();
+			Write_FAR2L_CWD();
 		}
 
 		// очистим за собой!
@@ -351,6 +408,8 @@ int FarAppMain(int argc, char **argv)
 	// from cloning main strings from current one
 	OverrideInterThreadID(gMainThreadID);
 
+	CharClasses::InitCharFlags();
+
 	Opt.IsUserAdmin = (geteuid() == 0);
 
 	_OT(SysLog(L"[[[[[[[[New Session of FAR]]]]]]]]]"));
@@ -398,7 +457,11 @@ int FarAppMain(int argc, char **argv)
 	}
 
 	// run by symlink in editor mode
-	bool is_far2ledit = strstr(argv[0], "far2ledit") != NULL;
+	// The name can be "far2ledit" or "editor" (when far2ledit is chosen
+	// as the default editor in Debian-based systems).
+	// See https://github.com/elfmz/far2l/pull/3022.
+	const char *argv0_lastslash = strrchr(argv[0], GOOD_SLASH);
+	bool is_far2ledit = strstr(argv0_lastslash ? argv0_lastslash + 1 : argv[0], "edit") != NULL;
 	if (is_far2ledit) {
 		Opt.OnlyEditorViewerUsed = Options::ONLY_EDITOR;
 		if (argc > 1) {
@@ -558,12 +621,12 @@ int FarAppMain(int argc, char **argv)
 	std::unique_ptr<KeyFileHelper> KeyboardLayouts;
 	wchar_t *far2l_path = (wchar_t *)g_strFarPath.CPtr();
 	std::string kblo_path = StrPrintf("%lskblayouts.ini", far2l_path);
-	KeyboardLayouts.reset(new KeyFileHelper(kblo_path.c_str()));
+	KeyboardLayouts.reset(new KeyFileHelper(kblo_path));
 
-	const char *lc = setlocale(LC_CTYPE, NULL);
+	const char *locale = setlocale(LC_CTYPE, NULL);
 	char LangCode[3];
-	LangCode[0] = lc[0];
-	LangCode[1] = lc[1];
+	LangCode[0] = locale[0];
+	LangCode[1] = locale[1];
 	LangCode[2] = 0;
 
 	KbLayoutsTrIn = KeyboardLayouts->GetString(LangCode, "Latin");
@@ -587,8 +650,22 @@ int FarAppMain(int argc, char **argv)
 	}
 
 	ConfigOptLoad();
+	FarColors::InitFarColors();
+
 	InitConsole();
 	WINPORT(SetConsoleCursorBlinkTime)(NULL, Opt.CursorBlinkTime);
+
+	bool cfgNeedSave = false;
+	//нужно проверить локаль до начала отрисовки интерфейса
+	if (Opt.IsFirstStart)
+	{
+		// Only Russian translation can be currently considered complete
+		if (IsLocaleMatches(locale, "ru_RU")) {
+			Opt.strLanguage = L"Russian";
+			Opt.strHelpLanguage = L"Russian";
+			cfgNeedSave = true;
+		}
+	}
 
 	static_assert(!IsPtr(Msg::NewFileName._id),
 			"Too many language messages. Need to refactor code to eliminate use of IsPtr.");
@@ -612,6 +689,7 @@ int FarAppMain(int argc, char **argv)
 	setenv("FARLANG", Opt.strLanguage.GetMB().c_str(), 1);
 	initMacroVarTable(1);
 
+	UpdateDefaultColumnTypeWidths();
 	CheckForImportLegacyShortcuts();
 
 	// (!!!) temporary STUB because now Editor can not input filename "", see: fileedit.cpp -> FileEditor::Init()
@@ -619,7 +697,7 @@ int FarAppMain(int argc, char **argv)
 	if ( Opt.OnlyEditorViewerUsed == Options::ONLY_EDITOR && strEditViewArg.IsEmpty() )
 		strEditViewArg = Msg::NewFileName;
 
-	int Result = MainProcess(strEditViewArg, DestNames[0], DestNames[1], StartLine, StartChar);
+	int Result = MainProcess(strEditViewArg, DestNames[0], DestNames[1], StartLine, StartChar, cfgNeedSave);
 
 	EmptyInternalClipboard();
 	doneMacroVarTable(1);
@@ -681,7 +759,7 @@ static int libexec(const char *lib, const char *cd, const char *symbol, int argc
 static void SetCustomSettings(const char *arg)
 {
 	std::string refined;
-	if (arg[0] == '/') {
+	if (arg[0] == GOOD_SLASH) {
 		refined = arg;
 
 	} else if (arg[0] == '.' && arg[1] == GOOD_SLASH) {
@@ -726,12 +804,16 @@ int _cdecl main(int argc, char *argv[])
 				return libexec(argv[2], argv[3], argv[4], argc - 5, argv + 5);
 			}
 		}
-		if (argc > 1
-				&& (strncasecmp(argv[1], "--h", 3) == 0 || strncasecmp(argv[1], "-h", 2) == 0
+		if (argc > 1) {
+			if ((strncasecmp(argv[1], "--h", 3) == 0 || strncasecmp(argv[1], "-h", 2) == 0
 						/*|| strcasecmp(argv[1], "/h") == 0*/ || strcasecmp(argv[1], "-?") == 0)) {
-
-			print_help(name);
-			return 0;
+				print_help(name);
+				return 0;
+			}
+			if (strncasecmp(argv[1], "--version", 9) == 0) {
+				printf("FAR2L Version: %s\n", FAR_BUILD);
+				return 0;
+			}
 		}
 	}
 
@@ -755,7 +837,7 @@ int _cdecl main(int argc, char *argv[])
 
 	{	// if CONFIG_INI is not present => first start & opt for show Help "FAR2L features - Getting Started"
 		struct stat stat_buf;
-		Opt.IsFirstStart = stat( InMyConfig(CONFIG_INI).c_str(), &stat_buf ) == -1;
+		Opt.IsFirstStart = stat( InMyConfig(CONFIG_INI, false).c_str(), &stat_buf ) == -1;
 	}
 
 	SafeMMap::SignalHandlerRegistrar smm_shr;

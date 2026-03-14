@@ -5,7 +5,7 @@
 #include <string>
 #include <pthread.h>
 
-template <class T> 
+template <class T>
 	class StopAndStart
 {
 	T &_t;
@@ -17,7 +17,7 @@ public:
 	~StopAndStart()
 	{
 		_t.Start();
-	}	
+	}
 };
 
 class WithThread
@@ -36,7 +36,7 @@ protected:
 
 private:
 	pthread_t _thread;
-	
+
 	static void *sThreadProc(void *p);
 };
 
@@ -47,7 +47,7 @@ public:
 	{
 		virtual bool OnProcessOutput(const char *buf, int len) = 0;
 	};
-	
+
 	VTOutputReader(IProcessor *processor) ;
 	virtual ~VTOutputReader();
 	void Start(int fd_out = -1);
@@ -64,7 +64,7 @@ private:
 	int _fd_out, _pipe[2];
 	std::mutex _mutex;
 	bool _deactivated;
-	
+
 	virtual void *ThreadProc();
 };
 
@@ -75,6 +75,7 @@ public:
 	{
 		virtual void OnInputMouse(const MOUSE_EVENT_RECORD &MouseEvent) = 0;
 		virtual void OnInputKey(const KEY_EVENT_RECORD &KeyEvent) = 0;
+		virtual void OnFocusChanged() = 0;
 		virtual void OnInputResized(const INPUT_RECORD &ir) = 0;
 		virtual void OnInputInjected(const std::string &str) = 0;
 		virtual void OnBracketedPaste(bool start) = 0;

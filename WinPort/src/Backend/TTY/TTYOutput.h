@@ -17,6 +17,17 @@ struct TTYBasePalette
 	DWORD background[BASE_PALETTE_SIZE];
 };
 
+
+struct TTYConsoleImage
+{
+    std::vector<uint8_t> pixel_data; // Сырые пиксели в формате RGBA.
+	uint32_t fmt{32};    // format: 32 or 24 BPP or 100 if PNG
+   	uint32_t width{};    // Ширина в пикселях.
+    uint32_t height{};   // Высота в пикселях.
+	SMALL_RECT area{-1, -1, -1, -1};         // Координаты (колонка, строка)
+	bool pixel_offset{false};
+};
+
 class TTYOutput
 {
 	struct Cursor
@@ -38,7 +49,7 @@ class TTYOutput
 	} _true_colors;
 
 	int _out;
-	bool _far2l_tty, _norgb, _kernel_tty, _screen_tty, _wezterm;
+	bool _far2l_tty, _norgb, _kernel_tty, _screen_tty, _wezterm, _vt100{false}, _vt100_line_drawing{false};
 	DWORD _nodetect;
 	TTYBasePalette _palette;
 	bool _prev_attr_valid{false};
@@ -47,8 +58,10 @@ class TTYOutput
 
 	void WriteReally(const char *str, int len);
 	void FinalizeSameChars();
+	void FinalizeLineDrawing();
 	void WriteWChar(WCHAR wch);
 	void Write(const char *str, int len);
+	void Write(const char *str);
 	void Format(const char *fmt, ...);
 
 	void AppendTrueColorSuffix(std::string &out, DWORD rgb);
@@ -73,6 +86,12 @@ public:
 
 	void SendFar2lInteract(const StackSerializer &stk_ser);
 	void SendOSC52ClipSet(const std::string &clip_data);
+
+	void RequestCellSize();
+	void RequestStatus();
+
+	unsigned int SendKittyImage(const std::string &str_id, const TTYConsoleImage &img, char action = 'T');
+	unsigned int DeleteKittyImage(const std::string &str_id);
 
 	void CheckiTerm2Hack();
 };

@@ -115,7 +115,7 @@ size_t TTYInputSequenceParser::TryParseAsKittyEscapeSequence(const char *s, size
 {
 	// kovidgoyal's kitty keyboard protocol (progressive enhancement flags 15) support
 	// CSI [ XXX : XXX : XXX ; XXX : XXX [u~ABCDEFHPQRS]
-	// some parts sometimes ommitted, see docs
+	// some parts sometimes omitted, see docs
 	// https://sw.kovidgoyal.net/kitty/keyboard-protocol/
 
 	// todo: enhanced key flag now set for essential keys only, should be set for more ones
@@ -125,6 +125,9 @@ size_t TTYInputSequenceParser::TryParseAsKittyEscapeSequence(const char *s, size
 	#define KITTY_MOD_SHIFT    1
 	#define KITTY_MOD_ALT      2
 	#define KITTY_MOD_CONTROL  4
+	#define KITTY_MOD_SUPER    8
+	#define KITTY_MOD_HYPER    16
+	#define KITTY_MOD_META     32
 	#define KITTY_MOD_CAPSLOCK 64
 	#define KITTY_MOD_NUMLOCK  128
 	#define KITTY_EVT_KEYUP    3
@@ -177,7 +180,7 @@ size_t TTYInputSequenceParser::TryParseAsKittyEscapeSequence(const char *s, size
 			(s[i] == 'E') || (s[i] == 'F') ||
 			(s[i] == 'H') || (s[i] == 'P') ||
 			(s[i] == 'Q') ||
-			(s[i] == 'R') || // "R" is still vaild here in old kitty versions
+			(s[i] == 'R') || // "R" is still valid here in old kitty versions
 			(s[i] == 'S')
 		);
 
@@ -207,11 +210,21 @@ size_t TTYInputSequenceParser::TryParseAsKittyEscapeSequence(const char *s, size
 			_kitty_right_ctrl_down ? RIGHT_CTRL_PRESSED : LEFT_CTRL_PRESSED; } else {
 			_kitty_right_ctrl_down = 0;
 		}
+#ifdef __APPLE__
+		// On macOS, map Super (Cmd) to Ctrl for Cmd+C/V/X/Z etc. compatibility
+		if (modif_state & KITTY_MOD_SUPER)    { ir.Event.KeyEvent.dwControlKeyState |= LEFT_CTRL_PRESSED; }
+#endif
 		if (modif_state & KITTY_MOD_CAPSLOCK) { ir.Event.KeyEvent.dwControlKeyState |= CAPSLOCK_ON; }
 		if (modif_state & KITTY_MOD_NUMLOCK)  { ir.Event.KeyEvent.dwControlKeyState |= NUMLOCK_ON; }
 	}
 
 	int base_char = params[0][2] ? params[0][2] : params[0][0];
+
+	// fix for xterm in ModifyOtherKeys=2 formatOtherKeys=1 mode
+	if (base_char <= UCHAR_MAX && isalpha(base_char)) {
+		base_char = tolower(base_char);
+	}
+
 	if (base_char <= UCHAR_MAX && isalpha(base_char)) {
 		ir.Event.KeyEvent.wVirtualKeyCode = (base_char - 'a') + 0x41;
 	}
@@ -345,7 +358,7 @@ size_t TTYInputSequenceParser::TryParseAsKittyEscapeSequence(const char *s, size
 			ir.Event.KeyEvent.dwControlKeyState |= ENHANCED_KEY; break;
 		case 'D': ir.Event.KeyEvent.wVirtualKeyCode = VK_LEFT;
 			ir.Event.KeyEvent.dwControlKeyState |= ENHANCED_KEY; break;
-		case 'E': ir.Event.KeyEvent.wVirtualKeyCode = VK_NUMPAD5; break;
+		case 'E': ir.Event.KeyEvent.wVirtualKeyCode = VK_CLEAR; break; // NumPad center (5)
 		case 'H': ir.Event.KeyEvent.wVirtualKeyCode = VK_HOME;
 			ir.Event.KeyEvent.dwControlKeyState |= ENHANCED_KEY; break;
 		case 'F': ir.Event.KeyEvent.wVirtualKeyCode = VK_END;
@@ -378,12 +391,25 @@ size_t TTYInputSequenceParser::TryParseAsKittyEscapeSequence(const char *s, size
 	if ((modif_state & KITTY_MOD_CAPSLOCK) && !(modif_state & KITTY_MOD_SHIFT)) {
 		// it's weird, but kitty can not give us uppercase utf8 in caps lock mode
 		// ("text-as-codepoints" mode should solve it, but it is not working for cyrillic chars for unknown reason)
-		ir.Event.KeyEvent.uChar.UnicodeChar = towupper(ir.Event.KeyEvent.uChar.UnicodeChar);
+		// ir.Event.KeyEvent.uChar.UnicodeChar = towupper(ir.Event.KeyEvent.uChar.UnicodeChar);
+		WINPORT(CharUpperBuff)(&ir.Event.KeyEvent.uChar.UnicodeChar, 1);
 	}
 
 	ir.Event.KeyEvent.bKeyDown = (event_type != KITTY_EVT_KEYUP) ? 1 : 0;
 
 	ir.Event.KeyEvent.wRepeatCount = 0;
+
+	if ((ir.Event.KeyEvent.dwControlKeyState & LEFT_ALT_PRESSED) ||
+		(ir.Event.KeyEvent.dwControlKeyState & RIGHT_ALT_PRESSED)) {
+		switch (ir.Event.KeyEvent.wVirtualKeyCode) {
+			case VK_ESCAPE: case VK_DELETE: case VK_BACK: case VK_TAB: case VK_RETURN: case VK_SPACE:
+				break;
+			default:
+				if (ir.Event.KeyEvent.uChar.UnicodeChar > 0) {
+					WINPORT(CharUpperBuff)(&ir.Event.KeyEvent.uChar.UnicodeChar, 1);
+				}
+		}
+	}
 
 	_ir_pending.emplace_back(ir);
 

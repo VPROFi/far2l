@@ -27,7 +27,9 @@ static const char *vtc_inputrc = "set completion-query-items 0\n"
 	"set colored-completion-prefix off\n"
 	"set page-completions off\n"
 	"set colored-stats off\n"
-	"set colored-completion-prefix off\n";
+	"set colored-completion-prefix off\n"
+	"set show-all-if-ambiguous off\n"
+	"set show-all-if-unmodified off\n";
 
 std::string VTSanitizeHistcontrol();
 
@@ -161,7 +163,7 @@ static void AvoidMarkerCollision(std::string &marker, const std::string &cmd)
 }
 
 bool VTCompletor::TalkWithShell(const std::string &cmd, std::string &reply, const char *tabs)
-{	
+{
 	if (!EnsureStarted())
 		return false;
 
@@ -169,7 +171,6 @@ bool VTCompletor::TalkWithShell(const std::string &cmd, std::string &reply, cons
 	std::string done = "K2Ld8Gfg"; // another most unique string in Universe
 	AvoidMarkerCollision(done, cmd);  // if it still not enough unique
 	AvoidMarkerCollision(begin, cmd);  // if it still not enough unique
-	begin+= '\n';
 	// dont do that: done+= '\n'; otherwise proposed command is executed, see https://github.com/elfmz/far2l/issues/1244
 
 	std::string sendline = " PS1=''; PS2=''; PS3=''; PS4=''; PROMPT_COMMAND=''";
@@ -182,10 +183,11 @@ bool VTCompletor::TalkWithShell(const std::string &cmd, std::string &reply, cons
 	sendline+= '\n';
 
 	sendline+= begin;
+	sendline+= '\n';
 	sendline+= cmd;
 	sendline+= tabs;
 	sendline+= done;
-	
+
 	if (write(_pipe_stdin, sendline.c_str(), sendline.size()) != (ssize_t)sendline.size()) {
 		perror("VTCompletor: write");
 		Stop();
@@ -240,9 +242,13 @@ bool VTCompletor::TalkWithShell(const std::string &cmd, std::string &reply, cons
 		fclose(f);
 	}
 
-	size_t p = reply.find(begin);
+	size_t p = reply.find(begin + '\n');
+	if (p == std::string::npos) {
+		p = reply.find(begin + '\r');
+	}
 	if (p != std::string::npos) {
 		reply.erase(0, p + begin.size());
+		StrTrimLeft(reply, "\r\n");
 	}
 	for (;;) {
 		p = reply.rfind('\a');

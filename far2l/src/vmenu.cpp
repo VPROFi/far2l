@@ -53,7 +53,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "constitle.hpp"
 #include "syslog.hpp"
 #include "interf.hpp"
-#include "palette.hpp"
+#include "farcolors.hpp"
 #include "config.hpp"
 #include "processname.hpp"
 #include "pathmix.hpp"
@@ -1530,6 +1530,9 @@ void VMenu::Show()
 		}
 	}
 
+	if (bFilterEnabled)
+		FilterStringUpdated(true);
+
 	if (X2 > X1 && Y2 + (CheckFlags(VMENU_SHOWNOBOX) ? 1 : 0) > Y1) {
 		if (!CheckFlags(VMENU_LISTBOX)) {
 			ScreenObject::Show();
@@ -1577,6 +1580,11 @@ void VMenu::DisplayObject()
 			SaveScr = new SaveScreen(X1, Y1, X2 + 2, Y2 + 1);
 	}
 
+	if (!CheckFlags(VMENU_LISTBOX)) {
+		DrawTitles();
+		WaitInMainLoop = FALSE;
+	}
+
 	ShowMenu(true, true);
 }
 
@@ -1584,6 +1592,7 @@ void VMenu::DrawEdges()
 {
 	if (!CheckFlags(VMENU_DISABLEDRAWBACKGROUND) && !CheckFlags(VMENU_LISTBOX)) {
 		if (BoxType == SHORT_DOUBLE_BOX || BoxType == SHORT_SINGLE_BOX) {
+			SetScreen(X1, Y1, X2, Y2, L' ', Colors[VMenuColorBody]);
 			Box(X1, Y1, X2, Y2, Colors[VMenuColorBox], BoxType);
 
 			if (!CheckFlags(VMENU_LISTBOX | VMENU_ALWAYSSCROLLBAR)) {
@@ -1611,9 +1620,16 @@ void VMenu::DrawEdges()
 
 void VMenu::DrawTitles()
 {
+	if (CheckFlags(VMENU_SHOWNOBOX))
+		return;
+
 	CriticalSectionLock Lock(CS);
 
 	int MaxTitleLength = X2 - X1 - 2;
+
+	if (MaxTitleLength < 1)
+		return;
+
 	int WidthTitle;
 
 	FARString strDisplayTitle = strTitle;
@@ -1878,7 +1894,7 @@ void VMenu::ShowMenu(bool IsParent, bool ForceFrameRedraw)
 				else
 					GotoXY(X1, Y);
 
-				FARString strMenuLine, strMenuPrefix;
+				FARString strMenuLine;
 
 				int ShowPos =
 						HiFindRealPos(Item[I]->strName, Item[I]->ShowPos, CheckFlags(VMENU_SHOWAMPERSAND));
@@ -1892,7 +1908,7 @@ void VMenu::ShowMenu(bool IsParent, bool ForceFrameRedraw)
 
 				// fit menu FARString into available space
 				if (strMItemPtrLen > MaxLineWidth)
-					strMItemPtr.Truncate(
+					strMItemPtr.TruncateByCells(
 							HiFindRealPos(strMItemPtr, MaxLineWidth, CheckFlags(VMENU_SHOWAMPERSAND)));
 
 				// set highlight
@@ -1910,7 +1926,9 @@ void VMenu::ShowMenu(bool IsParent, bool ForceFrameRedraw)
 
 				wchar_t CheckMark[2] = {L' ', 0}; // checkmark placeholder
 				if (Item[I]->Flags & LIF_CHECKED) {
-					CheckMark[0] = wchar_t((Item[I]->Flags & 0xFFFF) ? Item[I]->Flags & 0xFFFF : 0x221A);
+					CheckMark[0] = wchar_t((Item[I]->Flags & 0xFFFF)
+						? Item[I]->Flags & 0xFFFF
+						: (Opt.NoGraphics ? 0x002A /*L'*'*/ : 0x221A /*L'√'*/));
 				}
 
 				uint64_t Col;
@@ -1924,10 +1942,10 @@ void VMenu::ShowMenu(bool IsParent, bool ForceFrameRedraw)
 				SetColor(Col);
 				Text(CheckMark);
 				// табуляции меняем только при показе!!!
-				// для сохранение оригинальной строки!!!
+				// для сохранения оригинальной строки!!!
 				ReplaceTabsBySpaces(strMenuLine, 1);
 				if (strMItemPtrPrefixLen) {
-					SetColor(VMenu::Colors[Item[I]->Flags & LIF_SELECTED ? VMenuColorSelGrayed : VMenuColorGrayed]);
+					SetColor(VMenu::Colors[Item[I]->Flags & LIF_SELECTED ? VmenuColorSelPrefix : VmenuColorPrefix]);
 					FARString strPrefix(strMItemPtr, std::min(strMItemPtrPrefixLen, MaxLineWidth));
 					Text(strPrefix);
 					strMItemPtr.Remove(0, strPrefix.GetLength());
@@ -2347,6 +2365,8 @@ void VMenu::SetColors(FarListColors *ColorsIn)
 							COL_DIALOGLISTARROWSDISABLED,		// Arrow Disabled
 							COL_DIALOGLISTGRAY,					// "серый"
 							COL_DIALOGLISTSELECTEDGRAYTEXT,		// выбранный "серый"
+							COL_DIALOGLISTPREFIX,               // префикс пункта меню
+							COL_DIALOGLISTSELPREFIX,            // выбранный префикс пункта меню
 					},
 						{
 								// VMENU_COMBOBOX
@@ -2365,6 +2385,8 @@ void VMenu::SetColors(FarListColors *ColorsIn)
 								COL_DIALOGCOMBOARROWSDISABLED,			// Arrow Disabled
 								COL_DIALOGCOMBOGRAY,					// "серый"
 								COL_DIALOGCOMBOSELECTEDGRAYTEXT,		// выбранный "серый"
+								COL_DIALOGCOMBOPREFIX,                  // префикс пункта меню
+								COL_DIALOGCOMBOSELPREFIX,               // выбранный префикс пункта меню
 						},
 						{
 								// VMenu
@@ -2383,6 +2405,8 @@ void VMenu::SetColors(FarListColors *ColorsIn)
 								COL_MENUARROWSDISABLED,			// Arrow Disabled
 								COL_MENUGRAYTEXT,				// "серый"
 								COL_MENUSELECTEDGRAYTEXT,		// выбранный "серый"
+								COL_MENUPREFIX,                 // префикс пункта меню
+								COL_MENUSELPREFIX,              // выбранный префикс пункта меню
 						}},
 
 				// == VMENU_WARNDIALOG
@@ -2403,6 +2427,8 @@ void VMenu::SetColors(FarListColors *ColorsIn)
 							COL_WARNDIALOGLISTARROWSDISABLED,		// Arrow Disabled
 							COL_WARNDIALOGLISTGRAY,					// "серый"
 							COL_WARNDIALOGLISTSELECTEDGRAYTEXT,		// выбранный "серый"
+							COL_WARNDIALOGLISTPREFIX,               // префикс пункта меню
+							COL_WARNDIALOGLISTSELPREFIX,            // выбранный префикс пункта меню
 					},
 						{
 								// VMENU_COMBOBOX
@@ -2421,6 +2447,8 @@ void VMenu::SetColors(FarListColors *ColorsIn)
 								COL_WARNDIALOGCOMBOARROWSDISABLED,			// Arrow Disabled
 								COL_WARNDIALOGCOMBOGRAY,					// "серый"
 								COL_WARNDIALOGCOMBOSELECTEDGRAYTEXT,		// выбранный "серый"
+								COL_WARNDIALOGCOMBOPREFIX,                  // префикс пункта меню
+								COL_WARNDIALOGCOMBOSELPREFIX,               // выбранный префикс пункта меню
 						},
 						{
 								// VMenu
@@ -2439,6 +2467,8 @@ void VMenu::SetColors(FarListColors *ColorsIn)
 								COL_MENUARROWSDISABLED,			// Arrow Disabled
 								COL_MENUGRAYTEXT,				// "серый"
 								COL_MENUSELECTEDGRAYTEXT,		// выбранный "серый"
+								COL_MENUPREFIX,                 // префикс пункта меню
+								COL_MENUSELPREFIX,              // выбранный префикс пункта меню
 						}}};
 		int TypeMenu = CheckFlags(VMENU_LISTBOX) ? 0 : (CheckFlags(VMENU_COMBOBOX) ? 1 : 2);
 		int StyleMenu = CheckFlags(VMENU_WARNDIALOG) ? 1 : 0;
@@ -2678,7 +2708,9 @@ int VMenu::FindItem(int StartIndex, const wchar_t *Pattern, DWORD Flags)
 		for (int I = StartIndex; I < ItemCount; I++) {
 			FARString strTmpBuf(Item[I]->strName);
 			int LenNamePtr = (int)strTmpBuf.GetLength();
-			RemoveChar(strTmpBuf, L'&');
+			if ( (Flags & LIFIND_KEEPAMPERSAND) == 0) {
+				RemoveChar(strTmpBuf, L'&');
+			}
 
 			if (Flags & LIFIND_EXACTMATCH) {
 				if (!StrCmpNI(strTmpBuf, Pattern, Max(LenPattern, LenNamePtr)))

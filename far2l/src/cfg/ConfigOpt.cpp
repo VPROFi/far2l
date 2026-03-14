@@ -52,7 +52,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hilight.hpp"
 #include "interf.hpp"
 #include "keyboard.hpp"
-#include "palette.hpp"
+#include "farcolors.hpp"
 #include "message.hpp"
 #include "stddlg.hpp"
 #include "pathmix.hpp"
@@ -69,6 +69,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ConfigOptSaveLoad.hpp"
 #include "pick_color256.hpp"
 #include "pick_colorRGB.hpp"
+#include "MaskGroups.hpp"
+
 
 void SanitizeHistoryCounts();
 void SanitizeIndentationCounts();
@@ -122,10 +124,13 @@ static constexpr const char *NSecVMenu = "VMenu";
 static FARString strKeyNameConsoleDetachKey;
 
 const ConfigOpt g_cfg_opts[] {
-	{true,  NSecColors, "CurrentPalette", SIZE_ARRAY_PALETTE, (BYTE *)Palette8bit, (BYTE *)DefaultPalette8bit},
-	{true,  NSecColors, "CurrentPaletteRGB", SIZE_ARRAY_PALETTE * 8, (BYTE *)Palette, nullptr},
-	{true,  NSecColors, "TempColors256", TEMP_COLORS256_SIZE, g_tempcolors256, g_tempcolors256},
-	{true,  NSecColors, "TempColorsRGB", TEMP_COLORSRGB_SIZE, (BYTE *)g_tempcolorsRGB, (BYTE *)g_tempcolorsRGB},
+//	{false, NSecColors, "CurrentPalette", SIZE_ARRAY_PALETTE, (BYTE *)Palette8bit, nullptr},
+//	{true,  NSecColors, "CurrentPaletteRGB", SIZE_ARRAY_PALETTE * sizeof(uint64_t), (BYTE *)Palette, nullptr},
+	{true,  NSecColors, "TempColors256", TEMP_COLORS256_SIZE, g_tempcolors256, nullptr},
+	{true,  NSecColors, "TempColorsRGB", TEMP_COLORSRGB_SIZE, (BYTE *)g_tempcolorsRGB, nullptr},
+
+	{true,  NSecColors, "CurrentTheme", &Opt.CurrentTheme, L"" },
+	{true,  NSecColors, "CurrentThemeIsSystemWide", &Opt.IsSystemTheme, 0 },
 
 	{true,  NSecScreen, "Clock", &Opt.Clock, 1},
 	{true,  NSecScreen, "ViewerEditorClock", &Opt.ViewerEditorClock, 0},
@@ -144,7 +149,8 @@ const ConfigOpt g_cfg_opts[] {
 	{true,  NSecCmdline, "AutoComplete", &Opt.CmdLine.AutoComplete, 1},
 	{true,  NSecCmdline, "Splitter", &Opt.CmdLine.Splitter, 1},
 	{true,  NSecCmdline, "WaitKeypress", &Opt.CmdLine.WaitKeypress, 1},
-	{true,  NSecCmdline, "VTLogLimit", &Opt.CmdLine.VTLogLimit, 5000},
+	{true,  NSecCmdline, "VTLogLimitKB", &Opt.CmdLine.VTLogLimit, 1024},
+	{false, NSecCmdline, "AskOnMultilinePaste", &Opt.CmdLine.AskOnMultilinePaste, 1},
 
 	{true,  NSecInterface, "Mouse", &Opt.Mouse, 1},
 	{false, NSecInterface, "UseVk_oem_x", &Opt.UseVk_oem_x, 1},
@@ -177,7 +183,7 @@ const ConfigOpt g_cfg_opts[] {
 	{false, NSecInterface, "FormatNumberSeparators", &Opt.FormatNumberSeparators, 0},
 	{true,  NSecInterface, "CopyShowTotal", &Opt.CMOpt.CopyShowTotal, 1},
 	{true,  NSecInterface, "DelShowTotal", &Opt.DelOpt.DelShowTotal, 0},
-	{true,  NSecInterface, "WindowTitle", &Opt.strWindowTitle, L"%State - FAR2L %Ver %Backend %User@%Host"}, // %Platform 
+	{true,  NSecInterface, "WindowTitle", &Opt.strWindowTitle, L"%State - FAR2L %Ver %Backend %User@%Host"}, // %Platform
 	{true,  NSecInterfaceCompletion, "Exceptions", &Opt.AutoComplete.Exceptions, L"git*reset*--hard;*://*:*@*;\" *\""},
 	{true,  NSecInterfaceCompletion, "ShowList", &Opt.AutoComplete.ShowList, 1},
 	{true,  NSecInterfaceCompletion, "ModalList", &Opt.AutoComplete.ModalList, 0},
@@ -194,11 +200,13 @@ const ConfigOpt g_cfg_opts[] {
 	{true,  NSecViewer, "ShowKeyBar", &Opt.ViOpt.ShowKeyBar, 1},
 	{true,  NSecViewer, "ShowTitleBar", &Opt.ViOpt.ShowTitleBar, 1},
 	{true,  NSecViewer, "ShowArrows", &Opt.ViOpt.ShowArrows, 1},
+	{true,  NSecViewer, "ClickableURLs", &Opt.ViOpt.ClickableURLs, 1},
 	{true,  NSecViewer, "ShowScrollbar", &Opt.ViOpt.ShowScrollbar, 0},
 	{true,  NSecViewer, "IsWrap", &Opt.ViOpt.ViewerIsWrap, 1},
 	{true,  NSecViewer, "Wrap", &Opt.ViOpt.ViewerWrap, 0},
 	{true,  NSecViewer, "PersistentBlocks", &Opt.ViOpt.PersistentBlocks, 0},
 	{true,  NSecViewer, "DefaultCodePage", &Opt.ViOpt.DefaultCodePage, CP_UTF8},
+	{true,  NSecViewer, "ShowMenuBar", &Opt.ViOpt.ShowMenuBar, 0},
 
 	{true,  NSecDialog, "EditHistory", &Opt.Dialogs.EditHistory, 1},
 	{true,  NSecDialog, "EditBlock", &Opt.Dialogs.EditBlock, 0},
@@ -209,6 +217,7 @@ const ConfigOpt g_cfg_opts[] {
 	{true,  NSecDialog, "MouseButton", &Opt.Dialogs.MouseButton, 0xFFFF},
 	{true,  NSecDialog, "DelRemovesBlocks", &Opt.Dialogs.DelRemovesBlocks, 1},
 	{false, NSecDialog, "CBoxMaxHeight", &Opt.Dialogs.CBoxMaxHeight, 24},
+	{true,  NSecDialog, "ShowArrowsInEdit", &Opt.Dialogs.ShowArrowsInEdit, 1},
 
 	{true,  NSecEditor, "ExternalEditorName", &Opt.strExternalEditor, L""},
 	{true,  NSecEditor, "UseExternalEditor", &Opt.EdOpt.UseExternalEditor, 0},
@@ -232,12 +241,15 @@ const ConfigOpt g_cfg_opts[] {
 	{true,  NSecEditor, "DefaultCodePage", &Opt.EdOpt.DefaultCodePage, CP_UTF8},
 	{true,  NSecEditor, "ShowKeyBar", &Opt.EdOpt.ShowKeyBar, 1},
 	{true,  NSecEditor, "ShowTitleBar", &Opt.EdOpt.ShowTitleBar, 1},
+	{true,  NSecEditor, "ShowMenuBar", &Opt.EdOpt.ShowMenuBar, 0},
 	{true,  NSecEditor, "ShowScrollBar", &Opt.EdOpt.ShowScrollBar, 0},
 	{true,  NSecEditor, "UseEditorConfigOrg", &Opt.EdOpt.UseEditorConfigOrg, 1},
 	{true,  NSecEditor, "SearchSelFound", &Opt.EdOpt.SearchSelFound, 0},
 	{true,  NSecEditor, "SearchRegexp", &Opt.EdOpt.SearchRegexp, 0},
 	{true,  NSecEditor, "SearchPickUpWord", &Opt.EdOpt.SearchPickUpWord, 0},
+	{true,  NSecEditor, "WordWrap", &Opt.EdOpt.WordWrap, 0},
 	{true,  NSecEditor, "ShowWhiteSpace", &Opt.EdOpt.ShowWhiteSpace, 0},
+	{true,  NSecEditor, "ShowLineNumbers", &Opt.EdOpt.ShowLineNumbers, 0},
 
 	{true,  NSecNotifications, "OnFileOperation", &Opt.NotifOpt.OnFileOperation, 1},
 	{true,  NSecNotifications, "OnConsole", &Opt.NotifOpt.OnConsole, 1},
@@ -329,9 +341,11 @@ const ConfigOpt g_cfg_opts[] {
 	{true,  NSecSystem, "OnlyFilesSize", &Opt.OnlyFilesSize, 0},
 	{false, NSecSystem, "UsePrintManager", &Opt.UsePrintManager, 1},
 
-	{false, NSecSystem, "ExcludeCmdHistory", &Opt.ExcludeCmdHistory, 0}, //AN
+	{true, NSecSystem, "ExcludeCmdHistory", &Opt.ExcludeCmdHistory, 0}, //AN
 
 	{true,  NSecSystem, "FolderInfo", &Opt.InfoPanel.strFolderInfoFiles, L"DirInfo,File_Id.diz,Descript.ion,ReadMe.*,Read.Me"},
+
+	{true,  NSecSystem, "OwnerGroupShowId", &Opt.OwnerGroupShowId, 0},
 
 	{false, NSecSystemNowell, "MoveRO", &Opt.Nowell.MoveRO, 1},
 
@@ -348,6 +362,9 @@ const ConfigOpt g_cfg_opts[] {
 	{false, NSecPanelTree, "RemovableDisk", &Opt.Tree.RemovableDisk, 2},
 	{false, NSecPanelTree, "NetPath", &Opt.Tree.NetPath, 2},
 	{true,  NSecPanelTree, "AutoChangeFolder", &Opt.Tree.AutoChangeFolder, 0}, // ???
+	{true,  NSecPanelTree, "ExclSubTreeMask", &Opt.Tree.ExclSubTreeMask, L".*"},
+	{true,  NSecPanelTree, "ScanDepthEnabled", &Opt.Tree.ScanDepthEnabled, 1},
+	{true,  NSecPanelTree, "DefaultScanDepth", &Opt.Tree.DefaultScanDepth, 4},
 
 	{true,  NSecLanguage, "Help", &Opt.strHelpLanguage, L"English"},
 	{true,  NSecLanguage, "Main", &Opt.strLanguage, L"English"},
@@ -379,17 +396,22 @@ const ConfigOpt g_cfg_opts[] {
 	{true,  NSecPanel, "Highlight", &Opt.Highlight, 1},
 	{true,  NSecPanel, "SortFolderExt", &Opt.SortFolderExt, 0},
 	{true,  NSecPanel, "SelectFolders", &Opt.SelectFolders, 0},
+	{true,  NSecPanel, "AttrStrStyle", &Opt.AttrStrStyle, 1},
 	{true,  NSecPanel, "CaseSensitiveCompareSelect", &Opt.PanelCaseSensitiveCompareSelect, 1},
 	{true,  NSecPanel, "ReverseSort", &Opt.ReverseSort, 1},
 	{false, NSecPanel, "RightClickRule", &Opt.PanelRightClickRule, 2},
-	{false, NSecPanel, "CtrlFRule", &Opt.PanelCtrlFRule, 1},
 	{false, NSecPanel, "CtrlAltShiftRule", &Opt.PanelCtrlAltShiftRule, 0},
 	{false, NSecPanel, "RememberLogicalDrives", &Opt.RememberLogicalDrives, 0},
 	{true,  NSecPanel, "AutoUpdateLimit", &Opt.AutoUpdateLimit, 0},
 	{true,  NSecPanel, "ShowFilenameMarks", &Opt.ShowFilenameMarks, 1},
 	{true,  NSecPanel, "FilenameMarksAlign", &Opt.FilenameMarksAlign, 1},
+	{true,  NSecPanel, "FilenameMarksInStatusBar", &Opt.FilenameMarksAlign, 1},
 	{true,  NSecPanel, "MinFilenameIndentation", &Opt.MinFilenameIndentation, 0},
 	{true,  NSecPanel, "MaxFilenameIndentation", &Opt.MaxFilenameIndentation, HIGHLIGHT_MAX_MARK_LENGTH},
+	{true,  NSecPanel, "DirNameStyle", &Opt.DirNameStyle, 0 },
+	{true,  NSecPanel, "DirNameStyleColumnWidthAlways", &Opt.DirNameStyleColumnWidthAlways, 0 },
+	{true,  NSecPanel, "ShowSymlinkSize", &Opt.ShowSymlinkSize, 0},
+	{true,  NSecPanel, "ClassicHotkeyLinkResolving", &Opt.ClassicHotkeyLinkResolving, 1},
 
 	{true,  NSecPanelLeft, "Type", &Opt.LeftPanel.Type, 0},
 	{true,  NSecPanelLeft, "Visible", &Opt.LeftPanel.Visible, 1},
@@ -404,6 +426,7 @@ const ConfigOpt g_cfg_opts[] {
 	{true,  NSecPanelLeft, "CurFile", &Opt.strLeftCurFile, L""},
 	{true,  NSecPanelLeft, "SelectedFirst", &Opt.LeftSelectedFirst, 0},
 	{true,  NSecPanelLeft, "DirectoriesFirst", &Opt.LeftPanel.DirectoriesFirst, 1},
+	{true,  NSecPanelLeft, "ExecutablesFirst", &Opt.LeftPanel.ExecutablesFirst, 0},
 
 	{true,  NSecPanelRight, "Type", &Opt.RightPanel.Type, 0},
 	{true,  NSecPanelRight, "Visible", &Opt.RightPanel.Visible, 1},
@@ -418,6 +441,7 @@ const ConfigOpt g_cfg_opts[] {
 	{true,  NSecPanelRight, "CurFile", &Opt.strRightCurFile, L""},
 	{true,  NSecPanelRight, "SelectedFirst", &Opt.RightSelectedFirst, 0},
 	{true,  NSecPanelRight, "DirectoriesFirst", &Opt.RightPanel.DirectoriesFirst, 1},
+	{true,  NSecPanelRight, "ExecutablesFirst", &Opt.RightPanel.ExecutablesFirst, 0},
 
 	{true,  NSecPanelLayout, "ColumnTitles", &Opt.ShowColumnTitles, 1},
 	{true,  NSecPanelLayout, "StatusLine", &Opt.ShowPanelStatus, 1},
@@ -432,6 +456,7 @@ const ConfigOpt g_cfg_opts[] {
 	{true,  NSecLayout, "RightHeightDecrement", &Opt.RightHeightDecrement, 0},
 	{true,  NSecLayout, "WidthDecrement", &Opt.WidthDecrement, 0},
 	{true,  NSecLayout, "FullscreenHelp", &Opt.FullScreenHelp, 0},
+	{true,  NSecLayout, "PanelsDisposition", &Opt.PanelsDisposition, 0},
 
 	{true,  NSecDescriptions, "ListNames", &Opt.Diz.strListNames, L"Descript.ion,Files.bbs"},
 	{true,  NSecDescriptions, "UpdateMode", &Opt.Diz.UpdateMode, DIZ_UPDATE_IF_DISPLAYED},
@@ -445,6 +470,8 @@ const ConfigOpt g_cfg_opts[] {
 	{false, NSecKeyMacros, "DateFormat", &Opt.Macro.strDateFormat, L"%a %b %d %H:%M:%S %Z %Y"},
 	{false, NSecKeyMacros, "CONVFMT", &Opt.Macro.strMacroCONVFMT, L"%.6g"},
 	{false, NSecKeyMacros, "CallPluginRules", &Opt.Macro.CallPluginRules, 0},
+	{true,  NSecKeyMacros, "KeyRecordCtrlDot", &Opt.Macro.strKeyMacroCtrlDot, szCtrlDot},
+	{true,  NSecKeyMacros, "KeyRecordCtrlShiftDot", &Opt.Macro.strKeyMacroCtrlShiftDot, szCtrlShiftDot},
 
 	{false, NSecPolicies, "ShowHiddenDrives", &Opt.Policies.ShowHiddenDrives, 1},
 	{false, NSecPolicies, "DisabledOptions", &Opt.Policies.DisabledOptions, 0},
@@ -594,39 +621,6 @@ static void SanitizePalette()
 #endif
 }
 
-static void MergePalette()
-{
-	for(size_t i = 0; i < SIZE_ARRAY_PALETTE; i++) {
-
-		Palette[i] &= 0xFFFFFFFFFFFFFF00;
-		Palette[i] |= Palette8bit[i];
-	}
-
-//	uint32_t basepalette[32];
-//	WINPORT(GetConsoleBasePalette)(NULL, basepalette);
-
-/*
-	for(size_t i = 0; i < SIZE_ARRAY_PALETTE; i++) {
-		uint8_t color = Palette8bit[i];
-
-		Palette[i] &= 0xFFFFFFFFFFFFFF00;
-
-		if (!(Palette[i] & FOREGROUND_TRUECOLOR)) {
-			Palette[i] &= 0xFFFFFF000000FFFF;
-			Palette[i] += ((uint64_t)basepalette[16 + (color & 0xF)] << 16);
-			Palette[i] += FOREGROUND_TRUECOLOR;
-		}
-		if (!(Palette[i] & BACKGROUND_TRUECOLOR)) {
-			Palette[i] &= 0x000000FFFFFFFFFF;
-			Palette[i] += ((uint64_t)basepalette[color >> 4] << 40);
-			Palette[i] += BACKGROUND_TRUECOLOR;
-		}
-
-		Palette[i] += color;
-	}
-*/
-}
-
 void ConfigOptFromCmdLine()
 {
 	for (auto Str: Opt.CmdLineStrings)
@@ -716,7 +710,7 @@ void ConfigOptLoad()
 
 	Opt.HelpTabSize = 8; // пока жестко пропишем...
 //	SanitizePalette();
-	MergePalette();
+//	MergePalette();
 
 	Opt.ViOpt.ViewerIsWrap&= 1;
 	Opt.ViOpt.ViewerWrap&= 1;
@@ -739,13 +733,11 @@ void ConfigOptLoad()
 	if (Opt.ViOpt.TabSize < 1 || Opt.ViOpt.TabSize > 512)
 		Opt.ViOpt.TabSize = 8;
 
-	cfg_reader.SelectSection(NSecKeyMacros);
+	if (KeyNameToKey(Opt.Macro.strKeyMacroCtrlDot) == KEY_INVALID)
+		Opt.Macro.strKeyMacroCtrlDot = szCtrlDot;
 
-	FARString strKeyNameFromReg = cfg_reader.GetString("KeyRecordCtrlDot", szCtrlDot);
-	Opt.Macro.KeyMacroCtrlDot = KeyNameToKey(strKeyNameFromReg, KEY_CTRLDOT);
-
-	strKeyNameFromReg = cfg_reader.GetString("KeyRecordCtrlShiftDot", szCtrlShiftDot);
-	Opt.Macro.KeyMacroCtrlShiftDot = KeyNameToKey(strKeyNameFromReg, KEY_CTRLSHIFTDOT);
+	if (KeyNameToKey(Opt.Macro.strKeyMacroCtrlShiftDot) == KEY_INVALID)
+		Opt.Macro.strKeyMacroCtrlShiftDot = szCtrlShiftDot;
 
 	Opt.EdOpt.strWordDiv = Opt.strWordDiv;
 	FileList::ReadPanelModes(cfg_reader);
@@ -768,6 +760,7 @@ void ConfigOptLoad()
 			Opt.FindOpt.OutColumnWidthType, Opt.FindOpt.OutColumnCount);
 	}
 
+	CheckMaskGroups();
 	FileFilter::InitFilter(cfg_reader);
 
 	// avoid negative decrement for now as hiding command line by Ctrl+Down is a new feature and may confuse
@@ -813,6 +806,7 @@ void ConfigOptSave(bool Ask)
 		Opt.LeftPanel.CaseSensitiveSort = LeftPanel->GetCaseSensitiveSort();
 		Opt.LeftSelectedFirst = LeftPanel->GetSelectedFirstMode();
 		Opt.LeftPanel.DirectoriesFirst = LeftPanel->GetDirectoriesFirst();
+		Opt.LeftPanel.ExecutablesFirst = LeftPanel->GetExecutablesFirst();
 	}
 
 	LeftPanel->GetCurDir(Opt.strLeftFolder);
@@ -829,6 +823,7 @@ void ConfigOptSave(bool Ask)
 		Opt.RightPanel.CaseSensitiveSort = RightPanel->GetCaseSensitiveSort();
 		Opt.RightSelectedFirst = RightPanel->GetSelectedFirstMode();
 		Opt.RightPanel.DirectoriesFirst = RightPanel->GetDirectoriesFirst();
+		Opt.RightPanel.ExecutablesFirst = RightPanel->GetExecutablesFirst();
 	}
 
 	RightPanel->GetCurDir(Opt.strRightFolder);
@@ -847,5 +842,10 @@ void ConfigOptSave(bool Ask)
 	if (Ask)
 		CtrlObject->Macro.SaveMacros();
 
+    if (Opt.IsColorsChanged || Ask) 
+    {
+		FarColors::SaveFarColors();
+		Opt.IsColorsChanged = false;
+	}
 	/* *************************************************** </ПОСТПРОЦЕССЫ> */
 }

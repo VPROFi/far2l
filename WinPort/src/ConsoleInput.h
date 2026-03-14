@@ -8,6 +8,7 @@
 
 class ConsoleInput : public IConsoleInput
 {
+	std::deque<std::pair<clock_t, INPUT_RECORD> > _backtrace;
 	std::deque<INPUT_RECORD> _pending;
 	std::mutex _mutex;
 	std::condition_variable _non_empty;
@@ -30,5 +31,7 @@ public:
 	virtual void LowerRequestorPriority(unsigned int released_priority);
 
 	virtual IConsoleInput *ForkConsoleInput(HANDLE con_handle);
-	virtual void JoinConsoleInput(IConsoleInput *con_in);
+	virtual void ReleaseConsoleInput(IConsoleInput *con_in, bool join);
+
+	virtual DWORD GetBacktrace(CHAR *buf, DWORD size);
 };

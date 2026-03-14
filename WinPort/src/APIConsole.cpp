@@ -1,8 +1,10 @@
 #include <mutex>
 #include <map>
 #include <vector>
+#include <atomic>
 #include <stdexcept>
 #include <debug.h>
+#include <unistd.h>
 
 #include "WinPort.h"
 #include "Backend.h"
@@ -16,15 +18,41 @@ struct ForkedConsole
 	IConsoleOutput *con_out{nullptr};
 };
 
-static IConsoleOutput *ChooseConOut(HANDLE hConsole)
+static std::atomic<IConsoleOutput *> s_shadow_out{nullptr};
+static std::atomic<int> s_shadow_usecnt{0};
+
+class ChooseConOut
 {
-	if (!hConsole) {
-		return g_winport_con_out;
+	IConsoleOutput *_chosen{};
+	bool _using_shadow{false};
+
+public:
+	ChooseConOut(HANDLE hConsole)
+	{
+		if (hConsole) {
+			ForkedConsole *fc = (ForkedConsole *)hConsole;
+			ASSERT(fc->magic == FORKED_CONSOLE_MAGIC);
+			_chosen = fc->con_out;
+			return;
+		}
+		++s_shadow_usecnt;
+		_chosen = s_shadow_out;
+		if (LIKELY(_chosen == nullptr)) {
+			--s_shadow_usecnt; // not gonna use shadow
+			_chosen = g_winport_con_out;
+		} else {
+			_using_shadow = true;
+		}
 	}
-	ForkedConsole *fc = (ForkedConsole *)hConsole;
-	ASSERT(fc->magic == FORKED_CONSOLE_MAGIC);
-	return fc->con_out;
-}
+	~ChooseConOut()
+	{
+		if (_using_shadow) {
+			--s_shadow_usecnt;
+		}
+	}
+	inline operator IConsoleOutput *() { return _chosen; }
+	inline IConsoleOutput *operator->() { return _chosen; }
+};
 
 static IConsoleInput *ChooseConIn(HANDLE hConsole)
 {
@@ -38,35 +66,78 @@ static IConsoleInput *ChooseConIn(HANDLE hConsole)
 
 extern "C" {
 
-	WINPORT_DECL(ForkConsole,HANDLE,())
+	WINPORT_DECL(FreezeConsoleOutput,VOID,())
 	{
-		ForkedConsole *fc = NULL;
-		try {
-			fc = new ForkedConsole;
-			fc->con_in = g_winport_con_in->ForkConsoleInput(fc);
-			fc->con_out = g_winport_con_out->ForkConsoleOutput(fc);
-
-		} catch(...) {
-			WINPORT(JoinConsole)(fc);
-			fc = NULL;
+		if (s_shadow_out == nullptr) {
+			try {
+				// use NULL handle to make app treat its scroll callbacks as from main output
+				IConsoleOutput *shadow_out = g_winport_con_out->ForkConsoleOutput(NULL);
+				shadow_out = s_shadow_out.exchange(shadow_out);
+				if (shadow_out) {
+					g_winport_con_out->ReleaseConsoleOutput(shadow_out, true);
+				}
+			} catch (...) {
+				fprintf(stderr, "%s: exception\n", __FUNCTION__);
+			}
+		} else {
+			fprintf(stderr, "%s: called while already frozen\n", __FUNCTION__);
 		}
-		return fc;
 	}
 
-	WINPORT_DECL(JoinConsole,VOID,(HANDLE hConsole))
+	WINPORT_DECL(UnfreezeConsoleOutput,VOID,())
+	{
+		IConsoleOutput *shadow_out = s_shadow_out.exchange(nullptr);
+		if (shadow_out) {
+			while (s_shadow_usecnt != 0) {
+				usleep(1);
+			}
+			g_winport_con_out->ReleaseConsoleOutput(shadow_out, true);
+			g_winport_con_out->RepaintsDeferFinish(true);
+		} else {
+			fprintf(stderr, "%s: called while not frozen\n", __FUNCTION__);
+		}
+	}
+
+	static void ReleaseForkedConsole(HANDLE hParentConsole, HANDLE hConsole, bool join)
 	{
 		if (hConsole) {
 			ForkedConsole *fc = (ForkedConsole *)hConsole;
 			ASSERT(fc->magic == FORKED_CONSOLE_MAGIC);
 			fc->magic^= 0x0f0f0f0f0f0f0f0f;
-			if (fc->con_in)
-				g_winport_con_in->JoinConsoleInput(fc->con_in);
-			if (fc->con_out)
-				g_winport_con_out->JoinConsoleOutput(fc->con_out);
+			if (fc->con_in) {
+				ChooseConIn(hParentConsole)->ReleaseConsoleInput(fc->con_in, join);
+			}
+			if (fc->con_out) {
+				ChooseConOut(hParentConsole)->ReleaseConsoleOutput(fc->con_out, join);
+			}
 			delete fc;
 		}
 	}
-	
+
+	WINPORT_DECL(ForkConsole,HANDLE,(HANDLE hParentConsole))
+	{
+		ForkedConsole *fc = NULL;
+		try {
+			fc = new ForkedConsole;
+			fc->con_in = ChooseConIn(hParentConsole)->ForkConsoleInput(fc);
+			fc->con_out = ChooseConOut(hParentConsole)->ForkConsoleOutput(fc);
+		} catch (...) {
+			ReleaseForkedConsole(hParentConsole, fc, true);
+			fc = NULL;
+		}
+		return fc;
+	}
+
+	WINPORT_DECL(JoinConsole,VOID,(HANDLE hParentConsole, HANDLE hConsole))
+	{
+		ReleaseForkedConsole(hParentConsole, hConsole, true);
+	}
+
+	WINPORT_DECL(DiscardConsole,VOID,(HANDLE hConsole))
+	{
+		ReleaseForkedConsole(NULL, hConsole, false);
+	}
+
 	WINPORT_DECL(GetLargestConsoleWindowSize,COORD,(HANDLE hConsoleOutput))
 	{
 		return ChooseConOut(hConsoleOutput)->GetLargestConsoleWindowSize();
@@ -108,7 +179,7 @@ extern "C" {
 		return TRUE;
 	}
 
-	WINPORT_DECL(ScrollConsoleScreenBuffer,BOOL,(HANDLE hConsoleOutput, const SMALL_RECT *lpScrollRectangle, 
+	WINPORT_DECL(ScrollConsoleScreenBuffer,BOOL,(HANDLE hConsoleOutput, const SMALL_RECT *lpScrollRectangle,
 		const SMALL_RECT *lpClipRectangle, COORD dwDestinationOrigin, const CHAR_INFO *lpFill))
 	{
 		return ChooseConOut(hConsoleOutput)->Scroll(lpScrollRectangle, lpClipRectangle, dwDestinationOrigin, lpFill) ? TRUE : FALSE;
@@ -123,7 +194,7 @@ extern "C" {
 	WINPORT_DECL(GetConsoleScreenBufferInfo,BOOL,(HANDLE hConsoleOutput,CONSOLE_SCREEN_BUFFER_INFO *lpConsoleScreenBufferInfo))
 	{
 		unsigned int width = 0, height = 0;
-		auto *con_out = ChooseConOut(hConsoleOutput);
+		ChooseConOut con_out(hConsoleOutput);
 		con_out->GetSize(width, height);
 		lpConsoleScreenBufferInfo->dwCursorPosition = con_out->GetCursor();
 		lpConsoleScreenBufferInfo->wAttributes = con_out->GetAttributes();
@@ -135,7 +206,7 @@ extern "C" {
 		lpConsoleScreenBufferInfo->srWindow.Bottom = height - 1;
 		lpConsoleScreenBufferInfo->dwMaximumWindowSize.X = width;
 		lpConsoleScreenBufferInfo->dwMaximumWindowSize.Y = height;
-		
+
 		return TRUE;
 	}
 
@@ -174,7 +245,7 @@ extern "C" {
 		*lpMode = ChooseConOut(hConsoleHandle)->GetMode();
 		return TRUE;
 	}
-	
+
 	WINPORT_DECL(SetConsoleMode,BOOL,(HANDLE hConsoleHandle, DWORD dwMode))
 	{
 		ChooseConOut(hConsoleHandle)->SetMode(dwMode);
@@ -263,6 +334,11 @@ extern "C" {
 		return TRUE;
 	}
 
+	WINPORT_DECL(ReadConsoleInputBacktrace, DWORD,(HANDLE hConsoleInput, CHAR *lpBuffer, DWORD nLength))
+	{
+		return ChooseConIn(hConsoleInput)->GetBacktrace(lpBuffer, nLength);
+	}
+
 	WINPORT_DECL(CheckForKeyPress,DWORD,(HANDLE hConsoleInput, const WORD *KeyCodes, DWORD KeyCodesCount, DWORD Flags))
 	{
 		std::vector<INPUT_RECORD> backlog;
@@ -344,29 +420,29 @@ extern "C" {
 
 		return FALSE;
 	}
-	
+
 	WINPORT_DECL(SetConsoleScrollRegion, VOID, (HANDLE hConsoleOutput, SHORT top, SHORT bottom))
 	{
 		ChooseConOut(hConsoleOutput)->SetScrollRegion(top, bottom);
 	}
-	
+
 	WINPORT_DECL(GetConsoleScrollRegion, VOID, (HANDLE hConsoleOutput, SHORT *top, SHORT *bottom))
 	{
 		ChooseConOut(hConsoleOutput)->GetScrollRegion(*top, *bottom);
 	}
-	
+
 	WINPORT_DECL(SetConsoleScrollCallback, VOID, (HANDLE hConsoleOutput, PCONSOLE_SCROLL_CALLBACK pCallback, PVOID pContext))
 	{
 		ChooseConOut(hConsoleOutput)->SetScrollCallback(pCallback, pContext);
 	}
-	
+
 	WINPORT_DECL(BeginConsoleAdhocQuickEdit, BOOL, ())
 	{
 		if (g_winport_con_out->GetMode() & ENABLE_QUICK_EDIT_MODE) {
 			fprintf(stderr, "BeginConsoleAdhocQuickEdit: meaningless when enabled ENABLE_QUICK_EDIT_MODE\n");
 			return FALSE;
 		}
-		
+
 		//here is possible non-critical race with enabling ENABLE_QUICK_EDIT_MODE
 		g_winport_con_out->AdhocQuickEdit();
 		return TRUE;
@@ -429,11 +505,36 @@ extern "C" {
 
 	WINPORT_DECL(SetConsoleRepaintsDefer, VOID, (HANDLE hConsoleOutput, BOOL Deferring))
 	{
+		ChooseConOut con_out(hConsoleOutput);
 		if (Deferring) {
-			ChooseConOut(hConsoleOutput)->RepaintsDeferStart();
+			con_out->RepaintsDeferStart();
 		} else {
-			ChooseConOut(hConsoleOutput)->RepaintsDeferFinish();
+			con_out->RepaintsDeferFinish(false);
 		}
+	}
+
+	WINPORT_DECL(GetConsoleImageCaps, BOOL, (HANDLE con, size_t sizeof_wgi, WinportGraphicsInfo *wgi))
+	{
+		if (sizeof_wgi != sizeof(*wgi)) {
+			return FALSE;
+		}
+		ChooseConOut(con)->OnGetConsoleImageCaps(wgi);
+		return TRUE;
+	}
+
+	WINPORT_DECL(SetConsoleImage, BOOL, (HANDLE con, const char *id, DWORD64 flags, const SMALL_RECT *area, DWORD width, DWORD height, const void *buffer))
+	{
+		return ChooseConOut(con)->OnSetConsoleImage(id, flags, area, width, height, buffer);
+	}
+
+	WINPORT_DECL(TransformConsoleImage, BOOL, (HANDLE con, const char *id, const SMALL_RECT *area, uint16_t tf))
+	{
+		return ChooseConOut(con)->OnTransformConsoleImage(id, area, tf);
+	}
+
+	WINPORT_DECL(DeleteConsoleImage, BOOL, (HANDLE con, const char *id))
+	{
+		return ChooseConOut(con)->OnDeleteConsoleImage(id);
 	}
 
 	static struct {

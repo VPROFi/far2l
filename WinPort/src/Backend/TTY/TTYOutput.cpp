@@ -14,6 +14,7 @@
 #include <os_call.hpp>
 #include <VT256ColorTable.h>
 #include <utils.h>
+#include <crc64.h>
 #include <TestPath.h>
 #include "TTYOutput.h"
 #include "FarTTY.h"
@@ -160,9 +161,13 @@ TTYOutput::TTYOutput(int out, bool far2l_tty, bool norgb, DWORD nodetect)
 {
 	const char *env = getenv("TERM");
 	_screen_tty = (env && strncmp(env, "screen", 6) == 0); // TERM=screen.xterm-256color
+	_vt100 = env && (!strcmp(env, "wsvt25")				// VT-100 compatible terminal
+					|| !strcmp(env, "vt100")
+					|| !strcmp(env, "vt220"));
 
 	env = getenv("TERM_PROGRAM");
 	_wezterm = (env && strcasecmp(env, "WezTerm") == 0);
+
 
 #if defined(__linux__) || defined(__FreeBSD__) || defined(__DragonFly__)
 	unsigned long int leds = 0;
@@ -174,7 +179,8 @@ TTYOutput::TTYOutput(int out, bool far2l_tty, bool norgb, DWORD nodetect)
 	}
 #endif
 
-	Format(ESC "7" ESC "[?47h" ESC "[?1049h" ESC "[?2004h");
+	// enable mouse and focus notifications
+	Format(ESC "7" ESC "[?47h" ESC "[?1049h" ESC "[?2004h" ESC "[?1004h");
 
 	if ((_nodetect & NODETECT_W) == 0) {
 		Format(ESC "[?9001h"); // win32-input-mode on
@@ -185,6 +191,7 @@ TTYOutput::TTYOutput(int out, bool far2l_tty, bool norgb, DWORD nodetect)
 	if ((_nodetect & NODETECT_K) == 0) {
 		Format(ESC "[=15;1u"); // kovidgoyal's kitty mode on
 	}
+
 	ChangeKeypad(true);
 	ChangeMouse(true);
 
@@ -215,7 +222,7 @@ TTYOutput::~TTYOutput()
 		if ((_nodetect & NODETECT_K) == 0) {
 			Format(ESC "[=0;1u" "\r"); // kovidgoyal's kitty mode off
 		}
-		Format(ESC "[0m" ESC "[?1049l" ESC "[?47l" ESC "8" ESC "[?2004l" "\r\n");
+		Format(ESC "[0m" ESC "[?1049l" ESC "[?47l" ESC "8" ESC "[?2004l" ESC "[?1004l" "\r\n");
 		if ((_nodetect & NODETECT_W) == 0) {
 			Format(ESC "[?9001l"); // win32-input-mode off
 		}
@@ -312,8 +319,29 @@ void TTYOutput::FinalizeSameChars()
 	}
 }
 
+void TTYOutput::FinalizeLineDrawing()
+{
+	if (_vt100_line_drawing) {
+		_rawbuf.insert(_rawbuf.end(), {*ESC, '(', 'B'}); // Disable 'DEC Line Drawing mode' ESC sequence
+		_vt100_line_drawing = false;
+	}
+}
+
+static const char s_VT100_linedrawing_chars[114] = "qqxxqqxxqqxxllllkkkkmmmmjjjjttttttttuuuuuuuuwwwwwwwwvvvvvvvvnnnnnnnnnnnnnnnnqqxxqxlllkkkmmmjjjtttuuuwwwvvvnnnlkjm";
+
 void TTYOutput::WriteWChar(WCHAR wch)
 {
+	if (_vt100 && wch >= 0x2500 && wch <= 0x2570) {
+		if (!_vt100_line_drawing) {
+			FinalizeSameChars();
+			_rawbuf.insert(_rawbuf.end(), {*ESC, '(', '0'}); // Enable 'DEC Line Drawing mode' ESC sequence
+			_vt100_line_drawing = true;
+		}
+		_rawbuf.push_back(s_VT100_linedrawing_chars[wch - 0x2500]);
+		return;
+	}
+	FinalizeLineDrawing();
+
 	if (_same_chars.count == 0) {
 		_same_chars.wch = wch;
 
@@ -327,13 +355,20 @@ void TTYOutput::WriteWChar(WCHAR wch)
 void TTYOutput::Write(const char *str, int len)
 {
 	if (len > 0) {
+		FinalizeLineDrawing();
 		FinalizeSameChars();
 		_rawbuf.insert(_rawbuf.end(), str, str + len);
 	}
 }
 
+void TTYOutput::Write(const char *str)
+{
+	Write(str, strlen(str));
+}
+
 void TTYOutput::Format(const char *fmt, ...)
 {
+	FinalizeLineDrawing();
 	FinalizeSameChars();
 
 	char tmp[0x100];
@@ -373,6 +408,7 @@ void TTYOutput::Format(const char *fmt, ...)
 
 void TTYOutput::Flush()
 {
+	FinalizeLineDrawing();
 	FinalizeSameChars();
 	if (!_rawbuf.empty()) {
 		WriteReally(&_rawbuf[0], _rawbuf.size());
@@ -384,6 +420,10 @@ void TTYOutput::Flush()
 
 void TTYOutput::ChangeCursorHeight(unsigned int height)
 {
+	// See also:
+	// https://unix.stackexchange.com/questions/49485/escape-code-to-change-cursor-shape
+	// https://github.com/kovidgoyal/kitty/issues/715
+
 	if (_far2l_tty) {
 		StackSerializer stk_ser;
 		stk_ser.PushNum(UCHAR(height));
@@ -391,14 +431,29 @@ void TTYOutput::ChangeCursorHeight(unsigned int height)
 		stk_ser.PushNum((uint8_t)0); // zero ID means not expecting reply
 		SendFar2lInteract(stk_ser);
 
-	} else if (_kernel_tty) {
-		; // avoid printing 'q' on screen
-
 	} else if (height < 30) {
-		Format(ESC "[3 q"); // Blink Underline
+
+		if (_kernel_tty) {
+
+			// Available sizes are from 2 to 8
+			Format(ESC "[?2c");
+
+		} else {
+			Format(ESC "[3 q"); // Blink Underline
+			Format(ESC "]1337;CursorShape=2\x07"); // Same for iTerm2
+		}
 
 	} else {
-		Format(ESC "[0 q"); // Blink Block (Default)
+
+		if (_kernel_tty) {
+
+			// Available sizes are from 2 to 8
+			Format(ESC "[?6c");
+
+		} else {
+			Format(ESC "[0 q"); // Blink Block (Default)
+			Format(ESC "]1337;CursorShape=0\x07"); // Same for iTerm2
+		}
 	}
 }
 
@@ -547,6 +602,74 @@ void TTYOutput::SendOSC52ClipSet(const std::string &clip_data)
 	base64_encode(request, (const unsigned char *)clip_data.data(), clip_data.size());
 	request+= '\a';
 	Write(request.c_str(), request.size());
+}
+
+void TTYOutput::RequestCellSize()
+{
+	// Expected reply: ESC [ 6 ; height ; width t
+	Format(ESC "[16t");
+}
+
+void TTYOutput::RequestStatus()
+{
+	Format(ESC "[5n");
+}
+
+static unsigned int KittyImageID(const std::string &str_id)
+{
+	unsigned int out = crc64(123, (const unsigned char *)str_id.c_str(), str_id.size());
+	return out ? out : 1;
+}
+
+unsigned int TTYOutput::SendKittyImage(const std::string &str_id, const TTYConsoleImage &img, char action)
+{
+	unsigned int id = KittyImageID(str_id);
+
+    std::string base64_data;
+    base64_encode(base64_data, img.pixel_data.data(), img.pixel_data.size());
+
+	MoveCursorStrict(img.area.Top + 1, img.area.Left + 1);
+
+    for (size_t offset = 0;offset < base64_data.length(); ) {
+        const size_t chunk_len = std::min(base64_data.length() - offset, (size_t)4096);
+        const unsigned more_to_follow = (offset + chunk_len < base64_data.length()) ? 1 : 0;
+        if (offset == 0) {
+			Format(ESC "_Ga=%c,f=%u,t=d,i=%u,m=%u", action, img.fmt, id, more_to_follow);
+			if (img.fmt != 100) {
+				Format(",s=%u,v=%u", img.width, img.height);
+			}
+			if (img.area.Right != -1) {
+				if (img.pixel_offset) {
+					Format(",X=%d", img.area.Right);
+				} else {
+					Format(",c=%d", img.area.Right + 1 - img.area.Left);
+				}
+			}
+			if (img.area.Bottom != -1) {
+				if (img.pixel_offset) {
+					Format(",Y=%d", img.area.Bottom);
+				} else {
+					Format(",r=%d", img.area.Bottom + 1 - img.area.Top);
+				}
+			}
+        } else {
+			Format(ESC "_Gm=%u", more_to_follow);
+        }
+		Write(";");
+        Write(base64_data.c_str() + offset, chunk_len);
+        Write(ESC "\\");
+        offset += chunk_len;
+    }
+	_cursor.x = _cursor.y = -1;
+	return id;
+}
+
+unsigned int TTYOutput::DeleteKittyImage(const std::string &str_id)
+{
+	unsigned int id = KittyImageID(str_id);
+	// a=d (delete), d=I (by ID)
+	Format(ESC "_Ga=d,d=I,i=%u" ESC "\\", id);
+	return id;
 }
 
 // iTerm2 cmd+v workaround

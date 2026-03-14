@@ -1,7 +1,8 @@
 #include "headers.hpp"
 #include <string>
+#include "vtshell_translation.h"
 
-//See: 
+//See:
 // http://www.manmrk.net/tutorials/ISPF/XE/xehelp/html/HID00000579.htm:
 
 static __thread char s_translate_key_out_buffer[8] = {'\x1b', 0 };
@@ -13,11 +14,11 @@ const char *VT_TranslateSpecialKey(const WORD key, bool ctrl, bool alt, bool shi
 
 	if ( ( (int)ctrl + (int)alt + (int)shift ) > 2) {
 		fprintf(stderr, "VT_TranslateSpecialKey: too many modifiers: %u %u %u\n", ctrl, alt, shift);
-		return ""; 
+		return "";
 	}
 
 
-		
+
 	switch (key) {
 		case VK_RETURN:
 			return "\r";
@@ -135,7 +136,7 @@ const char *VT_TranslateSpecialKey(const WORD key, bool ctrl, bool alt, bool shi
 			return "\x1b[19~";
 
 		case VK_F9: /*
-		F9                 \x1b[20~ 
+		F9                 \x1b[20~
 		F9       Shift     \x1b[20;2~
 		F9       Alt       \x1b[20;3~
 		F9       Ctrl      \x1b[20;5~ */
@@ -427,6 +428,6 @@ const char *VT_TranslateSpecialKey(const WORD key, bool ctrl, bool alt, bool shi
 
 		return &s_translate_key_out_buffer[0];
 	}
-	
+
 	return NULL;
 }

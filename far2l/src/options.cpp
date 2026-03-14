@@ -49,6 +49,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "history.hpp"
 #include "message.hpp"
 #include "config.hpp"
+#include "ConfigOptEdit.hpp"
 #include "ConfigOptSaveLoad.hpp"
 #include "usermenu.hpp"
 #include "datetime.hpp"
@@ -59,6 +60,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "strmix.hpp"
 #include "interf.hpp"
 #include "codepage.hpp"
+#include "MaskGroups.hpp"
 
 enum enumMenus
 {
@@ -100,6 +102,7 @@ enum enumFilesMenu
 	MENU_FILES_EDIT,
 	MENU_FILES_COPY,
 	MENU_FILES_MOVE,
+	MENU_FILES_LINK,
 	MENU_FILES_CREATEFOLDER,
 	MENU_FILES_DELETE,
 	MENU_FILES_WIPE,
@@ -109,6 +112,7 @@ enum enumFilesMenu
 	MENU_FILES_ARCHIVECOMMANDS,
 	MENU_FILES_SEPARATOR2,
 	MENU_FILES_ATTRIBUTES,
+	MENU_FILES_CHATTR,
 	MENU_FILES_APPLYCOMMAND,
 	MENU_FILES_DESCRIBE,
 	MENU_FILES_SEPARATOR3,
@@ -128,6 +132,7 @@ enum enumCommandsMenu
 	MENU_COMMANDS_FOLDERHISTORY,
 	MENU_COMMANDS_SEPARATOR1,
 	MENU_COMMANDS_SWAPPANELS,
+	MENU_COMMANDS_HORZPANELS,
 	MENU_COMMANDS_TOGGLEPANELS,
 	MENU_COMMANDS_COMPAREFOLDERS,
 	MENU_COMMANDS_SEPARATOR2,
@@ -139,6 +144,10 @@ enum enumCommandsMenu
 	MENU_COMMANDS_PLUGINCOMMANDS,
 	MENU_COMMANDS_WINDOWSLIST,
 	MENU_COMMANDS_PROCESSLIST,
+	MENU_COMMANDS_SEPARATOR4,
+	MENU_COMMANDS_FARCONFIG,
+	MENU_COMMANDS_MACROBROWSER,
+	MENU_COMMANDS_ABOUTFAR,
 	MENU_COMMANDS_HOTPLUGLIST
 };
 
@@ -155,6 +164,7 @@ enum enumOptionsMenu
 	MENU_OPTIONS_VMENUSETTINGS,
 	MENU_OPTIONS_CMDLINESETTINGS,
 	MENU_OPTIONS_AUTOCOMPLETESETTINGS,
+	MENU_OPTIONS_MASKGROUPS,
 	//	MENU_OPTIONS_INFOPANELSETTINGS,
 	MENU_OPTIONS_SEPARATOR1,
 	MENU_OPTIONS_CONFIRMATIONS,
@@ -228,6 +238,7 @@ void ShellOptions(int LastCommand, MOUSE_EVENT_RECORD *MouseEvent)
 		{Msg::MenuEdit,             0,             KEY_F4      },
 		{Msg::MenuCopy,             0,             KEY_F5      },
 		{Msg::MenuMove,             0,             KEY_F6      },
+		{Msg::MenuLink,             0,             KEY_ALTF6   },
 		{Msg::MenuCreateFolder,     0,             KEY_F7      },
 		{Msg::MenuDelete,           0,             KEY_F8      },
 		{Msg::MenuWipe,             0,             KEY_ALTDEL  },
@@ -237,6 +248,7 @@ void ShellOptions(int LastCommand, MOUSE_EVENT_RECORD *MouseEvent)
 		{Msg::MenuArchiveCommands,  0,             KEY_SHIFTF3 },
 		{L"",                       LIF_SEPARATOR, 0           },
 		{Msg::MenuAttributes,       0,             KEY_CTRLA   },
+		{Msg::MenuChattr,           0,             KEY_CTRLALTA},
 		{Msg::MenuApplyCommand,     0,             KEY_CTRLG   },
 		{Msg::MenuDescribe,         0,             KEY_CTRLZ   },
 		{L"",                       LIF_SEPARATOR, 0           },
@@ -254,6 +266,7 @@ void ShellOptions(int LastCommand, MOUSE_EVENT_RECORD *MouseEvent)
 		{Msg::MenuFoldersHistory,   0,             KEY_ALTF12},
 		{L"",                       LIF_SEPARATOR, 0         },
 		{Msg::MenuSwapPanels,       0,             KEY_CTRLU },
+		{ Opt.PanelsDisposition ? Msg::MenuVerticalPanels : Msg::MenuHorizontalPanels, 0,(KEY_CTRL + KEY_COMMA) },
 		{Msg::MenuTogglePanels,     0,             KEY_CTRLO },
 		{Msg::MenuCompareFolders,   0,             0         },
 		{L"",                       LIF_SEPARATOR, 0         },
@@ -264,7 +277,11 @@ void ShellOptions(int LastCommand, MOUSE_EVENT_RECORD *MouseEvent)
 		{L"",                       LIF_SEPARATOR, 0         },
 		{Msg::MenuPluginCommands,   0,             KEY_F11   },
 		{Msg::MenuWindowsList,      0,             KEY_F12   },
-		{Msg::MenuProcessList,      0,             KEY_CTRLW }
+		{Msg::MenuProcessList,      0,             KEY_CTRLW },
+		{L"",                       LIF_SEPARATOR, 0         },
+		{Msg::MenuFarConfig,        0,             0         },
+		{Msg::MenuMacroBrowser,     0,             0         },
+		{Msg::MenuAboutFar,         0,             0         }
 	};
 	MenuDataEx OptionsMenu[] = {
 		{Msg::MenuSystemSettings,         LIF_SELECTED,  0          },
@@ -278,6 +295,7 @@ void ShellOptions(int LastCommand, MOUSE_EVENT_RECORD *MouseEvent)
 		{Msg::MenuVMenuSettings,          0,             0          },
 		{Msg::MenuCmdlineSettings,        0,             0          },
 		{Msg::MenuAutoCompleteSettings,   0,             0          },
+		{Msg::MenuMaskGroups,             0,             0          },
 		{L"",                             LIF_SEPARATOR, 0          },
 		{Msg::MenuConfirmation,           0,             0          },
 		{Msg::MenuFilePanelModes,         0,             0          },
@@ -437,6 +455,9 @@ void ShellOptions(int LastCommand, MOUSE_EVENT_RECORD *MouseEvent)
 				case MENU_FILES_MOVE:	// Rename or move
 					FrameManager->ProcessKey(KEY_F6);
 					break;
+				case MENU_FILES_LINK:	// Make link
+					FrameManager->ProcessKey(KEY_ALTF6);
+					break;
 				case MENU_FILES_CREATEFOLDER:	// Make folder
 					FrameManager->ProcessKey(KEY_F7);
 					break;
@@ -457,6 +478,9 @@ void ShellOptions(int LastCommand, MOUSE_EVENT_RECORD *MouseEvent)
 					break;
 				case MENU_FILES_ATTRIBUTES:		// File attributes
 					CtrlObject->Cp()->ActivePanel->ProcessKey(KEY_CTRLA);
+					break;
+				case MENU_FILES_CHATTR:		// chattr
+					CtrlObject->Cp()->ActivePanel->ProcessKey(KEY_CTRLALTA);
 					break;
 				case MENU_FILES_APPLYCOMMAND:	// Apply command
 					CtrlObject->Cp()->ActivePanel->ProcessKey(KEY_CTRLG);
@@ -503,6 +527,9 @@ void ShellOptions(int LastCommand, MOUSE_EVENT_RECORD *MouseEvent)
 				case MENU_COMMANDS_SWAPPANELS:	// Swap panels
 					FrameManager->ProcessKey(KEY_CTRLU);
 					break;
+				case MENU_COMMANDS_HORZPANELS:	// Hrz/Vert panels disposition
+					FrameManager->ProcessKey(KEY_CTRL + KEY_COMMA);
+					break;
 				case MENU_COMMANDS_TOGGLEPANELS:	// Panels On/Off
 					FrameManager->ProcessKey(KEY_CTRLO);
 					break;
@@ -530,6 +557,16 @@ void ShellOptions(int LastCommand, MOUSE_EVENT_RECORD *MouseEvent)
 					break;
 				case MENU_COMMANDS_PROCESSLIST:		// Task list
 					ShowProcessList();
+					break;
+				case MENU_COMMANDS_FARCONFIG:		// far:config
+					ConfigOptEdit();
+					break;
+				case MENU_COMMANDS_MACROBROWSER:
+					CtrlObject->Macro.MacroBrowser();
+					break;
+				case MENU_COMMANDS_ABOUTFAR:		// far:about
+					void FarAbout(PluginManager &Plugins);
+					FarAbout(CtrlObject->Plugins);
 					break;
 				case MENU_COMMANDS_HOTPLUGLIST:		// HotPlug list
 													//					ShowHotplugDevice();
@@ -576,6 +613,9 @@ void ShellOptions(int LastCommand, MOUSE_EVENT_RECORD *MouseEvent)
 					//				case MENU_OPTIONS_INFOPANELSETTINGS: // InfoPanel Settings
 					//					InfoPanelSettings();
 					//					break;
+				case MENU_OPTIONS_MASKGROUPS:
+					MaskGroupsSettings();
+					break;
 				case MENU_OPTIONS_CONFIRMATIONS:	// Confirmations
 					SetConfirmations();
 					break;

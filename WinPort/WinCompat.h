@@ -137,7 +137,7 @@ typedef const wchar_t *LPCWSTR;
 typedef wchar_t *LPWSTR;
 typedef wchar_t *PWSTR;
 
-#define LPCTSTR LPCWSTR
+//#define LPCTSTR LPCWSTR
 #define LPTSTR LPWSTR
 
 typedef wchar_t WCHAR;
@@ -159,9 +159,20 @@ typedef SHORT *PSHORT;
 typedef LONGLONG *PLONGLONG;
 typedef ULONGLONG *PULONGLONG;
 
-#define TCHAR WCHAR 
-
+//#define TCHAR WCHAR
 #define CONST const
+
+//typedef const CHAR *LPCSTR;
+//typedef CHAR TCHAR;
+typedef WCHAR TCHAR;
+typedef const TCHAR *LPCTSTR;
+
+//typedef wchar_t WCHAR;
+typedef WCHAR OLECHAR;
+//typedef const WCHAR *LPCWSTR;
+typedef OLECHAR *BSTR;
+typedef const OLECHAR *LPCOLESTR;
+typedef OLECHAR *LPOLESTR;
 
 typedef int BOOL;
 typedef UCHAR BOOLEAN;
@@ -176,7 +187,6 @@ typedef ULONG LCID;         // winnt
 typedef PULONG PLCID;       // winnt
 typedef USHORT LANGID;      // winnt
 
-
 typedef HANDLE HKEY;
 typedef struct _OVERLAPPED *LPOVERLAPPED;
 typedef HKEY *PHKEY;
@@ -187,6 +197,16 @@ typedef ACCESS_MASK REGSAM;
 
 typedef int HRESULT;
 
+typedef ULONG PROPID;
+typedef LONG SCODE;
+
+typedef int EXECUTION_STATE;
+
+#define ES_AWAYMODE_REQUIRED    0x00000040
+#define ES_CONTINUOUS           0x80000000
+#define ES_DISPLAY_REQUIRED     0x00000002
+#define ES_SYSTEM_REQUIRED      0x00000001
+#define ES_USER_PRESENT         0x00000004
 
 #ifndef _T
 # define _T(x) L##x
@@ -248,6 +268,14 @@ typedef struct _FILETIME {
 #endif
 } FILETIME, *PFILETIME, *LPFILETIME;
 
+typedef struct _WIN32_FILE_ATTRIBUTE_DATA {
+  DWORD    dwFileAttributes;
+  FILETIME ftCreationTime;
+  FILETIME ftLastAccessTime;
+  FILETIME ftLastWriteTime;
+  DWORD64  nFileSize;
+} WIN32_FILE_ATTRIBUTE_DATA, *LPWIN32_FILE_ATTRIBUTE_DATA;
+
 typedef union _LARGE_INTEGER {
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
     struct {
@@ -297,7 +325,19 @@ typedef union _ULARGE_INTEGER {
 typedef ULARGE_INTEGER *PULARGE_INTEGER;
 
 typedef struct _SECURITY_ATTRIBUTES *LPSECURITY_ATTRIBUTES;
+typedef ULONGLONG DWORDLONG, *PDWORDLONG;
 
+typedef struct _MEMORYSTATUSEX {
+  DWORD     dwLength;
+  DWORD     dwMemoryLoad;
+  DWORDLONG ullTotalPhys;
+  DWORDLONG ullAvailPhys;
+  DWORDLONG ullTotalPageFile;
+  DWORDLONG ullAvailPageFile;
+  DWORDLONG ullTotalVirtual;
+  DWORDLONG ullAvailVirtual;
+  DWORDLONG ullAvailExtendedVirtual;
+} MEMORYSTATUSEX, *LPMEMORYSTATUSEX;
 
 typedef struct _SYSTEMTIME {
     WORD wYear;
@@ -344,6 +384,16 @@ typedef struct _WIN32_FIND_DATAW {
     WCHAR cFileName[ MAX_NAME ];
 } WIN32_FIND_DATAW, *PWIN32_FIND_DATAW, *LPWIN32_FIND_DATAW, WIN32_FIND_DATA, *PWIN32_FIND_DATA, *LPWIN32_FIND_DATA;
 
+typedef struct _BY_HANDLE_FILE_INFORMATION {
+  DWORD    dwFileAttributes;
+  FILETIME ftCreationTime;
+  FILETIME ftLastAccessTime;
+  FILETIME ftLastWriteTime;
+  DWORD    dwVolumeSerialNumber;
+  DWORD64  nFileSize;
+  DWORD    nNumberOfLinks;
+  DWORD64  nFileIndex;
+} BY_HANDLE_FILE_INFORMATION, *PBY_HANDLE_FILE_INFORMATION, *LPBY_HANDLE_FILE_INFORMATION;
 
 //////////////////
 
@@ -405,9 +455,13 @@ typedef struct _CHAR_INFO {
 
 #define CI_SET_WCATTR(CI, WC, ATTR) {(CI).Char.UnicodeChar = (COMP_CHAR)(uint32_t)(WC); (CI).Attributes = (DWORD64)ATTR;}
 
-#define CI_USING_COMPOSITE_CHAR(CI) ( ((CI).Char.UnicodeChar & COMPOSITE_CHAR_MARK) != 0 )
-#define CI_FULL_WIDTH_CHAR(CI) ( (!CI_USING_COMPOSITE_CHAR(CI) && IsCharFullWidth((CI).Char.UnicodeChar)) \
-    || (CI_USING_COMPOSITE_CHAR(CI) && IsCharFullWidth(*WINPORT(CompositeCharLookup)((CI).Char.UnicodeChar))))
+#define CI_USING_COMPOSITE_CHAR(CI) (UNLIKELY(((CI).Char.UnicodeChar & COMPOSITE_CHAR_MARK) != 0))
+
+#define CI_FULL_WIDTH_CHAR(CI) ( \
+        CI_USING_COMPOSITE_CHAR(CI)   \
+            ? CharClasses::IsFullWidth(WINPORT(CompositeCharLookup)((CI).Char.UnicodeChar)) \
+            : CharClasses::IsFullWidth((CI).Char.UnicodeChar ) \
+        )
 
 #define GET_RGB_FORE(ATTR)       ((DWORD)(((ATTR) >> 16) & 0xffffff))
 #define GET_RGB_BACK(ATTR)       ((DWORD)(((ATTR) >> 40) & 0xffffff))
@@ -514,8 +568,6 @@ typedef struct _INPUT_RECORD {
     } Event;
 } INPUT_RECORD, *PINPUT_RECORD;
 
-
-
 #define FOREGROUND_BLUE      0x0001 // text color contains blue.
 #define FOREGROUND_GREEN     0x0002 // text color contains green.
 #define FOREGROUND_RED       0x0004 // text color contains red.
@@ -526,9 +578,14 @@ typedef struct _INPUT_RECORD {
 #define BACKGROUND_INTENSITY 0x0080 // background color is intensified.
 #define FOREGROUND_TRUECOLOR    0x0100 // Use 24 bit RGB colors set by SET_RGB_FORE
 #define BACKGROUND_TRUECOLOR    0x0200 // Use 24 bit RGB colors set by SET_RGB_BACK
+#define EXPLICIT_LINE_BREAK        0x0400 // Don't concatenate next line if this char is last in current line when lines recomposed due to screen resize or VT history rendering
+#define IMPORTANT_LINE_CHAR        0x0800 // Dont skip this character when recomposing even if its a space, application typically dont need to set this flag - its managed by WinPort internally
 #define COMMON_LVB_REVERSE_VIDEO   0x4000 // Reverse fore/back ground attribute.
 #define COMMON_LVB_UNDERSCORE      0x8000 // Underscore.
 #define COMMON_LVB_STRIKEOUT       0x2000 // Striekout.
+
+#define FOREGROUND_RGB (FOREGROUND_RED|FOREGROUND_GREEN|FOREGROUND_BLUE)
+#define BACKGROUND_RGB (BACKGROUND_RED|BACKGROUND_GREEN|BACKGROUND_BLUE)
 
 // Constants below not implemented and their bit values are reserved and must be zero-inited
 // #define COMMON_LVB_GRID_HORIZONTAL
@@ -951,6 +1008,7 @@ typedef void *HMODULE;
 #define FILE_SHARE_READ                 0x00000001
 #define FILE_SHARE_WRITE                0x00000002
 #define FILE_SHARE_DELETE               0x00000004
+
 #define FILE_ATTRIBUTE_READONLY             0x00000001
 #define FILE_ATTRIBUTE_HIDDEN               0x00000002
 #define FILE_ATTRIBUTE_SYSTEM               0x00000004
@@ -966,8 +1024,12 @@ typedef void *HMODULE;
 #define FILE_ATTRIBUTE_NOT_CONTENT_INDEXED  0x00002000
 #define FILE_ATTRIBUTE_ENCRYPTED            0x00004000
 #define FILE_ATTRIBUTE_INTEGRITY_STREAM     0x00008000
-#define FILE_ATTRIBUTE_VIRTUAL              0x00010000
+#define FILE_ATTRIBUTE_VIRTUAL              0x00010000 // ======
 #define FILE_ATTRIBUTE_NO_SCRUB_DATA        0x00020000
+#define FILE_ATTRIBUTE_EA                   0x00040000
+#define FILE_ATTRIBUTE_PINNED               0x00080000
+#define FILE_ATTRIBUTE_UNPINNED             0x00100000
+
 #define FILE_ATTRIBUTE_BROKEN               0x00200000
 #define FILE_ATTRIBUTE_EXECUTABLE           0x00400000
 #define FILE_ATTRIBUTE_DEVICE_CHAR          0x00800000
@@ -1139,6 +1201,7 @@ typedef void *HKL;
 #define ERROR_INSUFFICIENT_BUFFER        ENOBUFS
 #define ERROR_NO_UNICODE_TRANSLATION     EILSEQ
 #define ERROR_DIRECTORY                  EISDIR
+#define ERROR_TOO_MANY_POSTS             E2BIG
 #define ERROR_INVALID_NAME               ENAMETOOLONG
 #define ERROR_FILE_EXISTS                EEXIST
 #define ERROR_OUTOFMEMORY                ENOMEM
@@ -1247,8 +1310,9 @@ typedef BOOL (*CODEPAGE_ENUMPROCW)(LPWSTR);
 // Output Mode flags:
 //
 typedef LONG NTSTATUS;
-#define ENABLE_PROCESSED_OUTPUT    0x0001
-#define ENABLE_WRAP_AT_EOL_OUTPUT  0x0002
+// unlike MS SDK, here output mode values differ from input as WinPort has same handle for console input and output
+#define ENABLE_PROCESSED_OUTPUT    0x1000
+#define ENABLE_WRAP_AT_EOL_OUTPUT  0x2000
 
 #define STATUS_WAIT_0                    ((NTSTATUS)0x00000000L)    // winnt
 #define STATUS_ABANDONED_WAIT_0          ((NTSTATUS)0x00000080L)    // winnt
@@ -1409,6 +1473,59 @@ typedef LONG NTSTATUS;
 
 #define CREATE_SUSPENDED                  0x00000004
 
+// capabilities reported by GetConsoleImageCaps
+#define WP_IMGCAP_RGBA      0x001 // supports WP_IMG_RGB/WP_IMG_RGBA
+#define WP_IMGCAP_PNG       0x002 // supports WP_IMG_PNG
+#define WP_IMGCAP_JPG       0x003 // supports WP_IMG_JPG
+#define WP_IMGCAP_ATTACH    0x100 // supports existing image attaching
+#define WP_IMGCAP_SCROLL    0x200 // supports existing image scrolling
+// reserved for a while:    0x400
+#define WP_IMGCAP_ROTMIR    0x800 // supports existing image rotation and mirroring
+
+// flags used for SetConsoleImage
+#define WP_IMG_RGBA             0 // supported if WP_IMGCAP_RGBA
+#define WP_IMG_RGB              1 // supported if WP_IMGCAP_RGBA
+#define WP_IMG_PNG              2 // supported if WP_IMGCAP_PNG
+#define WP_IMG_JPG              3 // supported if WP_IMGCAP_JPG
+
+// SetConsoleImage attaching flags supported if WP_IMGCAP_ATTACH reported
+#define WP_IMG_ATTACH_LEFT      0x010000 // attach given image at left edge of existing one
+#define WP_IMG_ATTACH_RIGHT     0x020000 // attach given image at right edge of existing one
+#define WP_IMG_ATTACH_TOP       0x030000 // attach given image at top edge of existing one
+#define WP_IMG_ATTACH_BOTTOM    0x040000 // attach given image at bottom edge of existing one
+
+// Can be used only with any of WP_IMG_ATTACH_* if WP_IMGCAP_SCROLL reported
+// Scrolls image after attaching to direction opposite to attached edge
+#define WP_IMG_SCROLL           0x080000
+
+
+// if area fully specified - then:
+//  if WP_IMG_PIXEL_OFFSET is not set - image scaled to cover specified area [LEFT TOP RIGHT BOTTOM]
+//  if WP_IMG_PIXEL_OFFSET is set - image NOT scaled, and RIGHT and BOTTOM fields treated as pixel-level offset for displaying image
+#define WP_IMG_PIXEL_OFFSET     0x100000
+
+
+#define WP_IMG_MASK_FMT         0x00ffff
+#define WP_IMG_MASK_ATTACH      0x070000
+
+// WP_IMGTF_ROTATE_* supported if WP_IMGCAP_ROTMIR reported occupy least
+#define WP_IMGTF_MASK_ROTATE     0x03 // 2 bits that can be one of given values:
+#define WP_IMGTF_ROTATE0         0x00 // no rotation (so can use it just to move image)
+#define WP_IMGTF_ROTATE90        0x01 // rotate by 90 degrees
+#define WP_IMGTF_ROTATE180       0x02 // rotate by 180 degrees
+#define WP_IMGTF_ROTATE270       0x03 // rotate by 270 degrees
+
+// WP_IMG_MIRROR_* supported if WP_IMGCAP_ROTMIR reported and independent bit values
+// note that mirroring applied before rotation, if specified together
+#define WP_IMGTF_MIRROR_H   0x04  // flip image horizontally
+#define WP_IMGTF_MIRROR_V   0x08  // flip image vertically
+
+typedef struct WinportGraphicsInfo1
+{
+    DWORD64 Caps;
+    COORD PixPerCell;
+} WinportGraphicsInfo;
+
 #define HGLOBAL     HANDLE
 #define GMEM_FIXED          0x0000
 #define GMEM_MOVEABLE       0x0002
@@ -1493,6 +1610,19 @@ typedef BOOL (*WINPORT_HANDLER_ROUTINE)(  DWORD CtrlType );
 
 #ifndef OCCASIONAL_WINDOWS_H
 #define HINSTANCE HANDLE
+
+#define THREAD_BASE_PRIORITY_LOWRT  15  // value that gets a thread to LowRealtime-1
+#define THREAD_BASE_PRIORITY_MAX    2   // maximum thread base priority boost
+#define THREAD_BASE_PRIORITY_MIN    (-2)  // minimum thread base priority boost
+#define THREAD_BASE_PRIORITY_IDLE   (-15) // value that gets a thread to idle
+
+#define THREAD_PRIORITY_NORMAL          0
+#define THREAD_PRIORITY_HIGHEST         THREAD_BASE_PRIORITY_MAX
+#define THREAD_PRIORITY_ABOVE_NORMAL    (THREAD_PRIORITY_HIGHEST-1)
+#define THREAD_PRIORITY_ERROR_RETURN    (MAXLONG)
+
+#define THREAD_PRIORITY_TIME_CRITICAL   THREAD_BASE_PRIORITY_LOWRT
+#define THREAD_PRIORITY_IDLE            THREAD_BASE_PRIORITY_IDLE
 
 typedef WINPORT_HANDLER_ROUTINE PHANDLER_ROUTINE;
 typedef WINPORT_THREAD_START_ROUTINE LPTHREAD_START_ROUTINE, PTHREAD_START_ROUTINE;

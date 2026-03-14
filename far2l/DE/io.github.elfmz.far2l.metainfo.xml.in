@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.elfmz.far2l</id>
+
+  <name>far2l</name>
+  <summary>Linux port of FAR v2</summary>
+  <categories>
+    <category>Utility</category>
+    <category>FileManager</category>
+    <category>System</category>
+    <category>FileTools</category>
+  </categories>
+  <url type="homepage">https://github.com/elfmz/far2l</url>
+  <developer id="io.github.elfmz">
+    <name>elfmz</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0 and BSD-3-Clause</project_license>
+
+  <description>
+    <p>
+      This is a clone of FAR manager for Windows, similar, but more powerful than Norton Commander/Midnight Commander.
+    </p>
+    <p>
+      Plug-ins that are currently working:
+    </p>
+    <ul>
+      <li>align</li>
+      <li>arclite</li>
+      <li>autowrap</li>
+      <li>calc</li>
+      <li>colorer</li>
+      <li>compare</li>
+      <li>drawline</li>
+      <li>editcase</li>
+      <li>editorcomp</li>
+      <li>filecase</li>
+      <li>hexitor</li>
+      <li>ImageViewer</li>
+      <li>incsrch</li>
+      <li>inside</li>
+      <li>multiarc</li>
+      <li>NetRocks (SFTP/SCP/SHELL/FTP/FTPS/SMB/NFS/WebDAV)</li>
+      <li>OpenWith</li>
+      <li>python</li>
+      <li>SimpleIndent</li>
+      <li>tmppanel</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">far2l.desktop</launchable>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>far2l</caption>
+      <image type="source" width="1598" height="874">https://raw.githubusercontent.com/elfmz/far2l/master/far2l/DE/screenshots/far2l.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>NetRocks plugin, site connection settings</caption>
+      <image type="source" width="1597" height="873">https://raw.githubusercontent.com/elfmz/far2l/master/far2l/DE/screenshots/far2l_NetRocks.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Editing file attributes for a symlink</caption>
+      <image type="source" width="1597" height="873">https://raw.githubusercontent.com/elfmz/far2l/master/far2l/DE/screenshots/far2l_attribs_symlink.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Editing file attributes for multiple files</caption>
+      <image type="source" width="1597" height="873">https://raw.githubusercontent.com/elfmz/far2l/master/far2l/DE/screenshots/far2l_attribs_several.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>far2l interface settings</caption>
+      <image type="source" width="1597" height="873">https://raw.githubusercontent.com/elfmz/far2l/master/far2l/DE/screenshots/far2l_interface_settings.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>far2l editor, code page selection</caption>
+      <image type="source" width="1598" height="872">https://raw.githubusercontent.com/elfmz/far2l/master/far2l/DE/screenshots/far2l_editor_codepages.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>far2l editor, syntaxes for code highlighting</caption>
+      <image type="source" width="1598" height="872">https://raw.githubusercontent.com/elfmz/far2l/master/far2l/DE/screenshots/far2l_editor_colorer.png</image>
+    </screenshot>
+  </screenshots>
+
+  <releases/>
+</component>

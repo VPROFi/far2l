@@ -3,9 +3,9 @@
 #include <RandomString.h>
 #include <crc64.h>
 #include <fcntl.h>
-#include <SavedScreen.h>
 #include "Backend.h"
 #include "SudoAskpassImpl.h"
+#include "WinPort.h"
 
 class SudoAskpassScreen
 {
@@ -23,16 +23,20 @@ class SudoAskpassScreen
 			ir.EventType = WINDOW_BUFFER_SIZE_EVENT;
 			ir.Event.WindowBufferSizeEvent.dwSize.X = w;
 			ir.Event.WindowBufferSizeEvent.dwSize.Y = h;
+			fprintf(stderr, "FinalScreenUpdater: %d %d\n",
+				ir.Event.WindowBufferSizeEvent.dwSize.X, ir.Event.WindowBufferSizeEvent.dwSize.Y);
 		}
 
 		~FinalScreenUpdater()
 		{
 			ir.Event.WindowBufferSizeEvent.bDamaged = TRUE;
+			fprintf(stderr, "~FinalScreenUpdater: %d %d\n",
+				ir.Event.WindowBufferSizeEvent.dwSize.X, ir.Event.WindowBufferSizeEvent.dwSize.Y);
 			g_winport_con_in->Enqueue(&ir, 1);
 		}
 	} _fsu;
 
-	SavedScreen _ss;
+	ConsoleForkScope _ss;
 	unsigned int _width = 0, _height = 0;
 	std::string _title, _text, _key_hint;
 	std::wstring _input;
@@ -49,20 +53,48 @@ class SudoAskpassScreen
 
 	SMALL_RECT _rect{0}; // filled by Repaint()
 
+
+	void PasteFromClipboard()
+	{
+		if (!WINPORT(OpenClipboard)(NULL))
+			return;
+
+		wchar_t *data = (wchar_t *)WINPORT(GetClipboardData)(CF_UNICODETEXT);
+		if (data) {
+			_input.append(data,
+				wcsnlen(data, WINPORT(ClipboardSize)(data) / sizeof(wchar_t)));
+		}
+		WINPORT(CloseClipboard)();
+
+		if (!_input.empty() && _password_expected && _panno_hash == 0) {
+			// immediately indicate password became non-empty
+			_panno_hash = 1;
+			_need_repaint = true;
+		}
+	}
+
 	void DispatchInputKey(const KEY_EVENT_RECORD &rec)
 	{
 		if (!rec.bKeyDown)
 			return;
 
-		if (rec.wVirtualKeyCode == VK_RETURN) {
+		if ( (rec.wVirtualKeyCode == 'V' && (rec.dwControlKeyState & (LEFT_CTRL_PRESSED|RIGHT_CTRL_PRESSED)) != 0)
+				|| (rec.wVirtualKeyCode == VK_INSERT && (rec.dwControlKeyState & SHIFT_PRESSED) != 0)) {
+			PasteFromClipboard();
+
+		} else if (rec.wVirtualKeyCode == VK_RETURN) {
 			_result = RES_OK;
 
 		} else if (rec.wVirtualKeyCode == VK_ESCAPE || rec.wVirtualKeyCode == VK_F10) {
 			_result = RES_CANCEL;
 
-		} else if (rec.wVirtualKeyCode == VK_BACK) {
+		} else if (rec.wVirtualKeyCode == VK_BACK || rec.wVirtualKeyCode == VK_DELETE) {
 			if (!_input.empty()) {
-				_input.resize(_input.size() - 1);
+				if (rec.wVirtualKeyCode == VK_BACK) {
+					_input.pop_back();
+				} else {
+					_input.clear();
+				}
 				if (_input.empty() && _password_expected && _panno_hash != 0) {
 					// immediately indicate password became empty
 					_panno_hash = 0;
@@ -82,6 +114,10 @@ class SudoAskpassScreen
 
 	void DispatchInputMouse(const MOUSE_EVENT_RECORD &rec)
 	{
+		if ( (rec.dwEventFlags & (MOUSE_MOVED | MOUSE_WHEELED | MOUSE_HWHEELED | DOUBLE_CLICK)) == 0
+				&& (rec.dwButtonState & FROM_LEFT_2ND_BUTTON_PRESSED) != 0 ) {
+			PasteFromClipboard();
+		}
 	}
 
 	void DispatchInput()
@@ -90,7 +126,7 @@ class SudoAskpassScreen
 		while (g_winport_con_in->Dequeue(&ir, 1, _cip)) {
 			switch (ir.EventType) {
 				case WINDOW_BUFFER_SIZE_EVENT:
-					_ss.Restore();
+					_ss.Show();
 					_fsu.ir = ir;
 					_need_repaint = true;
 					break;
@@ -244,6 +280,7 @@ public:
 		_password_expected(password_expected)
 	{
 		_input.reserve(64);// to help secure cleanup in d-tor
+		_ss.Fork();
 		Repaint();
 	}
 
@@ -265,12 +302,16 @@ public:
 					const uint64_t hash = TypedPasswordHash();
 					if (_panno_hash != hash) {
 						_panno_hash = hash;
+						_need_repaint = true;
 					}
 				}
 
-				if (_result != RES_PENDING)
+				if (_result != RES_PENDING) {
 					return _result == RES_OK;
+				}
+			}
 
+			if (_need_repaint) {
 				Repaint();
 			}
 		}

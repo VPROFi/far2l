@@ -1,11 +1,12 @@
 #include <set>
 #include <vector>
 #include <atomic>
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 # include <sys/types.h>
 # include <sys/event.h>
 # include <sys/time.h>
 #elif defined(__HAIKU__)
+#elif defined(__gnu_hurd__)
 #elif !defined(__CYGWIN__)
 # include <sys/inotify.h>
 #endif
@@ -35,7 +36,7 @@ class FSNotify : public IFSNotify
 
 class FSNotify : public IFSNotify
 {
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 	std::vector<struct kevent> _events;
 #endif
 	std::vector<int> _watches;
@@ -50,7 +51,7 @@ class FSNotify : public IFSNotify
 	void AddWatch(const char *path)
 	{
 		int w;
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 		w = open(path, O_RDONLY | O_CLOEXEC);
 		if (w != -1) {
 			u_int fflags = NOTE_DELETE | NOTE_LINK | NOTE_RENAME;
@@ -116,7 +117,7 @@ class FSNotify : public IFSNotify
 
 	void WatcherProc()
 	{
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 		struct kevent ev = {};
 		int nev = kevent(_fd, &_events[0], _events.size(), &ev, 1, nullptr);
 		if (nev > 0) {
@@ -167,7 +168,7 @@ public:
 		:
 		_watcher(0), _fd(-1), _what(what)
 	{
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 		_fd = kqueue();
 		if (_fd == -1)
 			return;
@@ -183,7 +184,7 @@ public:
 		}
 
 		if (!_watches.empty() && pipe_cloexec(_pipe) == 0) {
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 			_events.emplace_back();
 			EV_SET(&_events.back(), _pipe[0], EVFILT_READ, EV_ADD | EV_ENABLE | EV_ONESHOT, 0, 0, 0);
 #endif
@@ -217,7 +218,7 @@ public:
 			CheckedCloseFD(_pipe[0]);
 		}
 
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 		for (auto w : _watches) {
 			close(w);
 		}

@@ -67,8 +67,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "execute.hpp"
 #include "flink.hpp"
 #include "ConfigRW.hpp"
+#include "pick_color.hpp"
 #include "wrap.cpp"
 #include <KeyFileHelper.h>
+
 
 #include "farversion.h"
 
@@ -211,16 +213,16 @@ bool PluginA::SaveToCache()
 	kfh.SetString(GetSettingsName(), "ID", m_strModuleID.c_str());
 
 	for (int i = 0; i < Info.DiskMenuStringsNumber; i++) {
-		kfh.SetString(GetSettingsName(), StrPrintf(FmtDiskMenuStringD, i).c_str(), Info.DiskMenuStrings[i]);
+		kfh.SetString(GetSettingsName(), StrPrintf(FmtDiskMenuStringD, i), Info.DiskMenuStrings[i]);
 	}
 
 	for (int i = 0; i < Info.PluginMenuStringsNumber; i++) {
-		kfh.SetString(GetSettingsName(), StrPrintf(FmtPluginMenuStringD, i).c_str(),
+		kfh.SetString(GetSettingsName(), StrPrintf(FmtPluginMenuStringD, i),
 				Info.PluginMenuStrings[i]);
 	}
 
 	for (int i = 0; i < Info.PluginConfigStringsNumber; i++) {
-		kfh.SetString(GetSettingsName(), StrPrintf(FmtPluginConfigStringD, i).c_str(),
+		kfh.SetString(GetSettingsName(), StrPrintf(FmtPluginConfigStringD, i),
 				Info.PluginConfigStrings[i]);
 	}
 
@@ -367,6 +369,7 @@ CreatePluginStartupInfoA(PluginA *pPlugin, oldfar::PluginStartupInfo *PSI, oldfa
 		StandardFunctions.FarInputRecordToKey = InputRecordToKeyA;
 		StandardFunctions.XLat = XlatA;
 		StandardFunctions.GetFileOwner = GetFileOwnerA;
+		StandardFunctions.GetFileGroup = GetFileGroupA;
 		StandardFunctions.GetNumberOfLinks = GetNumberOfLinksA;
 		StandardFunctions.FarRecursiveSearch = FarRecursiveSearchA;
 		StandardFunctions.MkTemp = FarMkTempA;
@@ -383,6 +386,8 @@ CreatePluginStartupInfoA(PluginA *pPlugin, oldfar::PluginStartupInfo *PSI, oldfa
 		StandardFunctions.BackgroundTask = farBackgroundTaskA;
 		StandardFunctions.StrCellsCount = farStrCellsCountA;
 		StandardFunctions.StrSizeOfCells = farStrSizeOfCellsA;
+		StandardFunctions.VTEnumBackground = farAPIVTEnumBackground;
+		StandardFunctions.VTLogExport = farAPIVTLogExportA;
 	}
 
 	if (!StartupInfo.StructSize) {
@@ -410,6 +415,7 @@ CreatePluginStartupInfoA(PluginA *pPlugin, oldfar::PluginStartupInfo *PSI, oldfa
 		StartupInfo.SendDlgMessage = FarSendDlgMessageA;
 		StartupInfo.DefDlgProc = FarDefDlgProcA;
 		StartupInfo.InputBox = FarInputBoxA;
+		StartupInfo.ColorDialog = FarColorDialogA;
 	}
 
 	*PSI = StartupInfo;
@@ -427,16 +433,17 @@ struct ExecuteStruct
 	{
 		INT_PTR nResult;
 		HANDLE hResult;
-		BOOL bResult;
 	};
+
+	BOOL bResult;
 
 	union
 	{
 		INT_PTR nDefaultResult;
 		HANDLE hDefaultResult;
-		BOOL bDefaultResult;
 	};
 
+	BOOL bDefaultResult;
 	bool bUnloaded;
 };
 
@@ -453,6 +460,7 @@ struct ExecuteStruct
 		es.bUnloaded = false;                                                                                  \
 		es.nResult = 0;                                                                                        \
 		es.nResult = (INT_PTR)function;                                                                        \
+		es.bResult = (BOOL)es.nResult;                                                                         \
 	}
 
 bool PluginA::SetStartupInfo(bool &bUnloaded)

@@ -121,6 +121,7 @@ public:
 	void SetObjectColor(uint64_t Color, uint64_t SelColor = 0xf, uint64_t ColorUnChanged = FarColorToReal(COL_DIALOGEDITUNCHANGED));
 	long GetObjectColor();
 	int GetObjectColorUnChanged();
+	void SetOverflowArrowsColor(uint64_t Color);
 
 	void FastShow();
 	int GetLeftPos();
@@ -139,11 +140,34 @@ public:
 	int GetReadOnly();
 	void SetReadOnly(int NewReadOnly);
 
-	void SetCallbackState(bool Enable) { lineEdit->SetCallbackState(Enable); }
-	void AutoComplete(bool Manual, bool DelBlock) { return lineEdit->AutoComplete(Manual, DelBlock); }
-	void EnableAC() { return lineEdit->EnableAC(); }
-	void DisableAC() { return lineEdit->DisableAC(); }
-	void RevertAC() { return lineEdit->RevertAC(); }
+	void SetCallbackState(bool Enable)
+	{
+		if (Type == DLGEDIT_SINGLELINE)
+			lineEdit->SetCallbackState(Enable);
+	}
+	void AutoComplete(bool Manual, bool DelBlock)
+	{
+		if (Type == DLGEDIT_SINGLELINE)
+			lineEdit->AutoComplete(Manual, DelBlock);
+	}
+	void EnableAC()
+	{
+		if (Type == DLGEDIT_SINGLELINE)
+			lineEdit->EnableAC();
+	}
+	void DisableAC()
+	{
+		if (Type == DLGEDIT_SINGLELINE)
+			lineEdit->DisableAC();
+	}
+	void ToggleShowWhiteSpace();
+	void ToggleShowLineNumbers();
+	void ToggleWordWrap();
+	void RevertAC()
+	{
+		if (Type == DLGEDIT_SINGLELINE)
+			lineEdit->RevertAC();
+	}
 
 	bool HistoryGetSimilar(FARString &strStr, int LastCmdPartLength, bool bAppend = false);
 
@@ -154,9 +178,9 @@ private:
 	History *iHistory;
 
 	EditControl *lineEdit;
-#if defined(PROJECT_DI_MEMOEDIT)
 	Editor *multiEdit;
-#endif
+	bool m_dialogHasFocus;
+	bool m_dialogEditorOpened;
 
 	virtual void DisplayObject();
 	static void EditChange(void *aParam);

@@ -58,7 +58,7 @@ class CommandLine : public ScreenObject
 {
 private:
 	EditControl CmdStr;
-	SaveScreen *BackgroundScreen;
+	ConsoleForkScope BackgroundConsole;
 	FARString strCurDir;
 	FARString strLastCmdStr;
 	FARString strLastCompletionCmdStr;
@@ -95,14 +95,13 @@ public:
 	virtual int64_t VMProcess(MacroOpcode OpCode, void *vParam = nullptr, int64_t iParam = 0);
 
 	virtual void Show();
-	virtual void ResizeConsole();
 
 	std::string GetConsoleLog(HANDLE con_hnd, bool colored);
 	int GetCurDir(FARString &strCurDir);
 	BOOL SetCurDir(const wchar_t *CurDir);
 
 	void GetString(FARString &strStr) { CmdStr.GetString(strStr); };
-	int GetLength() { return CmdStr.GetLength(); };
+	bool IsNotEmpty() const { return CmdStr.CalcRTrimmedStrSize() > 0; };
 	void SetString(const wchar_t *Str, BOOL Redraw = TRUE);
 	void InsertString(const wchar_t *Str);
 
@@ -128,10 +127,8 @@ public:
 	void GetSelection(int &Start, int &End) { CmdStr.GetSelection(Start, End); };
 	void Select(int Start, int End) { CmdStr.Select(Start, End); };
 
-	void SaveBackground(int X1, int Y1, int X2, int Y2);
 	void SaveBackground();
-	void ShowBackground();
-	void CorrectRealScreenCoord();
+	void ShowBackground(bool showanyway = false);
 	void LockUpdatePanel(int Mode) { Flags.Change(FCMDOBJ_LOCKUPDATEPANEL, Mode); };
 
 	void EnableAC() { return CmdStr.EnableAC(); }
@@ -139,6 +136,8 @@ public:
 	void RevertAC() { return CmdStr.RevertAC(); }
 
 	void RedrawWithoutComboBoxMark();
+
+	HANDLE GetBackgroundConsole();
 };
 
 struct CmdLineVisibleScope

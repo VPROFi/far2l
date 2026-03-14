@@ -62,6 +62,9 @@ public:
 	ScreenBuf();
 	~ScreenBuf();
 
+    ScreenBuf(const ScreenBuf&) = delete;
+    ScreenBuf& operator=(const ScreenBuf&) = delete;
+
 public:
 	void AllocBuf(int X, int Y);
 	void Lock();
@@ -75,9 +78,11 @@ public:
 	void GetCursorType(bool &Visible, DWORD &Size);
 
 public:
+	void FillBufWithRecompose(HANDLE con_hnd);
 	void FillBuf();
 	void Read(int X1, int Y1, int X2, int Y2, CHAR_INFO *Text, int MaxTextLength);
 	void Write(int X, int Y, const CHAR_INFO *Text, int TextLength);
+	void SetExplicitLineBreak(int Y);
 	void RestoreMacroChar();
 	void RestoreElevationChar();
 
@@ -92,3 +97,12 @@ public:
 };
 
 extern ScreenBuf ScrBuf;
+
+class UnlockScreen
+{
+private:
+	int Count;
+public:
+	UnlockScreen() : Count(ScrBuf.GetLockCount()) { ScrBuf.Unlock(); }
+	~UnlockScreen() { ScrBuf.SetLockCount(Count); }
+};

@@ -31,7 +31,7 @@ bool SharedResource::sEnum(const char *group, std::vector<uint64_t> &ids) noexce
 			if (!de) {
 				break;
 			}
-			if (IsHexaDecimalNumberStr(de->d_name)) {
+			if (ClassifyNumberStr(de->d_name) != NK_NOT_NUMBER) {
 				ids.emplace_back(strtoull(de->d_name, nullptr, 16));
 			}
 		}
@@ -127,7 +127,7 @@ bool SharedResource::Lock(int op, int timeout) noexcept
 			} else
 				usleep(10000);
 		}
-		
+
 	} else {
 		out = flock(_fd, op) != -1;
 	}

@@ -59,7 +59,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "syslog.hpp"
 #include "interf.hpp"
 #include "keyboard.hpp"
-#include "palette.hpp"
+#include "farcolors.hpp"
 #include "message.hpp"
 #include "filefilter.hpp"
 #include "fileowner.hpp"
@@ -71,6 +71,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "RegExp.hpp"
 #include "console.hpp"
 #include "InterThreadCall.hpp"
+#include "vtshell.h"
+#include "vtlog.h"
+#include "pick_color.hpp"
 
 #include "farversion.h"
 
@@ -155,6 +158,17 @@ int WINAPI FarInputBox(const wchar_t *Title, const wchar_t *Prompt, const wchar_
 {
 	return InterThreadCall<int, 0>(std::bind(FarInputBoxSynched, Title, Prompt, HistoryName, SrcText,
 			DestText, DestLength, HelpTopic, Flags));
+}
+
+static int FarColorDialogSynched(const int flags, uint64_t *c)
+{
+	return (int)GetColorDialog(c, true);
+}
+
+int WINAPI FarColorDialog(const int flags, uint64_t *c)
+{
+	return InterThreadCall<int, 0>(std::bind(FarColorDialogSynched, flags, c));
+	return 0;
 }
 
 /* Функция вывода помощи */
@@ -299,9 +313,9 @@ static INT_PTR WINAPI FarAdvControlSynched(INT_PTR ModuleNumber, int Command, vo
 
 		*/
 		case ACTL_GETCOLOR: {
-			if ((int)(INT_PTR)Param1 < SIZE_ARRAY_PALETTE && (int)(INT_PTR)Param1 >= 0) {
+			if ((int)(INT_PTR)Param1 < SIZE_ARRAY_FARCOLORS && (int)(INT_PTR)Param1 >= 0) {
 
-				*(uint64_t *)Param2 = (uint64_t)Palette[(int)(INT_PTR)Param1];
+				*(uint64_t *)Param2 = (uint64_t)FarColors::setcolors[(int)(INT_PTR)Param1];
 				return TRUE;
 			}
 
@@ -314,13 +328,13 @@ static INT_PTR WINAPI FarAdvControlSynched(INT_PTR ModuleNumber, int Command, vo
 			Return - размер массива.
 		*/
 		case ACTL_GETARRAYCOLOR: {
-			if ((int)(intptr_t)Param1 > SIZE_ARRAY_PALETTE)
-				return SIZE_ARRAY_PALETTE;
+			if ((int)(intptr_t)Param1 > SIZE_ARRAY_FARCOLORS)
+				return SIZE_ARRAY_FARCOLORS;
 
 			if (Param2)
-				memcpy(Param2, Palette, (int)(intptr_t)Param1 * sizeof(Palette[0]));
+				memcpy(Param2, &FarColors::setcolors[0], (int)(intptr_t)Param1 * sizeof(FarColors::setcolors[0]));
 
-			return SIZE_ARRAY_PALETTE;
+			return SIZE_ARRAY_FARCOLORS;
 		}
 		/*
 			Param1=FARColor{
@@ -336,8 +350,9 @@ static INT_PTR WINAPI FarAdvControlSynched(INT_PTR ModuleNumber, int Command, vo
 				FarSetColors *Pal = (FarSetColors *)Param1;
 
 				if (Pal->Colors && Pal->StartIndex >= 0
-						&& Pal->StartIndex + Pal->ColorCount <= SIZE_ARRAY_PALETTE) {
-					memmove(Palette + Pal->StartIndex, Pal->Colors, Pal->ColorCount * sizeof(Palette[0]));
+						&& Pal->StartIndex + Pal->ColorCount <= SIZE_ARRAY_FARCOLORS) {
+//					memmove(Palette + Pal->StartIndex, Pal->Colors, Pal->ColorCount * sizeof(Palette[0]));
+					FarColors::SetRange(Pal->StartIndex, Pal->ColorCount, Pal->Colors );
 
 					if (Pal->Flags & FCLR_REDRAW) {
 						ScrBuf.Lock();					// отменяем всякую прорисовку
@@ -368,14 +383,14 @@ static INT_PTR WINAPI FarAdvControlSynched(INT_PTR ModuleNumber, int Command, vo
 									char DiskLetter[4]=" :/";
 									DiskLetter[0]=(char)aem->Letter;
 									int DriveType = FAR_GetDriveType(DiskLetter,nullptr,FALSE); // здесь не определяем тип CD
-				
+
 									if(DriveType == DRIVE_USBDRIVE && RemoveUSBDrive((char)aem->Letter,aem->Flags))
 										return TRUE;
 									if(DriveType == DRIVE_SUBSTITUTE && DelSubstDrive(DiskLetter))
 										return TRUE;
 									if(IsDriveTypeCDROM(DriveType) && EjectVolume((char)aem->Letter,aem->Flags))
 										return TRUE;
-				
+
 								}
 								return FALSE;
 							*/
@@ -804,6 +819,12 @@ INT_PTR WINAPI FarAdvControl(INT_PTR ModuleNumber, int Command, void *Param1, vo
 	return InterThreadCall<LONG_PTR, 0>(std::bind(FarAdvControlSynched, ModuleNumber, Command, Param1, Param2));
 }
 
+INT_PTR WINAPI FarAdvControlAsync(INT_PTR ModuleNumber, int Command, void *Param1, void *Param2)
+{
+//	fprintf(stderr, "FarAdvControlAsync( ) - %ld\n", pthread_self());
+	return FarAdvControlSynched(ModuleNumber, Command, Param1, Param2);
+}
+
 static int FarMenuFnSynched(INT_PTR PluginNumber, int X, int Y, int MaxHeight, DWORD Flags,
 		const wchar_t *Title, const wchar_t *Bottom, const wchar_t *HelpTopic, const int *BreakKeys,
 		int *BreakCode, const FarMenuItem *Item, int ItemsNumber)
@@ -1000,7 +1021,12 @@ static HANDLE FarDialogInitSynched(INT_PTR PluginNumber, int X1, int Y1, int X2,
 		return hDlg;
 
 	// ФИЧА! нельзя указывать отрицательные X2 и Y2
-	if (X2 < 0 || Y2 < 0)
+	if (X1 < 0 && X2 == 0)
+		X2 = 1;
+	if (Y1 < 0 && Y2 == 0)
+		Y2 = 1;
+	const auto checkCoord = [](int first, int second) { return second >= 0 && ((first < 0) ? (second > 0) : (first <= second)); };
+	if (!checkCoord(X1, X2) || !checkCoord(Y1, Y2))
 		return hDlg;
 
 	{
@@ -1039,6 +1065,12 @@ static HANDLE FarDialogInitSynched(INT_PTR PluginNumber, int X1, int Y1, int X2,
 			Запомним номер плагина - сейчас в основном для формирования HelpTopic
 		*/
 		FarDialog->SetPluginNumber(PluginNumber);
+
+		if (Flags & FDLG_NONMODAL) {
+			FarDialog->SetCanLoseFocus(true);
+			FarDialog->SetDynamicallyBorn(true);
+			FarDialog->Process();
+		}
 	}
 	return hDlg;
 }
@@ -1055,6 +1087,9 @@ static int FarDialogRunSynched(HANDLE hDlg)
 
 	{
 		Dialog *FarDialog = (Dialog *)hDlg;
+		if (FarDialog->GetCanLoseFocus()) {
+			return -1;
+		}
 		LockBottomFrame lbf;	// временно отменим прорисовку фрейма
 		// CtrlObject->Plugins.Flags.Clear(PSIF_DIALOG);
 		FarDialog->Process();
@@ -1072,7 +1107,10 @@ static bool FarDialogFreeSynched(HANDLE hDlg)
 		return false;
 
 	Dialog *FarDialog = (Dialog *)hDlg;
-	delete FarDialog;
+	if (!FarDialog->GetCanLoseFocus()) {
+		delete FarDialog;
+		return true;
+	}
 	return true;
 }
 
@@ -1116,7 +1154,7 @@ const wchar_t *FarGetMsgFn(INT_PTR PluginHandle, FarLangMsgID MsgId)
 	return pPlugin->GetMsg(MsgId);
 }
 
-static int FarMessageFnSynched(INT_PTR PluginNumber, DWORD Flags, const wchar_t *HelpTopic,
+static intptr_t FarMessageFnSynched(INT_PTR PluginNumber, DWORD Flags, const wchar_t *HelpTopic,
 		const wchar_t *const *Items, int ItemsNumber, int ButtonsNumber)
 {
 	if (FrameManager->ManagerIsDown())
@@ -1197,11 +1235,13 @@ static int FarMessageFnSynched(INT_PTR PluginNumber, DWORD Flags, const wchar_t 
 	return m.Show(Flags, ButtonsNumber, PluginNumber);
 }
 
-int WINAPI FarMessageFn(INT_PTR PluginNumber, DWORD Flags, const wchar_t *HelpTopic,
+intptr_t WINAPI FarMessageFn(INT_PTR PluginNumber, DWORD Flags, const wchar_t *HelpTopic,
 		const wchar_t *const *Items, int ItemsNumber, int ButtonsNumber)
 {
-	return InterThreadCall<int, -1>(std::bind(FarMessageFnSynched, PluginNumber, Flags, HelpTopic, Items,
-			ItemsNumber, ButtonsNumber));
+//	if (Flags & MSG_ASYNC) {
+//		return FarMessageFnSynched(PluginNumber, Flags, HelpTopic, Items, ItemsNumber, ButtonsNumber);
+//	}
+	return InterThreadCall<int, -1>(std::bind(FarMessageFnSynched, PluginNumber, Flags, HelpTopic, Items, ItemsNumber, ButtonsNumber));
 }
 
 static int FarControlSynched(HANDLE hPlugin, int Command, int Param1, LONG_PTR Param2)
@@ -1245,6 +1285,7 @@ static int FarControlSynched(HANDLE hPlugin, int Command, int Param1, LONG_PTR P
 		case FCTL_SETNUMERICSORT:
 		case FCTL_SETCASESENSITIVESORT:
 		case FCTL_SETDIRECTORIESFIRST:
+		case FCTL_SETEXECUTABLESFIRST:
 		case FCTL_GETPANELFORMAT:
 		case FCTL_GETPANELHOSTFILE:
 		case FCTL_GETPANELPLUGINHANDLE:
@@ -1992,10 +2033,14 @@ void WINAPI FarText(int X, int Y, uint64_t Color, const wchar_t *Str)
 
 static int FarEditorControlSynched(int Command, void *Param)
 {
-	if (FrameManager->ManagerIsDown() || !CtrlObject->Plugins.CurEditor)
+	if (FrameManager->ManagerIsDown())
 		return 0;
 
-	return (CtrlObject->Plugins.CurEditor->EditorControl(Command, Param));
+	if (CtrlObject->Plugins.CurEditor)
+		return (CtrlObject->Plugins.CurEditor->EditorControl(Command, Param));
+	if (CtrlObject->Plugins.CurDialogEditor)
+		return (CtrlObject->Plugins.CurDialogEditor->EditorControl(Command, Param));
+	return 0;
 }
 
 int WINAPI FarEditorControl(int Command, void *Param)
@@ -2095,6 +2140,17 @@ int WINAPI farGetFileOwner(const wchar_t *Computer, const wchar_t *Name, wchar_t
 		far_wcsncpy(Owner, strOwner, Size);
 
 	return static_cast<int>(strOwner.GetLength() + 1);
+}
+
+int WINAPI farGetFileGroup(const wchar_t *Computer, const wchar_t *Name, wchar_t *Group, int Size)
+{
+	FARString strGroup;
+	/*int Ret=*/GetFileGroup(Computer, Name, strGroup);
+
+	if (Group && Size)
+		far_wcsncpy(Group, strGroup, Size);
+
+	return static_cast<int>(strGroup.GetLength() + 1);
 }
 
 int WINAPI farConvertPath(CONVERTPATHMODES Mode, const wchar_t *Src, wchar_t *Dest, int DestSize)
@@ -2337,4 +2393,50 @@ DWORD WINAPI farGetCurrentDirectory(DWORD Size, wchar_t *Buffer)
 	}
 
 	return static_cast<DWORD>(strCurDir.GetLength() + 1);
+}
+
+SIZE_T farAPIVTEnumBackground(HANDLE *con_hnds, SIZE_T count)
+{
+	if (count == 0) {
+		return VTShell_Count();
+	}
+	VTInfos vts;
+	VTShell_Enum(vts);
+	for (size_t i = 0; i < count && i < vts.size(); ++i) {
+		con_hnds[i] = vts[i].con_hnd;
+	}
+	return vts.size();
+}
+
+
+BOOL farAPIVTLogExportA(HANDLE con_hnd, DWORD vth_flags, const char *file)
+{
+	const auto &saved_path = VTLog::GetAsFile(con_hnd,
+		(vth_flags & VT_LOGEXPORT_COLORED) != 0,
+		(vth_flags & VT_LOGEXPORT_WITH_SCREENLINES) != 0,
+		file);
+	if (saved_path.empty())
+		return FALSE;
+
+	if (!*file) {
+		strncpy((char *)file, saved_path.c_str(), MAX_PATH);
+	}
+
+	return TRUE;
+}
+
+BOOL farAPIVTLogExportW(HANDLE con_hnd, DWORD vth_flags, const wchar_t *file)
+{
+	const auto &saved_path = VTLog::GetAsFile(con_hnd,
+		(vth_flags & VT_LOGEXPORT_COLORED) != 0,
+		(vth_flags & VT_LOGEXPORT_WITH_SCREENLINES) != 0,
+		Wide2MB(file).c_str());
+	if (saved_path.empty())
+		return FALSE;
+
+	if (!*file) {
+		wcsncpy((wchar_t *)file, StrMB2Wide(saved_path).c_str(), MAX_PATH);
+	}
+
+	return TRUE;
 }

@@ -8,7 +8,7 @@
 ///   Something changed in code below.
 ///   "WinCompat.h" changed in a way affecting code below.
 ///   Behavior of backend's code changed in incompatible way.
-#define FAR2L_BACKEND_ABI_VERSION	0x0B
+#define FAR2L_BACKEND_ABI_VERSION	0x11
 
 #define NODETECT_NONE   0x0000
 #define NODETECT_XI     0x0001
@@ -44,6 +44,14 @@ public:
 	virtual bool OnConsoleSetBasePalette(void *pbuff) = 0;
 	virtual void OnConsoleOverrideColor(DWORD Index, DWORD *ColorFG, DWORD *ColorBK) = 0;
 	virtual void OnConsoleSetCursorBlinkTime(DWORD interval) = 0;
+	virtual void OnConsoleOutputFlushDrawing() = 0;
+
+	virtual void OnGetConsoleImageCaps(WinportGraphicsInfo *wgi) = 0;
+	virtual bool OnSetConsoleImage(const char *id, DWORD64 flags, const SMALL_RECT *area, DWORD width, DWORD height, const void *buffer) = 0;
+	virtual bool OnTransformConsoleImage(const char *id, const SMALL_RECT *area, uint16_t tf) = 0;
+	virtual bool OnDeleteConsoleImage(const char *id) = 0;
+
+	virtual const char *OnConsoleBackendInfo(int entity) = 0;
 };
 
 class IClipboardBackend
@@ -106,7 +114,7 @@ protected:
 
 public:
 	virtual IConsoleInput *ForkConsoleInput(HANDLE con_handle) = 0;
-	virtual void JoinConsoleInput(IConsoleInput *con_in) = 0;
+	virtual void ReleaseConsoleInput(IConsoleInput *con_in, bool join) = 0;
 
 	virtual void Enqueue(const INPUT_RECORD *data, DWORD size) = 0;
 	virtual DWORD Peek(INPUT_RECORD *data, DWORD size, unsigned int requestor_priority = 0) = 0;
@@ -118,6 +126,8 @@ public:
 
 	virtual unsigned int RaiseRequestorPriority() = 0;
 	virtual void LowerRequestorPriority(unsigned int released_priority) = 0;
+
+	virtual DWORD GetBacktrace(CHAR *str, DWORD size) = 0;
 };
 
 class ConsoleInputPriority
@@ -158,7 +168,7 @@ public:
 	virtual unsigned int WaitForChange(unsigned int prev_change_id, unsigned int timeout_msec = -1) = 0;
 
 	virtual IConsoleOutput *ForkConsoleOutput(HANDLE con_handle) = 0;
-	virtual void JoinConsoleOutput(IConsoleOutput *con_out) = 0;
+	virtual void ReleaseConsoleOutput(IConsoleOutput *con_out, bool join) = 0;
 
 	virtual void SetBackend(IConsoleOutputBackend *listener) = 0;
 
@@ -192,14 +202,14 @@ public:
 	virtual size_t WriteStringAt(const WCHAR *data, size_t count, COORD &pos) = 0;
 	virtual size_t FillCharacterAt(WCHAR cCharacter, size_t count, COORD &pos) = 0;
 	virtual size_t FillAttributeAt(DWORD64 qAttribute, size_t count, COORD &pos) = 0;
-	
-	virtual bool Scroll(const SMALL_RECT *lpScrollRectangle, const SMALL_RECT *lpClipRectangle, 
+
+	virtual bool Scroll(const SMALL_RECT *lpScrollRectangle, const SMALL_RECT *lpClipRectangle,
 				COORD dwDestinationOrigin, const CHAR_INFO *lpFill) = 0;
-				
+
 	virtual void SetScrollRegion(SHORT top, SHORT bottom) = 0;
 	virtual void GetScrollRegion(SHORT &top, SHORT &bottom) = 0;
 	virtual void SetScrollCallback(PCONSOLE_SCROLL_CALLBACK pCallback, PVOID pContext) = 0;
-	
+
 	virtual void AdhocQuickEdit() = 0;
 	virtual DWORD64 SetConsoleTweaks(DWORD64 tweaks) = 0;
 	virtual void ConsoleChangeFont() = 0;
@@ -213,7 +223,14 @@ public:
 	virtual bool SetBasePalette(void *p) = 0;
 	virtual void OverrideColor(DWORD Index, DWORD *ColorFG, DWORD *ColorBK) = 0;
 	virtual void RepaintsDeferStart() = 0;
-	virtual void RepaintsDeferFinish() = 0;
+	virtual void RepaintsDeferFinish(bool force) = 0;
+
+	virtual void OnGetConsoleImageCaps(WinportGraphicsInfo *wgi) = 0;
+	virtual bool OnSetConsoleImage(const char *id, DWORD64 flags, const SMALL_RECT *area, DWORD width, DWORD height, const void *buffer) = 0;
+	virtual bool OnTransformConsoleImage(const char *id, const SMALL_RECT *area, uint16_t tf) = 0;
+	virtual bool OnDeleteConsoleImage(const char *id) = 0;
+
+	virtual const char *BackendInfo(int entity) = 0;
 
 	inline std::wstring GetTitle()
 	{
@@ -245,11 +262,31 @@ public:
 	};
 };
 
+inline void MakeImageArea(SMALL_RECT &dst, const SMALL_RECT *src, COORD cur_pos)
+{
+	if (src && src->Left != -1) {
+		dst.Left = src->Left;
+	}
+	if (src && src->Top != -1) {
+		dst.Top = src->Top;
+	}
+	if (src && src->Right != -1) {
+		dst.Right = src->Right;
+	}
+	if (src && src->Bottom != -1) {
+		dst.Bottom = src->Bottom;
+	}
+	if (dst.Left == -1) {
+		dst.Left = cur_pos.X;
+	}
+	if (dst.Top == -1) {
+		dst.Top = cur_pos.Y;
+	}
+}
 //////////////////////////////////////////////////////////////////////////////////
 
 extern IConsoleOutput *g_winport_con_out;
 extern IConsoleInput *g_winport_con_in;
-extern const wchar_t *g_winport_backend;
 
 //////////////////////////////////////////////////////////////////////////////////
 
@@ -266,3 +303,60 @@ struct WinPortMainBackendArg
 	bool norgb;
 };
 
+//////////////////////////////////////////////////////////////////////////////////
+
+class IPrinterSupport {
+public:
+	virtual void PrintText(const wchar_t* jobName, const wchar_t* text) = 0;
+	virtual void PrintReducedHTML(const wchar_t* jobName, const wchar_t* text) = 0;
+	virtual void PrintTextFile(const wchar_t* fileName) = 0;
+	virtual void PrintHtmlFile(const wchar_t* fileName) = 0;
+
+	virtual void ShowPreviewForText(const wchar_t*  jobName, const wchar_t* text) = 0;
+	virtual void ShowPreviewForReducedHTML(const wchar_t* jobName, const wchar_t* text) = 0;
+	virtual void ShowPreviewForTextFile(const wchar_t* fileName) = 0;
+	virtual void ShowPreviewForHtmlFile(const wchar_t* fileName) = 0;
+
+	virtual void ShowPrinterSetupDialog() = 0;
+
+	virtual bool IsPrintPreviewSupported(){ return false; }
+	virtual bool IsReducedHTMLSupported(){ return false; }
+	virtual bool IsPrinterSetupDialogSupported(){ return false; }
+
+	virtual ~IPrinterSupport() {};
+};
+
+IPrinterSupport *WinPortPrinterSupport_SetBackend(IPrinterSupport *printer_backend);
+
+class PrinterSupportBackendSetter
+{
+	IPrinterSupport *_prev_cb = nullptr;
+	bool _is_set = false;
+
+public:
+	inline bool IsSet() const { return _is_set; }
+
+	template <class BACKEND_T, typename... ArgsT>
+		inline void Set(ArgsT... args)
+	{
+		IPrinterSupport *cb = new BACKEND_T(args...);
+		IPrinterSupport *prev_cb = WinPortPrinterSupport_SetBackend(cb);
+		if (!_is_set) {
+			_prev_cb = prev_cb;
+			_is_set = true;
+
+		} else {
+			delete prev_cb;
+		}
+	}
+
+	inline ~PrinterSupportBackendSetter()
+	{
+		if (_is_set) {
+			IPrinterSupport *cb = WinPortPrinterSupport_SetBackend(_prev_cb);
+			if (cb != _prev_cb) {
+				delete cb;
+			}
+		}
+	}
+};

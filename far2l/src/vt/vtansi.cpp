@@ -168,8 +168,10 @@ jadoxa@yahoo.com.au
 
 #include <mutex>
 #include <atomic>
+#include <optional>
 #include <map>
 #include "vtansi.h"
+#include "vtansi_kitty.h"
 #include "AnsiEsc.hpp"
 #include "UtfConvert.hpp"
 
@@ -182,14 +184,14 @@ jadoxa@yahoo.com.au
 
 #include "vtlog.h"
 
-enum AnsiMouseExpectation
+enum AnsiMouseModes
 {
-	AMEX_X10_MOUSE             = 9,
-	AMEX_VT200_MOUSE           = 1000,
-	AMEX_VT200_HIGHLIGHT_MOUSE = 1001,
-	AMEX_BTN_EVENT_MOUSE       = 1002,
-	AMEX_ANY_EVENT_MOUSE       = 1003,
-	AMEX_SGR_EXT_MOUSE         = 1006
+	SET_X10_MOUSE              = 9,
+	SET_VT200_MOUSE            = 1000,
+	SET_VT200_HIGHLIGHT_MOUSE  = 1001,
+	SET_BTN_EVENT_MOUSE        = 1002,
+	SET_ANY_EVENT_MOUSE        = 1003,
+	SET_SGR_EXT_MODE_MOUSE     = 1006
 };
 
 struct VTAnsiState
@@ -197,16 +199,15 @@ struct VTAnsiState
 	CONSOLE_SCREEN_BUFFER_INFO csbi;
 	CONSOLE_CURSOR_INFO cci;
 	DWORD mode;
-	WORD attr;
 	SHORT scroll_top;
 	SHORT scroll_bottom;
 
-	VTAnsiState() : mode(0), attr(0), scroll_top(0), scroll_bottom(0)
+	VTAnsiState() : mode(0), scroll_top(0), scroll_bottom(0)
 	{
 		memset(&csbi, 0, sizeof(csbi));
 		memset(&cci, 0, sizeof(cci));
 	}
-	
+
 	void InitFromConsole(HANDLE con)
 	{
 		WINPORT(GetConsoleScreenBufferInfo)( con, &csbi );
@@ -300,6 +301,10 @@ struct VTAnsiContext
 	std::string cur_title;
 	std::atomic<bool> output_disabled{false};
 	std::map<DWORD, std::pair<DWORD, DWORD> > orig_palette;
+	std::optional<VTAnsiKitty> vta_kitty;
+	std::mutex vta_kitty_mtx;
+	std::vector<DWORD> kitty_flag_stack;
+
 
 	int   state;					// automata state
 	char  prefix;				// escape sequence prefix ( '[', ']' or '(' );
@@ -404,7 +409,7 @@ struct VTAnsiContext
 				} while (++b, --chars_in_buffer);
 			} else {
 				fprintf(stderr, "TODODODODO\n");
-				
+
 
 				// To detect wrapping of multiple characters, create a new buffer, write
 				// to the top of it and see if the cursor changes line. This doesn't
@@ -529,100 +534,30 @@ struct VTAnsiContext
 
 	class AlternativeScreenBuffer
 	{
-		VTAnsiContext &_ctx;
-		bool _enabled = false;
-		struct SavedScreenBuffer : std::vector<CHAR_INFO>
-		{
-			CONSOLE_SCREEN_BUFFER_INFO info;
-			bool valid = false;
-		} _other;
+		HANDLE _preserved_con_hnd{NULL};
 
-		public:
-		AlternativeScreenBuffer(VTAnsiContext &ctx) : _ctx(ctx)
+	public:
+		~AlternativeScreenBuffer()
 		{
+			if (_preserved_con_hnd) {
+				WINPORT(DiscardConsole)(_preserved_con_hnd);
+			}
 		}
-
-		void Toggle(HANDLE con_hnd, bool enable)
+		void Toggle(HANDLE con_hnd, bool activate)
 		{
-			if (_enabled == enable)
-				return;
-
-			SavedScreenBuffer tmp;
-//			HANDLE con_hnd = vt_shell->ConsoleHandle();
-			if (!WINPORT(GetConsoleScreenBufferInfo)(con_hnd, &tmp.info)) {
-				fprintf(stderr, "AlternativeScreenBuffer: csbi failed\n");
-				return;
-			}
-			if (tmp.info.dwSize.Y > 0 && tmp.info.dwSize.X > 0) {
-				tmp.resize((size_t)tmp.info.dwSize.Y * (size_t)tmp.info.dwSize.X);
-				COORD origin = {0, 0};
-				WINPORT(ReadConsoleOutput)(con_hnd, &tmp[0], tmp.info.dwSize, origin, &tmp.info.srWindow);
-			}
-			tmp.valid = true;
-
-			if (_other.valid) {
-	//			WINPORT(SetConsoleWindowInfo)(con_hnd, TRUE, &_other.info.srWindow);
-				COORD origin = {0, 0}, curpos = _other.info.dwCursorPosition;
-				SMALL_RECT outrect = _other.info.srWindow;
-				if (tmp.info.dwSize.Y < _other.info.dwSize.Y)
-					origin.Y = _other.info.dwSize.Y - tmp.info.dwSize.Y;
-				if (curpos.X >= tmp.info.dwSize.X)
-					curpos.X = (tmp.info.dwSize.X > 0) ? tmp.info.dwSize.X - 1 : 0;
-				if (curpos.X >= tmp.info.dwSize.X)
-					curpos.Y = (tmp.info.dwSize.Y > 0) ? tmp.info.dwSize.Y - 1 : 0;
-
-				WINPORT(WriteConsoleOutput)(con_hnd, &_other[0], _other.info.dwSize, origin, &outrect);
-
-				// if new screen bigger than saved - fill oversize with emptiness
-				if (tmp.info.dwSize.Y > _other.info.dwSize.Y) {
-					COORD pos = {0, 0};
-					for (pos.Y = _other.info.dwSize.Y + 1; pos.Y <= tmp.info.dwSize.Y; ++pos.Y) {
-						DWORD written = 0;
-						WINPORT(FillConsoleOutputCharacter)(con_hnd, ' ', tmp.info.dwSize.X, pos, &written);
-					}
+			if (activate) {
+				if (!_preserved_con_hnd) {
+					_preserved_con_hnd = WINPORT(ForkConsole)(con_hnd);
+				} else {
+					fprintf(stderr, "AlternativeScreenBuffer: already active\n");
 				}
-
-				if (tmp.info.dwSize.X > _other.info.dwSize.X) {
-					COORD pos = { SHORT(tmp.info.srWindow.Left + _other.info.dwSize.X + 1), 0};
-					for (pos.Y = 0; pos.Y <= tmp.info.dwSize.Y; ++pos.Y) {
-						DWORD written = 0;
-						WINPORT(FillConsoleOutputCharacter)(con_hnd, ' ', tmp.info.dwSize.X - _other.info.dwSize.X, pos, &written);
-					}
-				}
-
-				WINPORT(SetConsoleCursorPosition)(con_hnd, curpos);
-				WINPORT(SetConsoleTextAttribute)(con_hnd, _other.info.wAttributes);
-				_ctx.ansi_state.font_state.FromConsoleAttributes(_other.info.wAttributes);
-	//			fprintf(stderr, "AlternativeScreenBuffer: %d {%d, %d}\n", enable, _other.info.dwCursorPosition.X, _other.info.dwCursorPosition.Y);
+			} else if (_preserved_con_hnd) {
+				WINPORT(JoinConsole)(con_hnd, _preserved_con_hnd);
+				_preserved_con_hnd = NULL;
 			} else {
-				COORD zero_pos = {};
-				DWORD written = 0;
-				WINPORT(FillConsoleOutputCharacter)(con_hnd, ' ',
-					(DWORD)tmp.info.dwSize.Y * (DWORD)tmp.info.dwSize.X, zero_pos, &written);
-				WINPORT(FillConsoleOutputAttribute)(con_hnd, _ctx.saved_state.csbi.wAttributes,
-					(DWORD)tmp.info.dwSize.Y * (DWORD)tmp.info.dwSize.X, zero_pos, &written);
-				WINPORT(SetConsoleCursorPosition)(con_hnd, zero_pos);
-				WINPORT(SetConsoleTextAttribute)(con_hnd, _ctx.saved_state.csbi.wAttributes);
-				_ctx.ansi_state.font_state.FromConsoleAttributes(_ctx.saved_state.csbi.wAttributes);
-	//			fprintf(stderr, "AlternativeScreenBuffer: %d XXX %x\n", enable, saved_state.DefaultAttributes());
+				fprintf(stderr, "AlternativeScreenBuffer: not active\n");
 			}
-
-			std::swap(tmp, _other);
-
-			if (enable) {
-				VTLog::Pause();
-			} else {
-				VTLog::Resume();
-			}
-			_enabled = enable;
 		}
-
-		void Reset(HANDLE con_hnd)
-		{
-			Toggle(con_hnd, false);
-			_other.valid = false;
-		}
-
 	} alternative_screen_buffer;
 
 	void LimitByScrollRegion(SMALL_RECT &rect)
@@ -662,7 +597,7 @@ struct VTAnsiContext
 
 		DWORD fg = (DWORD)-1, bk = (DWORD)-1;
 		if (cmd == 4) {
-			if (pos + 2 == args_size && args[pos] == ';' && args[pos + 1] == '?') {
+			if (pos + 2 == args_size && (args[pos] == ';' || args[pos] == ':') && args[pos + 1] == '?') {
 				// not a set color but request current color
 				fg = bk = (DWORD)-2;
 				WINPORT(OverrideConsoleColor)(vt_shell->ConsoleHandle(),
@@ -677,7 +612,7 @@ struct VTAnsiContext
 //				abort();
 				return;
 			}
-			if (pos + 2 >= args_size || args[pos] != ';' || args[pos + 1] != '#') {
+			if (pos + 2 >= args_size || (args[pos] != ';' && args[pos] != ':') || args[pos + 1] != '#') {
 				fprintf(stderr, "%s(%d): bad args='%s'\n", __FUNCTION__, cmd, args);
 				return;
 			}
@@ -688,7 +623,7 @@ struct VTAnsiContext
 				return;
 			}
 			fg = bk = BGR2RGB(fg);
-			if (pos + 2 < args_size && args[pos] == ';' && args[pos + 1] == '#') {
+			if (pos + 2 < args_size && (args[pos] == ';' || args[pos] == ':') && args[pos + 1] == '#') {
 				pos+= 2;
 				saved_pos = pos;
 				bk = HexToULong(args, args_size, &pos);
@@ -701,11 +636,21 @@ struct VTAnsiContext
 		orig_palette.emplace(index, std::make_pair(fg, bk));
 	}
 
-#define FillBlank( len, Pos )  { \
-	DWORD NumberOfCharsWritten; \
-	WINPORT(FillConsoleOutputCharacter)( con_hnd, blank_character, len, Pos, &NumberOfCharsWritten );\
-	WINPORT(FillConsoleOutputAttribute)( con_hnd, Info.wAttributes, len, Pos, &NumberOfCharsWritten );\
-}
+	static void FillBlankLine(HANDLE con_hnd, COORD pos, DWORD len, WCHAR blank_character, DWORD64 attrs)
+	{
+		DWORD dw;
+		WINPORT(FillConsoleOutputCharacter)( con_hnd, blank_character, len, pos, &dw);
+		if (len > 0) {
+			if (blank_character && blank_character != ' ') {
+				auto last_pos = pos;
+				last_pos.X+= len - 1;
+				WINPORT(FillConsoleOutputAttribute)( con_hnd, attrs, len - 1, pos, &dw);
+				WINPORT(FillConsoleOutputAttribute)( con_hnd, attrs | EXPLICIT_LINE_BREAK, 1, last_pos, &dw);
+			} else {
+				WINPORT(FillConsoleOutputAttribute)( con_hnd, attrs, len, pos, &dw);
+			}
+		}
+	}
 
 	void ClearScreenAndHomeCursor(CONSOLE_SCREEN_BUFFER_INFO &Info)
 	{
@@ -738,7 +683,7 @@ struct VTAnsiContext
 		Pos.X = 0;
 		Pos.Y = Info.srWindow.Top;
 		DWORD len   = (Info.srWindow.Bottom - Info.srWindow.Top + 1) * Info.dwSize.X;
-		FillBlank( len, Pos );
+		FillBlankLine(con_hnd, Pos, len, blank_character, Info.wAttributes);
 		// Not technically correct, but perhaps expected.
 		WINPORT(SetConsoleCursorPosition)( con_hnd, Pos );
 	}
@@ -779,27 +724,31 @@ struct VTAnsiContext
 			if (prefix2 == '?' && (suffix == 'h' || suffix == 'l')) {
 				for (i = 0; i < es_argc; ++i) {
 					switch (es_argv[i]) {
-					case AMEX_X10_MOUSE:
-						vt_shell->OnMouseExpectation(MEX_X10_MOUSE, suffix == 'h');
+					case SET_X10_MOUSE:
+						vt_shell->OnMouseExpectation(MODE_X10_MOUSE, suffix == 'h');
 						break;
-					case AMEX_VT200_MOUSE:
-					case AMEX_VT200_HIGHLIGHT_MOUSE:
-						vt_shell->OnMouseExpectation(MEX_VT200_MOUSE, suffix == 'h');
+					case SET_VT200_MOUSE:
+					case SET_VT200_HIGHLIGHT_MOUSE:
+						vt_shell->OnMouseExpectation(MODE_VT200_MOUSE, suffix == 'h');
 						break;
-					case AMEX_BTN_EVENT_MOUSE:
-						vt_shell->OnMouseExpectation(MEX_BTN_EVENT_MOUSE, suffix == 'h');
+					case SET_BTN_EVENT_MOUSE:
+						vt_shell->OnMouseExpectation(MODE_BTN_EVENT_MOUSE, suffix == 'h');
 						break;
-					case AMEX_ANY_EVENT_MOUSE:
-						vt_shell->OnMouseExpectation(MEX_ANY_EVENT_MOUSE, suffix == 'h');
+					case SET_ANY_EVENT_MOUSE:
+						vt_shell->OnMouseExpectation(MODE_ANY_EVENT_MOUSE, suffix == 'h');
 						break;
-					case AMEX_SGR_EXT_MOUSE:
-						vt_shell->OnMouseExpectation(MEX_SGR_EXT_MOUSE, suffix == 'h');
+					case SET_SGR_EXT_MODE_MOUSE:
+						vt_shell->OnMouseExpectation(MODE_SGR_EXT_MOUSE, suffix == 'h');
 						break;
 
 	//				case 47: case 1047:
 	//					alternative_screen_buffer.Toggle(suffix == 'h');
+	//					vt_shell->OnScreenModeChanged(suffix == 'h');
 	//					break;
 
+					case 1004:
+						vt_shell->OnFocusChangeExpectation(suffix == 'h');
+						break;
 					case 2004:
 						vt_shell->OnBracketedPasteExpectation(suffix == 'h');
 						break;
@@ -810,6 +759,7 @@ struct VTAnsiContext
 
 					case 1049:
 						alternative_screen_buffer.Toggle(con_hnd, suffix == 'h');
+						vt_shell->OnScreenModeChanged(suffix == 'h');
 						break;
 
 					case 25:
@@ -820,8 +770,9 @@ struct VTAnsiContext
 
 					case 7:
 						mode = ENABLE_PROCESSED_OUTPUT | ENABLE_WINDOW_INPUT | ENABLE_EXTENDED_FLAGS | ENABLE_MOUSE_INPUT;
-						if (suffix == 'h')
+						if (suffix == 'h') {
 							mode |= ENABLE_WRAP_AT_EOL_OUTPUT;
+						}
 						WINPORT(SetConsoleMode)( con_hnd, mode );
 						break;
 
@@ -839,18 +790,33 @@ struct VTAnsiContext
 
 			if (suffix == 'u') {
 				if (prefix2 == '=') {
-					// assuming mode always 1; we do not support other modes currently
-					vt_shell->SetKittyFlags(es_argc > 0 ? es_argv[0] : 0);
+					DWORD flags = (es_argc > 0) ? es_argv[0] : 0;
+					DWORD mode = (es_argc > 1) ? es_argv[1] : 1;
+					DWORD current = vt_shell->GetKittyFlags();
+					if (mode == 1) vt_shell->SetKittyFlags(flags);
+					else if (mode == 2) vt_shell->SetKittyFlags(current | flags);
+					else if (mode == 3) vt_shell->SetKittyFlags(current & ~flags);
 					return;
 
 				} else if (prefix2 == '>') {
-					// assuming mode always 1; we do not support other modes currently
-					vt_shell->SetKittyFlags(es_argc > 0 ? es_argv[0] : 0);
+					// push
+					if (kitty_flag_stack.size() >= 32) // limit stack size
+						kitty_flag_stack.erase(kitty_flag_stack.begin());
+					kitty_flag_stack.push_back(vt_shell->GetKittyFlags());
+					vt_shell->SetKittyFlags((es_argc > 0) ? es_argv[0] : 0);
 					return;
 
 				} else if (prefix2 == '<') {
-					// we do not support mode stack currently, just reset flags
-					vt_shell->SetKittyFlags(0);
+					// pop
+					int count = (es_argc > 0) ? es_argv[0] : 1;
+					while (count-- > 0) {
+						if (kitty_flag_stack.empty()) {
+							vt_shell->SetKittyFlags(0);
+							return;
+						}
+						vt_shell->SetKittyFlags(kitty_flag_stack.back());
+						kitty_flag_stack.pop_back();
+					}
 					return;
 
 				} else if (prefix2 == '?') {
@@ -865,7 +831,7 @@ struct VTAnsiContext
 			// Ignore any other private sequences.
 			if (prefix2 != 0) {
 				LogFailedEscSeq(StrPrintf("bad prefix2 %c", prefix2));
-				return;			
+				return;
 			}
 
 			WINPORT(GetConsoleScreenBufferInfo)( con_hnd, &Info );
@@ -883,14 +849,14 @@ struct VTAnsiContext
 				switch (es_argv[0]) {
 				case 0:		// ESC[0J erase from cursor to end of display
 					len = (Info.srWindow.Bottom - Info.dwCursorPosition.Y) * Info.dwSize.X + Info.dwSize.X - Info.dwCursorPosition.X;
-					FillBlank( len, Info.dwCursorPosition );
+					FillBlankLine(con_hnd, Info.dwCursorPosition, len, blank_character, Info.wAttributes);
 					return;
 
 				case 1:		// ESC[1J erase from start to cursor.
 					Pos.X = 0;
 					Pos.Y = Info.srWindow.Top;
 					len   = (Info.dwCursorPosition.Y - Info.srWindow.Top) * Info.dwSize.X + Info.dwCursorPosition.X + 1;
-					FillBlank( len, Pos );
+					FillBlankLine(con_hnd, Pos, len, blank_character, Info.wAttributes);
 					return;
 
 				case 2:		// ESC[2J Clear screen and home cursor
@@ -907,19 +873,19 @@ struct VTAnsiContext
 				switch (es_argv[0]) {
 				case 0:		// ESC[0K Clear to end of line
 					len = Info.dwSize.X - Info.dwCursorPosition.X;
-					FillBlank( len, Info.dwCursorPosition );
+					FillBlankLine(con_hnd, Info.dwCursorPosition, len, blank_character, Info.wAttributes);
 					return;
 
 				case 1:		// ESC[1K Clear from start of line to cursor
 					Pos.X = 0;
 					Pos.Y = Info.dwCursorPosition.Y;
-					FillBlank( Info.dwCursorPosition.X + 1, Pos );
+					FillBlankLine(con_hnd, Pos, Info.dwCursorPosition.X + 1, blank_character, Info.wAttributes);
 					return;
 
 				case 2:		// ESC[2K Clear whole line.
 					Pos.X = 0;
 					Pos.Y = Info.dwCursorPosition.Y;
-					FillBlank( Info.dwSize.X, Pos );
+					FillBlankLine(con_hnd, Pos, Info.dwSize.X, blank_character, Info.wAttributes);
 					return;
 
 				default:
@@ -929,7 +895,7 @@ struct VTAnsiContext
 			case 'X':                 // ESC[#X Erase # characters.
 				if (es_argc == 0) es_argv[es_argc++] = 1; // ESC[X == ESC[1X
 				if (es_argc != 1) return;
-				FillBlank( es_argv[0], Info.dwCursorPosition );
+				FillBlankLine(con_hnd, Info.dwCursorPosition, es_argv[0], blank_character, Info.wAttributes);
 				return;
 
 			case 'L':                 // ESC[#L Insert # blank lines.
@@ -969,7 +935,7 @@ struct VTAnsiContext
 					WINPORT(ScrollConsoleScreenBuffer)( con_hnd, &Rect, &Info.srWindow, Pos, &CharInfo );
 				}
 				return;
-				
+
 			case 'T':                 // ESC[#T Scroll down
 				if (es_argc == 0) es_argv[es_argc++] = 1; // ESC[T == ESC[1T
 				if (es_argc != 1) return;
@@ -980,7 +946,7 @@ struct VTAnsiContext
 					Rect.Right  = Info.srWindow.Right = (Info.dwSize.X - 1);
 					Rect.Top    = Info.srWindow.Top;
 					Rect.Bottom = Info.srWindow.Bottom - es_argv[0];
-					
+
 					Pos.X = 0;
 					Pos.Y = Rect.Top + es_argv[0];
 
@@ -988,8 +954,8 @@ struct VTAnsiContext
 					WINPORT(ScrollConsoleScreenBuffer)( con_hnd, &Rect, &Info.srWindow, Pos, &CharInfo );
 				}
 				return;
-				
-				
+
+
 			case 'M':                 // ESC[#M Delete # lines.
 				if (es_argc == 0) es_argv[es_argc++] = 1; // ESC[M == ESC[1M
 				if (es_argc != 1) return;
@@ -1192,25 +1158,39 @@ struct VTAnsiContext
 					return;
 				}
 
-			case 't':                 // ESC[#t Window manipulation
-				if (es_argc != 1) return;
-				if (es_argv[0] == 21) {	// ESC[21t Report xterm window's title
-					std::string seq;
-					{
-						std::lock_guard<std::mutex> lock(title_mutex);
-						seq.reserve(cur_title.size() + 8);
-						// Too bad if it's too big or fails.
-						seq+= ESC;
-						seq+= ']';
-						seq+= 'l';
-						seq+= cur_title;
-						seq+= ESC;
-						seq+= '\\';
+			case 't': {                 // ESC[#t Window manipulation
+				std::string reply;
+				if (es_argc == 1 && es_argv[0] == 18) { // Report text area cells size: ESC [ 8 ; height ; width t
+					reply = StrPrintf("\e[8;%d;%dt", Info.dwSize.Y, Info.dwSize.X);
+				} else if (es_argc == 1 && (es_argv[0] == 14 || es_argv[0] == 16) ) {
+					WinportGraphicsInfo wgi{};
+					if (!WINPORT(GetConsoleImageCaps)(NULL, sizeof(wgi), &wgi)) {
+						wgi.PixPerCell.Y = wgi.PixPerCell.X = 0;
 					}
-					SendSequence( seq.c_str() );
+					int x = wgi.PixPerCell.X > 0 ? wgi.PixPerCell.X : 8;
+					int y = wgi.PixPerCell.Y > 0 ? wgi.PixPerCell.Y : 16;
+					if (es_argv[0] == 14) { // Report text area pixel size: ESC [ 4 ; height ; width t
+						reply = StrPrintf("\e[4;%d;%dt", y * Info.dwSize.Y, x * Info.dwSize.X);
+					} else if (es_argv[0] == 16) { // Report text cell pixel size: ESC [ 6 ; height ; width t
+						reply = StrPrintf("\e[6;%d;%dt", y, x);
+					}
+
+				} else if (es_argc == 1 && es_argv[0] == 21) {	// ESC[21t Report xterm window's title
+					std::lock_guard<std::mutex> lock(title_mutex);
+					reply.reserve(cur_title.size() + 8);
+					// Too bad if it's too big or fails.
+					reply+= ESC;
+					reply+= ']';
+					reply+= 'l';
+					reply+= cur_title;
+					reply+= ESC;
+					reply+= '\\';
+				}
+				if (!reply.empty()) {
+					SendSequence( reply.c_str() );
 				}
 				return;
-
+			}
 			case 'h':                 // ESC[#h Set Mode
 				if (es_argc == 1 && es_argv[0] == 3)
 					ansi_state.crm = TRUE;
@@ -1222,14 +1202,14 @@ struct VTAnsiContext
 			case 'r':
 				if (es_argc < 2) {
 					es_argv[1] = MAXSHORT;
-					if (es_argc < 1) 
+					if (es_argc < 1)
 						es_argv[0] = 1;
 				}
-				fprintf(stderr, "VTAnsi: SET SCROLL REGION: %d %d (limits %d %d)\n", 
+				fprintf(stderr, "VTAnsi: SET SCROLL REGION: %d %d (limits %d %d)\n",
 					es_argv[0] - 1, es_argv[1] - 1, Info.srWindow.Top, Info.srWindow.Bottom);
 				WINPORT(SetConsoleScrollRegion)(con_hnd, es_argv[0] - 1, es_argv[1] - 1);
 				return;
-			
+
 			case 'c': // CSI P s c Send Device Attributes (Primary DA)
 				if (prefix2 == 0 && (es_argc < 1 || es_argv[0] == 0)) {
 					SendSequence("\e[?1;2c"); // → CSI ? 1 ; 2 c (‘‘VT100 with Advanced Video Option’’)
@@ -1261,6 +1241,7 @@ struct VTAnsiContext
 				ParseOSCPalette(es_argv[0], os_cmd_arg.c_str(), os_cmd_arg.size());
 
 			} else {
+				_crds.reset(); // prevent clipboard dialog miss repaints
 				vt_shell->OnOSCommand(es_argv[0], os_cmd_arg);
 			}
 		}
@@ -1268,11 +1249,11 @@ struct VTAnsiContext
 
 	struct AttrStackEntry
 	{
-		AttrStackEntry(TCHAR blank_character_, WORD attributes_ )
+		AttrStackEntry(TCHAR blank_character_, DWORD64 attributes_ )
 			: blank_character(blank_character_), attributes(attributes_) {}
 
 		TCHAR blank_character;
-		WORD attributes;
+		DWORD64 attributes;
 	};
 
 	struct AttrStack : std::vector<AttrStackEntry > {} _attr_stack;
@@ -1287,7 +1268,17 @@ struct VTAnsiContext
 	{
 		FlushBuffer();
 		if (prefix == '_') {//Application Program Command
-			if (StrStartsWith(os_cmd_arg, "set-blank="))  {
+			if (StrStartsWith(os_cmd_arg, "G"))  {
+				if (os_cmd_arg.size() > 1) {
+					_crds.reset(); // prevent miss repaints
+					std::lock_guard<std::mutex> lock(vta_kitty_mtx);
+					if (!vta_kitty) {
+						vta_kitty.emplace(vt_shell);
+					}
+					vta_kitty->InterpretControlString(os_cmd_arg.c_str() + 1, os_cmd_arg.size() - 1);
+				}
+
+			} else if (StrStartsWith(os_cmd_arg, "set-blank="))  {
 				blank_character = (os_cmd_arg.size() > 10) ? os_cmd_arg[10] : L' ';
 
 			} else if (os_cmd_arg == "push-attr")  {
@@ -1309,6 +1300,7 @@ struct VTAnsiContext
 				}
 
 			} else {
+				_crds.reset(); // prevent clipboard dialog miss repaints
 				vt_shell->OnApplicationProtocolCommand(os_cmd_arg.c_str());
 			}
 		}
@@ -1330,32 +1322,32 @@ struct VTAnsiContext
 	void ForwardIndex()
 	{
 		fprintf(stderr, "ANSI: ForwardIndex\n");
-		FlushBuffer();	
+		FlushBuffer();
 	}
 
 	void ReverseIndex()
 	{
 		fprintf(stderr, "ANSI: ReverseIndex\n");
 		FlushBuffer();
-		HANDLE con_hnd = vt_shell->ConsoleHandle();		
+		HANDLE con_hnd = vt_shell->ConsoleHandle();
 		CONSOLE_SCREEN_BUFFER_INFO info;
 		WINPORT(GetConsoleScreenBufferInfo)( con_hnd, &info );
 		SHORT scroll_top = 0, scroll_bottom = 0x7fff;
 		WINPORT(GetConsoleScrollRegion)(con_hnd, &scroll_top, &scroll_bottom);
-		
+
 		if (scroll_top < info.srWindow.Top) scroll_top = info.srWindow.Top;
 		if (scroll_bottom < info.srWindow.Top) scroll_bottom = info.srWindow.Top;
-		
+
 		if (scroll_top > info.srWindow.Bottom) scroll_top = info.srWindow.Bottom;
-		
+
 		if (scroll_bottom > info.srWindow.Bottom) scroll_bottom = info.srWindow.Bottom;
-			
-		if (info.dwCursorPosition.Y != scroll_top) { 
+
+		if (info.dwCursorPosition.Y != scroll_top) {
 			info.dwCursorPosition.Y--;
 			WINPORT(SetConsoleCursorPosition)(con_hnd, info.dwCursorPosition);
 			return;
 		}
-		
+
 		if (scroll_top>=scroll_bottom)
 			return;
 
@@ -1369,6 +1361,10 @@ struct VTAnsiContext
 	void ResetTerminal()
 	{
 		fprintf(stderr, "ANSI: ResetTerminal\n");
+		{ // remove all images after command completion
+			std::lock_guard<std::mutex> lock(vta_kitty_mtx);
+			vta_kitty.reset();
+		}
 		WINPORT(SetConsoleScrollRegion)(vt_shell->ConsoleHandle(), 0, MAXSHORT);
 
 		chars_in_buffer = 0;
@@ -1413,12 +1409,16 @@ struct VTAnsiContext
 // the last arguments are processed (no es_argv[] overflow).
 //-----------------------------------------------------------------------------
 
+	std::optional<ConsoleRepaintsDeferScope> _crds;
+
 	void ParseAndPrintString(
 		LPCVOID lpBuffer,
 		DWORD nNumberOfBytesToWrite)
 	{
 		DWORD   i;
 		LPCWSTR s;
+
+		_crds.emplace(vt_shell->ConsoleHandle());
 
 		for (i = nNumberOfBytesToWrite, s = (LPCWSTR)lpBuffer; i > 0; i--, s++) {
 			if (state == 1) {
@@ -1477,13 +1477,12 @@ struct VTAnsiContext
 					es_argc = 0;
 					es_argv[0] = *s - '0';
 					state = 4;
-				} else if (*s == ';') {
+				} else if (*s == ';' || *s == ':') {
 					es_argc = 1;
 					es_argv[0] = 0;
 					es_argv[1] = 0;
 					state = 4;
-				} else if (*s == ':') {
-					// ignore it
+//				} else if (*s == ':') { // ignore it
 				} else if (*s >= '\x3b' && *s <= '\x3f') {
 					prefix2 = *s;
 				} else if (*s >= '\x20' && *s <= '\x2f') {
@@ -1499,7 +1498,7 @@ struct VTAnsiContext
 			} else if (state == 4) {
 				if (is_digit( *s )) {
 					es_argv[es_argc] = 10 * es_argv[es_argc] + (*s - '0');
-				} else if (*s == ';') {
+				} else if (*s == ';' || *s == ':') {
 					if (es_argc < MAX_ARG-1) es_argc++;
 					es_argv[es_argc] = 0;
 					if (prefix == ']')
@@ -1537,8 +1536,8 @@ struct VTAnsiContext
 				}
 
 				if (done) {
-					if (state == 6) 
-						InterpretControlString();					
+					if (state == 6)
+						InterpretControlString();
 					else
 						InterpretEscSeq();
 					state = 1;
@@ -1578,13 +1577,27 @@ struct VTAnsiContext
 			}
 		}
 		FlushBuffer();
+		_crds.reset();
 		ASSERT(i == 0);
 	}
 
-	VTAnsiContext()
-		: alternative_screen_buffer(*this)
+	void HideImages()
 	{
-	}	
+		std::lock_guard<std::mutex> lock(vta_kitty_mtx);
+		if (vta_kitty)
+			vta_kitty->HideImages();
+	}
+
+	void ShowImages()
+	{
+		std::lock_guard<std::mutex> lock(vta_kitty_mtx);
+		if (vta_kitty)
+			vta_kitty->ShowImages();
+	}
+
+	VTAnsiContext()
+	{
+	}
 };
 
 
@@ -1595,15 +1608,12 @@ VTAnsi::VTAnsi(IVTShell *vtsh)
 	_ctx->ResetTerminal();
 	_ctx->saved_state.InitFromConsole(_ctx->vt_shell->ConsoleHandle());
 	_ctx->ansi_state.font_state.FromConsoleAttributes(_ctx->saved_state.csbi.wAttributes);
-	
-	VTLog::Start();
-	
+
 //	get_state();
 }
 
 VTAnsi::~VTAnsi()
 {
-	VTLog::Stop();
 	HANDLE con_hnd = _ctx->vt_shell->ConsoleHandle();
 	_ctx->saved_state.ApplyToConsole(con_hnd);
 	WINPORT(FlushConsoleInputBuffer)(con_hnd);
@@ -1630,6 +1640,7 @@ struct VTAnsiState *VTAnsi::Suspend()
 		HANDLE con_hnd = _ctx->vt_shell->ConsoleHandle();
 		out->InitFromConsole(con_hnd);
 		_ctx->saved_state.ApplyToConsole(con_hnd);
+		_ctx->HideImages();
 	} else
 		perror("VTAnsi::Suspend");
 
@@ -1639,6 +1650,7 @@ struct VTAnsiState *VTAnsi::Suspend()
 void VTAnsi::Resume(struct VTAnsiState* state)
 {
 	state->ApplyToConsole(_ctx->vt_shell->ConsoleHandle());
+	_ctx->ShowImages();
 	delete state;
 }
 
@@ -1657,7 +1669,8 @@ void VTAnsi::OnStop()
 	RevertConsoleState(con_hnd);
 	_incomplete.tail.clear();
 	_ctx->orig_palette.clear();
-	_ctx->alternative_screen_buffer.Reset(con_hnd);
+	_ctx->alternative_screen_buffer.Toggle(con_hnd, false);
+	_ctx->vt_shell->OnScreenModeChanged(false);
 	//_ctx->saved_state.ApplyToConsole(con_hnd, false);
 	_ctx->ResetTerminal();
 	_ctx->ansi_state.font_state.FromConsoleAttributes(_ctx->saved_state.csbi.wAttributes);
@@ -1665,6 +1678,7 @@ void VTAnsi::OnStop()
 
 void VTAnsi::OnDetached()
 {
+	_ctx->HideImages();
 	WINPORT(GetConsoleScrollRegion)(NULL, &_detached_state.scrl_top, &_detached_state.scrl_bottom);
 	RevertConsoleState(NULL);
 }
@@ -1677,6 +1691,13 @@ void VTAnsi::OnReattached()
 	}
 	WINPORT(SetConsoleScrollRegion)(con_hnd, _detached_state.scrl_top, _detached_state.scrl_bottom);
 	_ctx->ApplyConsoleTitle(con_hnd);
+	_ctx->ShowImages();
+}
+
+bool VTAnsi::HasImages()
+{
+	std::lock_guard<std::mutex> lock(_ctx->vta_kitty_mtx);
+	return (_ctx->vta_kitty && _ctx->vta_kitty->HasImages());
 }
 
 
@@ -1720,7 +1741,6 @@ void VTAnsi::Write(const char *str, size_t len)
 		--len;
 	}
 
-	ConsoleRepaintsDeferScope crds(_ctx->vt_shell->ConsoleHandle());
 	_ctx->ParseAndPrintString(_ws.c_str(), _ws.size());
 }
 

@@ -65,14 +65,179 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "vmenu.hpp"
 #include "CachedCreds.hpp"
 #include "exitcode.hpp"
+#include "GitTools.hpp"
 #include "vtlog.h"
 #include "vtshell.h"
 #include "vtcompletor.h"
+#include "Environment.h"
+#include "WideMB.h"
+#include "clipboard.hpp"
+#include "dialog.hpp"
 #include <limits>
 
-#include "clipboard.hpp"
-#include "farversion.h"
-#include <sys/utsname.h>
+namespace
+{
+void NormalizeMultilineForExec(FARString &text)
+{
+	const wchar_t *src = text.CPtr();
+	size_t len = text.GetLength();
+	FARString out;
+	out.Reserve(len);
+
+	for (size_t i = 0; i < len; ++i) {
+		if (src[i] == L'\r') {
+			if (i + 1 < len && src[i + 1] == L'\n')
+				continue;
+			out.Append(L'\n');
+		} else {
+			out.Append(src[i]);
+		}
+	}
+
+	text = out;
+}
+
+namespace {
+enum
+{
+	MP_BOX,
+	MP_MEMO,
+	MP_SEPARATOR,
+	MP_BTN_CANCEL,
+	MP_BTN_EXEC,
+	MP_BTN_EXEC_NOASK
+};
+
+struct CmdlinePasteDlgLayout
+{
+	int min_width;
+	int min_height;
+};
+
+static void CalcCmdlinePasteDialogLayout(const CmdlinePasteDlgLayout &layout, int &dlg_w, int &dlg_h, int &dlg_x,
+		int &dlg_y)
+{
+	dlg_w = Max(layout.min_width, Min(ScrX - 2, Max(76, (ScrX * 3) / 4)));
+	dlg_h = Max(layout.min_height, Min(ScrY - 2, Max(20, (ScrY * 2) / 3)));
+	dlg_x = Max(0, (ScrX - dlg_w) / 2);
+	dlg_y = Max(0, (ScrY - dlg_h) / 2);
+}
+
+static INT_PTR WINAPI CmdlinePasteDlgProc(HANDLE hDlg, int Msg, int Param1, LONG_PTR Param2)
+{
+	if (Msg == DN_RESIZECONSOLE) {
+		auto *layout = reinterpret_cast<CmdlinePasteDlgLayout *>(SendDlgMessage(hDlg, DM_GETDLGDATA, 0, 0));
+		if (!layout)
+			return DefDlgProc(hDlg, Msg, Param1, Param2);
+
+		int dlg_w = 0;
+		int dlg_h = 0;
+		int dlg_x = 0;
+		int dlg_y = 0;
+		CalcCmdlinePasteDialogLayout(*layout, dlg_w, dlg_h, dlg_x, dlg_y);
+
+		SendDlgMessage(hDlg, DM_ENABLEREDRAW, FALSE, 0);
+
+		COORD size = {(SHORT)dlg_w, (SHORT)dlg_h};
+		SendDlgMessage(hDlg, DM_RESIZEDIALOG, 0, reinterpret_cast<LONG_PTR>(&size));
+
+		COORD pos = {(SHORT)dlg_x, (SHORT)dlg_y};
+		SendDlgMessage(hDlg, DM_MOVEDIALOG, TRUE, reinterpret_cast<LONG_PTR>(&pos));
+
+		SMALL_RECT rect;
+		rect.Left = 3;
+		rect.Top = 1;
+		rect.Right = (SHORT)(dlg_w - 4);
+		rect.Bottom = (SHORT)(dlg_h - 2);
+		SendDlgMessage(hDlg, DM_SETITEMPOSITION, MP_BOX, reinterpret_cast<LONG_PTR>(&rect));
+
+		rect.Left = 5;
+		rect.Top = 2;
+		rect.Right = (SHORT)(dlg_w - 6);
+		rect.Bottom = (SHORT)(dlg_h - 5);
+		SendDlgMessage(hDlg, DM_SETITEMPOSITION, MP_MEMO, reinterpret_cast<LONG_PTR>(&rect));
+
+		rect.Left = 0;
+		rect.Right = 0;
+		rect.Top = (SHORT)(dlg_h - 5);
+		rect.Bottom = (SHORT)(dlg_h - 5);
+		SendDlgMessage(hDlg, DM_GETITEMPOSITION, MP_SEPARATOR, reinterpret_cast<LONG_PTR>(&rect));
+		rect.Top = (SHORT)(dlg_h - 4);
+		rect.Bottom = (SHORT)(dlg_h - 4);
+		SendDlgMessage(hDlg, DM_SETITEMPOSITION, MP_SEPARATOR, reinterpret_cast<LONG_PTR>(&rect));
+
+		SendDlgMessage(hDlg, DM_GETITEMPOSITION, MP_BTN_CANCEL, reinterpret_cast<LONG_PTR>(&rect));
+		rect.Top = (SHORT)(dlg_h - 3);
+		rect.Bottom = (SHORT)(dlg_h - 3);
+		SendDlgMessage(hDlg, DM_SETITEMPOSITION, MP_BTN_CANCEL, reinterpret_cast<LONG_PTR>(&rect));
+		SendDlgMessage(hDlg, DM_GETITEMPOSITION, MP_BTN_EXEC, reinterpret_cast<LONG_PTR>(&rect));
+		rect.Top = (SHORT)(dlg_h - 3);
+		rect.Bottom = (SHORT)(dlg_h - 3);
+		SendDlgMessage(hDlg, DM_SETITEMPOSITION, MP_BTN_EXEC, reinterpret_cast<LONG_PTR>(&rect));
+		SendDlgMessage(hDlg, DM_GETITEMPOSITION, MP_BTN_EXEC_NOASK, reinterpret_cast<LONG_PTR>(&rect));
+		rect.Top = (SHORT)(dlg_h - 3);
+		rect.Bottom = (SHORT)(dlg_h - 3);
+		SendDlgMessage(hDlg, DM_SETITEMPOSITION, MP_BTN_EXEC_NOASK, reinterpret_cast<LONG_PTR>(&rect));
+
+		SendDlgMessage(hDlg, DM_ENABLEREDRAW, TRUE, 0);
+		return TRUE;
+	}
+
+	return DefDlgProc(hDlg, Msg, Param1, Param2);
+}
+} // namespace
+
+int ShowMultilinePasteDialog(FARString &text)
+{
+	static const wchar_t kCmdlineMemoFilename[] = L"cmdline.bash";
+	const int min_width = 40;
+	const int min_height = 12;
+	const int dlg_w = Max(min_width, Min(ScrX - 2, Max(76, (ScrX * 3) / 4)));
+	const int dlg_h = Max(min_height, Min(ScrY - 2, Max(20, (ScrY * 2) / 3)));
+	const int sep_y = dlg_h - 4;
+	const int btn_y = dlg_h - 3;
+//	const int dlg_w = Max(min_width, Min(ScrX - 2, 76));
+//	const int dlg_h = Max(min_height, Min(ScrY - 2, 20));
+
+	DialogDataEx DlgData[] = {
+		{DI_DOUBLEBOX, 3, 1, (short)(dlg_w - 4), (short)(dlg_h - 2), {}, 0, Msg::MultilinePaste},
+		{DI_MEMOEDIT,  5, 2, (short)(dlg_w - 6), (short)(dlg_h - 5), {}, DIF_FOCUS, L""},
+		{DI_TEXT,      0, (short)sep_y, 0, (short)sep_y, {}, DIF_SEPARATOR, L""},
+		{DI_BUTTON,    0, (short)btn_y, 0, (short)btn_y, {}, DIF_CENTERGROUP, Msg::HCancel},
+		{DI_BUTTON,    0, (short)btn_y, 0, (short)btn_y, {}, DIF_CENTERGROUP | DIF_DEFAULT, Msg::HExecute},
+		{DI_BUTTON,    0, (short)btn_y, 0, (short)btn_y, {}, DIF_CENTERGROUP, Msg::HExecuteNoAsk}
+	};
+
+	MakeDialogItemsEx(DlgData, DlgItems);
+	DlgItems[MP_MEMO].strData = text;
+	DlgItems[MP_MEMO].UserData = (DWORD_PTR)kCmdlineMemoFilename;
+
+	CmdlinePasteDlgLayout layout = {min_width, min_height};
+	Dialog Dlg(DlgItems, ARRAYSIZE(DlgItems), CmdlinePasteDlgProc, reinterpret_cast<LONG_PTR>(&layout));
+	Dlg.SetPosition(-1, -1, dlg_w, dlg_h);
+	Dlg.Process();
+
+	int exit_code = Dlg.GetExitCode();
+	if (exit_code == MP_BTN_EXEC || exit_code == MP_BTN_EXEC_NOASK) {
+		int len = (int)SendDlgMessage((HANDLE)&Dlg, DM_GETTEXTLENGTH, MP_MEMO, 0);
+		if (len > 0) {
+			FARString edited;
+			wchar_t *buf = edited.GetBuffer(len + 1);
+			FarDialogItemData data = {(size_t)len, buf};
+			SendDlgMessage((HANDLE)&Dlg, DM_GETTEXT, MP_MEMO, (LONG_PTR)&data);
+			edited.ReleaseBuffer(len);
+			text = edited;
+		} else {
+			text = DlgItems[MP_MEMO].strData;
+		}
+		NormalizeMultilineForExec(text);
+		RemoveTrailingSpaces(text);
+		return (exit_code == MP_BTN_EXEC) ? 1 : 2;
+	}
+
+	return 0;
+}
+} // namespace
 
 CommandLine::CommandLine()
 	:
@@ -80,7 +245,7 @@ CommandLine::CommandLine()
 			(Opt.CmdLine.AutoComplete ? EditControl::EC_ENABLEAUTOCOMPLETE : 0)
 					| EditControl::EC_ENABLEFNCOMPLETE
 					| EditControl::EC_ENABLEFNCOMPLETE_ESCAPED),
-	BackgroundScreen(nullptr),
+//	BackgroundScreen(nullptr),
 	LastCmdPartLength(-1),
 	PushDirStackSize(0)
 {
@@ -91,8 +256,7 @@ CommandLine::CommandLine()
 
 CommandLine::~CommandLine()
 {
-	if (BackgroundScreen)
-		delete BackgroundScreen;
+	BackgroundConsole.Discard(); // dont show it
 }
 
 void CommandLine::SetVisible(bool Visible)
@@ -235,7 +399,7 @@ void CommandLine::ChangeDirFromHistory(bool PluginPath, int SelectType, FARStrin
 		Panel = CtrlObject->Cp()->GetAnotherPanel(Panel);
 
 	if (!PluginPath || !CtrlObject->Plugins.ProcessCommandLine(strDir, Panel)) {
-		if (Panel->GetMode() == PLUGIN_PANEL || CheckShortcutFolder(&strDir, FALSE)) {
+		if (Panel->GetMode() == PLUGIN_PANEL || CheckShortcutFolder(strDir, false)) {
 			Panel->SetCurDir(strDir, PluginPath ? FALSE : TRUE);
 			//fprintf(stderr, "=== ChangeDirFromHistory():\n  strDir=\"%ls\"\n  strFile=\"%ls\"\n", strDir.CPtr(), strFile.CPtr());
 			if ( !strFile.IsEmpty() && !strFile.Contains(LGOOD_SLASH) ) // only local file, not in another directory
@@ -353,6 +517,7 @@ int CommandLine::ProcessKey_Enter(FarKey Key)
 	CmdStr.Select(-1, 0);
 	CmdStr.Show();
 	CmdStr.GetString(strStr);
+	RemoveTrailingSpaces(strStr, true); // RemoveTrailingSpaces and taking into account last escaping symbol
 
 	if (strStr.IsEmpty())
 		return FALSE;
@@ -362,6 +527,7 @@ int CommandLine::ProcessKey_Enter(FarKey Key)
 	FARString strCurDirFromPanel;
 	ActivePanel->GetCurDirPluginAware(strCurDirFromPanel);
 
+	// addition to the option, exclude from history when command starts with a space
 	if (!(Opt.ExcludeCmdHistory & EXCLUDECMDHISTORY_NOTCMDLINE) && !strStr.Begins(L' ')) {
 		CtrlObject->CmdHistory->AddToHistoryExtra(strStr, strCurDirFromPanel);
 	}
@@ -582,6 +748,41 @@ int CommandLine::ProcessKeyIfVisible(FarKey Key)
 			if (Key == KEY_CTRLD)
 				Key = KEY_RIGHT;
 
+			if (Key == KEY_CTRLV || Key == KEY_SHIFTINS || Key == KEY_SHIFTNUMPAD0 || Key == KEY_OP_PLAINTEXT) {
+				FARString clip;
+				if (Key == KEY_OP_PLAINTEXT && !GPastedText.IsEmpty()) {
+					clip = GPastedText;
+				} else {
+					wchar_t *p = PasteFromClipboard();
+					if (p) {
+						clip = p;
+						free(p);
+					}
+				}
+
+				const wchar_t *ClipText = clip.CPtr();
+				if (ClipText && wcschr(ClipText, L'\n') && wcschr(ClipText, L'\n')[1] != L'\0') {
+					CmdStr.GetString(strStr);
+					FARString strToExec = strStr.SubStr(0, CmdStr.GetCurPos()) + ClipText + strStr.SubStr(CmdStr.GetCurPos());
+					RemoveTrailingSpaces(strToExec);
+					if (Opt.CmdLine.AskOnMultilinePaste) {
+						int res = ShowMultilinePasteDialog(strToExec);
+						if (res == 1) {
+							ExecString(strToExec);
+						}
+						else if (res ==2) {
+							Opt.CmdLine.AskOnMultilinePaste = false;
+							ExecString(strToExec);
+						}
+						break;
+					}
+					else {
+						ExecString(strToExec);
+						break;
+					}
+				}
+			}
+
 			if (!CmdStr.ProcessKey(Key))
 				break;
 
@@ -644,8 +845,10 @@ void CommandLine::InsertString(const wchar_t *Str)
 		return;
 
 	LastCmdPartLength = -1;
+	CmdStr.DisableAC();
 	CmdStr.InsertString(Str);
 	CmdStr.Show();
+	CmdStr.RevertAC();
 }
 
 int CommandLine::ProcessMouse(MOUSE_EVENT_RECORD *MouseEvent)
@@ -773,6 +976,11 @@ void CommandLine::GetPrompt(FARString &strDestStr)
 						strDestStr+= CachedComputerName();
 						break;
 					}
+					case L'Z':		// Git Branch
+					{
+						strDestStr+= GetGitBranchName(strCurDir);
+						break;
+					}
 				}
 			}
 
@@ -851,53 +1059,32 @@ void CommandLine::ShowViewEditHistory()
 		CtrlObject->Cp()->GoToFile(strStr);
 }
 
-void CommandLine::SaveBackground(int X1, int Y1, int X2, int Y2)
-{
-	if (BackgroundScreen) {
-		delete BackgroundScreen;
-	}
-
-	BackgroundScreen = new SaveScreen(X1, Y1, X2, Y2);
-}
-
 void CommandLine::SaveBackground()
 {
-	if (BackgroundScreen) {
-		//		BackgroundScreen->Discard();
-		BackgroundScreen->SaveArea();
-		fprintf(stderr, "CommandLine::SaveBackground: done\n");
-	} else
-		fprintf(stderr, "CommandLine::SaveBackground: no BackgroundScreen\n");
-}
-void CommandLine::ShowBackground()
-{
-	if (!IsVisible())
-		return;
-
-	if (BackgroundScreen) {
-		BackgroundScreen->RestoreArea();
-		fprintf(stderr, "CommandLine::ShowBackground: done\n");
-	} else
-		fprintf(stderr, "CommandLine::ShowBackground: no BackgroundScreen\n");
-}
-
-void CommandLine::CorrectRealScreenCoord()
-{
-	if (BackgroundScreen) {
-		BackgroundScreen->CorrectRealScreenCoord();
+	fprintf(stderr, "CommandLine::SaveBackground\n");
+	ScrBuf.Flush();
+	BackgroundConsole.Fork(NULL);
+	DWORD mode = 0; // set ENABLE_PROCESSED_OUTPUT to enable lines recomposing for forked console
+	if (WINPORT(GetConsoleMode)(BackgroundConsole.Handle(), &mode)) {
+		WINPORT(SetConsoleMode)(BackgroundConsole.Handle(), mode | ENABLE_PROCESSED_OUTPUT);
 	}
+}
+
+void CommandLine::ShowBackground(bool showanyway)
+{
+	if ((!IsVisible() && !showanyway) || !BackgroundConsole) {
+		fprintf(stderr, "CommandLine::ShowBackground - skip\n");
+		return;
+	}
+
+	fprintf(stderr, "CommandLine::ShowBackground\n");
+	ScrBuf.FillBufWithRecompose(BackgroundConsole.Handle());
 }
 
 void CommandLine::Show()
 {
 	if (IsVisible())
 		ScreenObject::Show();
-}
-
-void CommandLine::ResizeConsole()
-{
-	BackgroundScreen->Resize(ScrX + 1, ScrY + 1, 2, FALSE);
-	//	this->DisplayObject();
 }
 
 void CommandLine::RedrawWithoutComboBoxMark()
@@ -910,246 +1097,19 @@ void CommandLine::RedrawWithoutComboBoxMark()
 	DrawComboBoxMark(L' ');
 }
 
-void FarAbout(PluginManager &Plugins)
-{
-	int npl;
-	FARString fs, fs2, fs2copy;
-	MenuItemEx mi, mis;
-	mis.Flags = LIF_SEPARATOR;
-
-	VMenu ListAbout(L"far:about",nullptr,0,ScrY-4);
-	ListAbout.SetFlags(VMENU_SHOWAMPERSAND | VMENU_IGNORE_SINGLECLICK);
-	ListAbout.ClearFlags(VMENU_MOUSEREACTION);
-	//ListAbout.SetFlags(VMENU_WRAPMODE);
-	ListAbout.SetHelp(L"SpecCmd");//L"FarAbout");
-	ListAbout.SetBottomTitle(L"ESC or F10 to close, Ctrl-C or Ctrl-Ins - copy all, Ctrl-Alt-F - filtering");
-
-	fs.Format(L"          FAR2L Version: %s", FAR_BUILD);
-	ListAbout.AddItem(fs); fs2copy = fs;
-	fs =      L"               Compiler: ";
-#if defined (__clang__)
-	fs.AppendFormat(L"Clang, version %d.%d.%d", __clang_major__, __clang_minor__, __clang_patchlevel__);
-#elif defined (__INTEL_COMPILER)
-	fs.AppendFormat(L"Intel C/C++, version %d (build date %d)", __INTEL_COMPILER, __INTEL_COMPILER_BUILD_DATE);
-#elif defined (__GNUC__)
-	fs.AppendFormat(L"GCC, version %d.%d.%d", __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__);
-#else
-	fs.Append(L"Unknown");
-#endif
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-
-	fs.Format(L"               Platform: %s", FAR_PLATFORM);
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-	fs.Format(L"                Backend: %ls", WinPortBackend());
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-	fs.Format(L"    ConsoleColorPalette: %u", WINPORT(GetConsoleColorPalette)(NULL) );
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-	fs.Format(L"                  Admin: %ls", Opt.IsUserAdmin ? Msg::FarTitleAddonsAdmin : L"-");
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-	//apiGetEnvironmentVariable("FARPID", fs2);
-	//fs = L"           PID: " + fs2;
-	fs.Format(L"                    PID: %lu", (unsigned long)getpid());
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-
-	//apiGetEnvironmentVariable("FARLANG", fs2);
-	fs =      L"  Main | Help languages: " + Opt.strLanguage + L" | " + Opt.strHelpLanguage;
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-
-	fs.Format(L"   OEM | ANSI codepages: %u | %u", WINPORT(GetOEMCP)(), WINPORT(GetACP)() );
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-
-	//apiGetEnvironmentVariable("FARHOME", fs2);
-	fs =      L"Far directory (FARHOME): \"" + g_strFarPath.GetMB() + L"\"";
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-
-	fs.Format(L"       Config directory: \"%s\"", InMyConfig("",FALSE).c_str() );
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-
-	fs.Format(L"        Cache directory: \"%s\"", InMyCache("",FALSE).c_str() );
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-
-	fs.Format(L"         Temp directory: \"%s\"", InMyTemp("").c_str() );
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-
-	ListAbout.AddItem(L""); fs2copy += "\n";
-	struct utsname un;
-	fs =      L"                  uname: ";
-	if (uname(&un)==0)
-		fs.AppendFormat(L"%s %s %s %s", un.sysname, un.release, un.version, un.machine);
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-	fs =      L"                   Host: " + (apiGetEnvironmentVariable("HOSTNAME", fs2) ? fs2 : L"???");
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-	fs =      L"                   User: " + (apiGetEnvironmentVariable("USER", fs2) ? fs2 : L"???");
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-	fs =      L"       XDG_SESSION_TYPE: " + (apiGetEnvironmentVariable("XDG_SESSION_TYPE", fs2) ? fs2 : L"");
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-	fs =      L"                   TERM: " + (apiGetEnvironmentVariable("TERM", fs2) ? fs2 : L"");
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-	fs =      L"              COLORTERM: " + (apiGetEnvironmentVariable("COLORTERM", fs2) ? fs2 : L"");
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-	fs =      L"            GDK_BACKEND: " + (apiGetEnvironmentVariable("GDK_BACKEND", fs2) ? fs2 : L"");
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-	fs =      L"        DESKTOP_SESSION: " + (apiGetEnvironmentVariable("DESKTOP_SESSION", fs2) ? fs2 : L"");
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-	fs =      L"        WSL_DISTRO_NAME: " + (apiGetEnvironmentVariable("WSL_DISTRO_NAME", fs2) ? fs2 : L"");
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-	fs =      L"  WSL2_GUI_APPS_ENABLED: " + (apiGetEnvironmentVariable("WSL2_GUI_APPS_ENABLED", fs2) ? fs2 : L"");
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-
-	ListAbout.AddItem(L""); fs2copy += "\n";
-
-	npl = Plugins.GetPluginsCount();
-	fs.Format(L"      Number of plugins: %d", npl);
-	ListAbout.AddItem(fs); fs2copy += "\n" + fs;
-
-	for(int i = 0; i < npl; i++)
-	{
-		fs.Format(L"Plugin#%02d ",  i+1);
-		mis.strName = fs;
-		mi.PrefixLen = fs.GetLength()-1;
-
-		Plugin *pPlugin = Plugins.GetPlugin(i);
-		if(pPlugin == nullptr) {
-			ListAbout.AddItem(&mis); fs2copy += "\n--- " + mis.strName + " ---";
-			mi.strName = fs + L"!!! ERROR get plugin";
-			ListAbout.AddItem(&mi); fs2copy += "\n" + mi.strName;
-			continue;
-		}
-		mis.strName = fs + PointToName(pPlugin->GetModuleName());
-		ListAbout.AddItem(&mis); fs2copy += "\n--- " + mis.strName + " ---";
-
-		mi.strName = fs + pPlugin->GetModuleName();
-		ListAbout.AddItem(&mi); fs2copy += "\n" + mi.strName;
-
-		mi.strName = fs + L"Settings Name: " + pPlugin->GetSettingsName();
-		ListAbout.AddItem(&mi); fs2copy += "\n" + mi.strName;
-
-		int iFlags;
-		PluginInfo pInfo{};
-		KeyFileReadHelper kfh(PluginsIni());
-		FARString fsCommandPrefix = L"";
-		FARString fsDiskMenuStrings = L"";
-		FARString fsPluginMenuStrings = L"";
-		FARString fsPluginConfigStrings = L"";
-
-		if (pPlugin->CheckWorkFlags(PIWF_CACHED)) {
-			iFlags = kfh.GetUInt(pPlugin->GetSettingsName(), "Flags", 0);
-			fsCommandPrefix = kfh.GetString(pPlugin->GetSettingsName(), "CommandPrefix", L"");
-			for (int j = 0; ; j++) {
-				const auto &key_name = StrPrintf("DiskMenuString%d", j);
-				/*if (!kfh.HasKey(key_name))
-					break;*/
-				fs2 = kfh.GetString(pPlugin->GetSettingsName(), key_name, "");
-				if( fs2.IsEmpty() )
-					break;
-				fsDiskMenuStrings.AppendFormat(L" %d=\"%ls\" ", j+1, fs2.CPtr());
-			}
-			for (int j = 0; ; j++) {
-				const auto &key_name = StrPrintf("PluginMenuString%d", j);
-				/*if (!kfh.HasKey(key_name))
-					break;*/
-				fs2 = kfh.GetString(pPlugin->GetSettingsName(), key_name, "");
-				if( fs2.IsEmpty() )
-					break;
-				fsPluginMenuStrings.AppendFormat(L" %d=\"%ls\" ", j+1, fs2.CPtr());
-			}
-			for (int j = 0; ; j++) {
-				const auto &key_name = StrPrintf("PluginConfigString%d", j);
-				/*if (!kfh.HasKey(key_name))
-					break;*/
-				fs2 = kfh.GetString(pPlugin->GetSettingsName(), key_name, "");
-				if( fs2.IsEmpty() )
-					break;
-				fsPluginConfigStrings.AppendFormat(L" %d=\"%ls\" ", j+1, fs2.CPtr());
-			}
-		}
-		else {
-			if (pPlugin->GetPluginInfo(&pInfo)) {
-				iFlags = pInfo.Flags;
-				fsCommandPrefix = pInfo.CommandPrefix;
-				for (int j = 0; j < pInfo.DiskMenuStringsNumber; j++)
-					fsDiskMenuStrings.AppendFormat(L" %d=\"%ls\"", j+1, pInfo.DiskMenuStrings[j]);
-				for (int j = 0; j < pInfo.PluginMenuStringsNumber; j++)
-					fsPluginMenuStrings.AppendFormat(L" %d=\"%ls\"", j+1, pInfo.PluginMenuStrings[j]);
-				for (int j = 0; j < pInfo.PluginConfigStringsNumber; j++)
-					fsPluginConfigStrings.AppendFormat(L" %d=\"%ls\"", j+1, pInfo.PluginConfigStrings[j]);
-			}
-			else
-				iFlags = -1;
-		}
-
-		mi.strName.Format(L"%ls     %s Cached  %s Loaded ",
-			fs.CPtr(),
-			pPlugin->CheckWorkFlags(PIWF_CACHED) ? "[x]" : "[ ]",
-			pPlugin->GetFuncFlags() & PICFF_LOADED ? "[x]" : "[ ]");
-		ListAbout.AddItem(&mi); fs2copy += "\n" + mi.strName;
-
-		if (iFlags >= 0) {
-			mi.strName.Format(L"%lsF11: %s Panel   %s Dialog  %s Viewer  %s Editor ",
-				fs.CPtr(),
-				iFlags & PF_DISABLEPANELS ? "[ ]" : "[x]",
-				iFlags & PF_DIALOG ? "[x]" : "[ ]",
-				iFlags & PF_VIEWER ? "[x]" : "[ ]",
-				iFlags & PF_EDITOR ? "[x]" : "[ ]");
-			ListAbout.AddItem(&mi); fs2copy += "\n" + mi.strName;
-		}
-
-		mi.strName.Format(L"%ls     %s EditorInput ", fs.CPtr(), pPlugin->HasProcessEditorInput() ? "[x]" : "[ ]");
-		ListAbout.AddItem(&mi); fs2copy += "\n" + mi.strName;
-
-		if ( !fsDiskMenuStrings.IsEmpty() ) {
-			mi.strName = fs + L"    DiskMenuStrings:" + fsDiskMenuStrings;
-			ListAbout.AddItem(&mi); fs2copy += "\n" + mi.strName;
-		}
-		if ( !fsPluginMenuStrings.IsEmpty() ) {
-			mi.strName = fs + L"  PluginMenuStrings:" + fsPluginMenuStrings;
-			ListAbout.AddItem(&mi); fs2copy += "\n" + mi.strName;
-		}
-		if ( !fsPluginConfigStrings.IsEmpty() ) {
-			mi.strName = fs + L"PluginConfigStrings:" + fsPluginConfigStrings;
-			ListAbout.AddItem(&mi); fs2copy += "\n" + mi.strName;
-		}
-		if ( !fsCommandPrefix.IsEmpty() ) {
-			mi.strName.Format(L"%ls      CommandPrefix: \"%ls\"", fs.CPtr(), fsCommandPrefix.CPtr());
-			ListAbout.AddItem(&mi); fs2copy += "\n" + mi.strName;
-		}
-		
-	}
-
-	ListAbout.SetPosition(-1, -1, 0, 0);
-	/*int iListExitCode = 0;
-	do {
-		ListAbout.Process();
-		iListExitCode = ListAbout.GetExitCode();
-		if (iListExitCode>=0)
-			ListAbout.ClearDone(); // no close after select item by ENTER or mouse click
-	} while(iListExitCode>=0);*/
-	ListAbout.Show();
-	do {
-		while (!ListAbout.Done()) {
-			FarKey Key = ListAbout.ReadInput();
-			switch (Key) {
-				case KEY_CTRLC:
-				case KEY_CTRLINS:
-				case KEY_CTRLNUMPAD0:
-					CopyToClipboard(fs2copy.CPtr());
-					break;
-				default:
-					ListAbout.ProcessInput();
-					continue;
-			}
-		}
-		if (ListAbout.GetExitCode() < 0) // exit from loop only by ESC or F10 or click outside vmenu
-			break;
-		ListAbout.ClearDone(); // no close after select item by ENTER or mouse click
-	} while(1);
-}
-
 bool CommandLine::ProcessFarCommands(const wchar_t *CmdLine)
 {
 	bool b_far, b_edit = false, b_view = false;
 	std::string::size_type p;
 	std::wstring str_command(CmdLine);
+	auto expandString = [](const std::wstring &Filename) -> std::wstring {
+		std::string new_path_mb;
+		StrWide2MB(Filename, new_path_mb);
+		Environment::ExpandString(new_path_mb, true);
+		FARString result(new_path_mb);
+		UnEscapeSpace(result);
+		return result.GetWide();
+	};
 
 	StrTrim(str_command);
 
@@ -1170,6 +1130,7 @@ bool CommandLine::ProcessFarCommands(const wchar_t *CmdLine)
 	}
 
 	if (b_far && str_command == L"far:about") {
+		void FarAbout(PluginManager &Plugins);
 		FarAbout(CtrlObject->Plugins);
 		return true; // prefix correct and was processed
 	}
@@ -1179,6 +1140,17 @@ bool CommandLine::ProcessFarCommands(const wchar_t *CmdLine)
 			? 9 // wcslen(L"far:edit:") or wcslen(L"far:edit ")
 			: 0 );
 	if (p > 0) {
+		int StartLine = -1, StartChar = -1;
+		// check location of optional parametrs with line and column
+		std::string::size_type p1 = std::string::npos, p2 = std::string::npos;
+		if (str_command[p-1] == L':' && p < str_command.length() && str_command[p] == L'[') {
+			p2 = str_command.find(L"]", p+1);
+			if (p2 != std::string::npos) {
+				p1 = p;
+				p = p2 + 1;
+			}
+		}
+		// check filename
 		p = str_command.find_first_not_of(L" \t", p);
 		if (p != std::string::npos) { // after spaces found filename or command
 			if (str_command[p]==L'<') { // redirect command
@@ -1190,10 +1162,31 @@ bool CommandLine::ProcessFarCommands(const wchar_t *CmdLine)
 						CP_AUTODETECT, FFILEEDIT_ENABLEF6 | FFILEEDIT_DISABLEHISTORY);
 				}
 			}
-			else // filename
+			else { // filename
+				const std::wstring filename = expandString(str_command.substr(p,std::string::npos));
+				// optional parametrs with line and column to numbers
+				if (p1 != std::string::npos) {
+					p1 = str_command.find_first_not_of(L" \t", p1+1);
+					if (p1 != std::string::npos && p1 < p2) {
+						if (iswdigit(str_command[p1])) {
+							StartLine = _wtoi(str_command.substr(p1).c_str());
+							StartChar = 1;
+						}
+						p = str_command.find_first_of(L",:", p1);
+						if (p != std::string::npos && p < p2) {
+							p = str_command.find_first_not_of(L" \t", p+1);
+							if (p != std::string::npos && p < p2 && iswdigit(str_command[p])) {
+								StartChar = _wtoi(str_command.substr(p).c_str());
+								if (StartLine < 0)
+									StartLine = 1;
+							}
+						}
+					}
+				}
 				new FileEditor(
-					std::make_shared<FileHolder>( str_command.substr(p,std::string::npos).c_str() ),
-					CP_AUTODETECT, FFILEEDIT_CANNEWFILE | FFILEEDIT_ENABLEF6);
+					std::make_shared<FileHolder>( filename.c_str() ),
+					CP_AUTODETECT, FFILEEDIT_CANNEWFILE | FFILEEDIT_ENABLEF6, StartLine, StartChar);
+			}
 		}
 		else // new empty file
 			new FileEditor(
@@ -1217,14 +1210,21 @@ bool CommandLine::ProcessFarCommands(const wchar_t *CmdLine)
 					TRUE/*EnableSwitch*/, TRUE/*DisableHistory*/, FALSE/*DisableEdit*/);
 				}
 			}
-			else // filename
-				new FileViewer(std::make_shared<FileHolder>( str_command.substr(p,std::string::npos).c_str() ),
+			else { // filename
+				const std::wstring filename = expandString(str_command.substr(p,std::string::npos));
+				new FileViewer(std::make_shared<FileHolder>( filename.c_str() ),
 					TRUE/*EnableSwitch*/, FALSE/*DisableHistory*/, FALSE/*DisableEdit*/);
+			}
 		}
 		return true; // anyway prefix correct and was processed
 	}
 
 	return false; // not found any available prefixes
+}
+
+HANDLE CommandLine::GetBackgroundConsole()
+{
+	return BackgroundConsole.Handle();
 }
 
 CmdLineVisibleScope::CmdLineVisibleScope()
@@ -1242,4 +1242,3 @@ CmdLineVisibleScope::~CmdLineVisibleScope()
 		cp->UpdateCmdLineVisibility();
 	}
 }
-

@@ -12,6 +12,7 @@
 #include "utils.h"
 #include "WinPortHandle.h"
 #include "wxClipboardBackend.h"
+#include "wxConsoleImages.h"
 
 #include <wx/wx.h>
 #include <wx/display.h>
@@ -22,6 +23,7 @@
 
 #include "ExclusiveHotkeys.h"
 #include <set>
+#include <map>
 #include <fstream>
 #include <vector>
 #include <algorithm>
@@ -77,7 +79,7 @@ class WinPortPanel: public wxPanel, protected IConsoleOutputBackend
 
 	wxDECLARE_EVENT_TABLE();
 	KeyTracker _key_tracker;
-	
+
 	ConsolePaintContext _paint_context;
 	WinPortFrame *_frame;
 	DWORD _refresh_rects_throttle;
@@ -90,6 +92,10 @@ class WinPortPanel: public wxPanel, protected IConsoleOutputBackend
 	MOUSE_EVENT_RECORD _prev_mouse_event{};
 	DWORD _prev_mouse_event_ts{0};
 
+	struct BI : std::vector<std::string> {} _backend_info;
+
+	wxConsoleImages _images;
+
 	wxTimer* _periodic_timer{nullptr};
 	unsigned int _timer_idling_counter{0};
 	std::atomic<unsigned int> _last_title_ticks{0};
@@ -97,6 +103,7 @@ class WinPortPanel: public wxPanel, protected IConsoleOutputBackend
 	unsigned char _force_size_on_paint_state{0};
 	bool _extra_refresh{false};
 	bool _last_keydown_enqueued{false};
+	bool _enqueued_in_onchar{false};
 	bool _app_entry_started{false};
 	bool _adhoc_quickedit{false};
 	enum
@@ -105,10 +112,13 @@ class WinPortPanel: public wxPanel, protected IConsoleOutputBackend
 		RP_DEFER,
 		RP_INSTANT
 	} _resize_pending{RP_NONE};
+	DWORD _qedit_unfreeze_start_ticks{0};
 	DWORD _mouse_state{0}, _mouse_qedit_start_ticks{0}, _mouse_qedit_moved{0};
+	int _mouse_wheel_accum_v{0};
+	int _mouse_wheel_accum_h{0};
 	COORD _mouse_qedit_start{}, _mouse_qedit_last{};
 	wchar_t _stolen_key{0};
-	
+
 	unsigned int _pending_refreshes{0};
 	struct RefreshRects : std::vector<SMALL_RECT>, std::mutex {} _refresh_rects;
 
@@ -116,8 +126,10 @@ class WinPortPanel: public wxPanel, protected IConsoleOutputBackend
 	void CheckForResizePending();
 	void CheckPutText2CLip();
 	void SetInitialSize();
+	void RefreshInner( bool force_update );
 	void OnInitialized( wxCommandEvent& event );
-	void OnTimerPeriodic(wxTimerEvent& event);	
+	void CheckForUnfreeze(bool force);
+	void OnTimerPeriodic(wxTimerEvent& event);
 	void OnWindowMovedSync( wxCommandEvent& event );
 	void OnRefreshSync( wxCommandEvent& event );
 	void OnConsoleResizedSync( wxCommandEvent& event );
@@ -165,6 +177,13 @@ class WinPortPanel: public wxPanel, protected IConsoleOutputBackend
 	virtual bool OnConsoleSetBasePalette(void *pbuff);
 	virtual void OnConsoleOverrideColor(DWORD Index, DWORD *ColorFG, DWORD *ColorBK);
 	virtual void OnConsoleSetCursorBlinkTime(DWORD interval);
+	virtual void OnConsoleOutputFlushDrawing();
+	virtual const char *OnConsoleBackendInfo(int entity);
+
+	virtual void OnGetConsoleImageCaps(WinportGraphicsInfo *wgi);
+	virtual bool OnSetConsoleImage(const char *id, DWORD64 flags, const SMALL_RECT *area, DWORD width, DWORD height, const void *buffer);
+	virtual bool OnTransformConsoleImage(const char *id, const SMALL_RECT *area, uint16_t tf);
+	virtual bool OnDeleteConsoleImage(const char *id);
 
 public:
 	WinPortPanel(WinPortFrame *frame, const wxPoint& pos, const wxSize& size);

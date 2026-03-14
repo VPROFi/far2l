@@ -8,14 +8,14 @@
 #include <dlfcn.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__CYGWIN__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__) || defined(__CYGWIN__)
 # include <sys/mount.h>
 #elif !defined(__HAIKU__)
 # include <sys/statfs.h>
 #endif
 #include <sys/time.h>
 #include <sys/types.h>
-#if !defined(__FreeBSD__) && !defined(__DragonFly__)
+#if !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__DragonFly__)
 # include <sys/xattr.h>
 #endif
 #include <map>
@@ -24,7 +24,7 @@
 #include "sudo_private.h"
 #include "sudo.h"
 
-#if !defined(__APPLE__) and !defined(__FreeBSD__) && !defined(__DragonFly__) && !defined(__CYGWIN__) && !defined(__HAIKU__)
+#if !defined(__APPLE__) and !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__DragonFly__) && !defined(__CYGWIN__) && !defined(__HAIKU__)
 # include <sys/ioctl.h>
 # include <linux/fs.h>
 #endif
@@ -87,7 +87,7 @@ static class Client2ServerDIR : protected Client2Server<DIR *, void *>
 	void *Deregister(DIR *local)
 	{
 		void *remote;
-		if (!Client2ServerBase::Deregister(local, remote)) 
+		if (!Client2ServerBase::Deregister(local, remote))
 			return nullptr;
 
 		closedir(local);
@@ -118,10 +118,10 @@ extern "C" int sudo_client_execute(const char *cmd, bool modify, bool no_wait)
 {
 	//this call doesnt require outside region demarkation, so ensure it now
 	SudoClientRegion scr;
-			
+
 	if (!TouchClientConnection(modify))
 		return -2;
-	
+
 	int r;
 	try {
 		ClientTransaction ct(SUDO_CMD_EXECUTE);
@@ -136,30 +136,30 @@ extern "C" int sudo_client_execute(const char *cmd, bool modify, bool no_wait)
 		r = -3;
 	}
 	return r;
-}		
+}
 
 extern "C" __attribute__ ((visibility("default"))) int sudo_client_is_required_for(const char *pathname, bool modify)
 {
 	ClientReconstructCurDir crcd(pathname);
 	struct stat s;
-	
+
 	int r = stat(pathname, &s);
 	if (r == 0) {
 		r = access(pathname, modify ? R_OK|W_OK : R_OK);
 		if (r==0)
 			return 0;
-			
+
 		return IsAccessDeniedErrno() ? 1 : -1;
 	}
 
 	if (IsAccessDeniedErrno())
 		return 1;
-		
+
 	if (errno != ENOENT) {
 		//fprintf(stderr, "stat: error %u on path %s\n", errno, pathname);
 		return -1;
 	}
-	
+
 	std::string tmp(pathname);
 	size_t p = tmp.rfind('/');
 	if (p == std::string::npos)
@@ -168,13 +168,13 @@ extern "C" __attribute__ ((visibility("default"))) int sudo_client_is_required_f
 		tmp.resize(p - 1);
 	else
 		tmp = "/";
-	
+
 	r = access(tmp.c_str(), modify ? R_OK|W_OK : R_OK);
 	if (r==0) {
 		//fprintf(stderr, "access: may %s path %s\n", modify ? "modify" : "read", tmp.c_str());
 		return 0;
 	}
-		
+
 	if (IsAccessDeniedErrno())
 		return 1;
 
@@ -186,22 +186,22 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_open(const char* path
 {
 	int saved_errno = errno;
 	mode_t mode = 0;
-	
+
 	if (flags & O_CREAT) {
 		va_list va;
 		va_start(va, flags);
 		mode = (mode_t)va_arg(va, unsigned int);
 		va_end(va);
 	}
-	
+
 	ClientReconstructCurDir crcd(pathname);
-	
+
 	int r = open(pathname, flags, mode);
-	if (r!=-1 || !pathname || !IsAccessDeniedErrno() || 
+	if (r!=-1 || !pathname || !IsAccessDeniedErrno() ||
 		!TouchClientConnection((flags & (O_CREAT | O_RDWR | O_TRUNC | O_WRONLY))!=0)) {
 		return r;
 	}
-		
+
 	try {
 		ClientTransaction ct(SUDO_CMD_OPEN);
 		ct.SendStr(pathname);
@@ -275,6 +275,20 @@ template <class STAT_STRUCT>
 		return -1;
 	}
 }
+
+#ifdef __NetBSD__
+extern "C" int statfs(const char *path, struct statfs *buf)
+{
+	struct statvfs s;
+	int r = sdc_statvfs(path, &s);
+	if (r == 0) {
+		buf->f_type = 0;
+		memcpy(buf, &s, sizeof(struct statvfs));
+	}
+	return r;
+}
+#endif
+
 extern "C" __attribute__ ((visibility("default"))) int sdc_statfs(const char *path, struct statfs *buf)
 {
 	int saved_errno = errno;
@@ -453,7 +467,7 @@ static int common_path_and_mode(SudoCommand cmd, int (*pfn)(const char *, mode_t
 			r = -1;
 		}
 	}
-	return r;	
+	return r;
 }
 
 static int common_one_path(SudoCommand cmd, int (*pfn)(const char *), const char *path, bool want_modify)
@@ -461,7 +475,7 @@ static int common_one_path(SudoCommand cmd, int (*pfn)(const char *), const char
 	int saved_errno = errno;
 	ClientReconstructCurDir crcd(path);
 	int r = pfn(path);
-	
+
 	if (r==-1 && IsAccessDeniedErrno() && TouchClientConnection(want_modify)) {
 		try {
 			ClientTransaction ct(cmd);
@@ -491,7 +505,7 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_chdir(const char *pat
 	//fprintf(stderr, "sdc_chdir: %s\n", path);
 	ClientReconstructCurDir crcd(path);
 	int r = chdir(path);
-	const bool access_denied = (r==-1 && IsAccessDeniedErrno());	
+	const bool access_denied = (r==-1 && IsAccessDeniedErrno());
 	ClientCurDirOverrideReset();
 	if (IsSudoRegionActive() || (access_denied && TouchClientConnection(false))) {
 		int r2;
@@ -512,7 +526,7 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_chdir(const char *pat
 
 		if (!cwd.empty())
 			ClientCurDirOverrideSet(cwd.c_str());
-		
+
 		if (r != 0 && r2 == 0) {
 			r = 0;
 			errno = saved_errno;
@@ -520,7 +534,7 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_chdir(const char *pat
 
 	} else if (access_denied && !IsSudoRegionActive()) {
 		//Workaround to avoid excessive sudo prompt on TAB panel switch:
-		//set override if path likely to be existing but not accessible 
+		//set override if path likely to be existing but not accessible
 		//cuz we're out of sudo region now
 		//Right solution would be putting TAB worker code into sudo region
 		//but showing sudo just to switch focus between panels is bad UX
@@ -535,10 +549,10 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_chdir(const char *pat
 		//workaround for chdir(symlink-to-somedir) following getcwd returns somedir but not symlink to it
 		ClientCurDirOverrideSet(path);
 	}
-	
+
 	//if (r!=0)
 	//	fprintf(stderr, "FAILED sdc_chdir: %s\n", path);
-	
+
 	return r;
 }
 
@@ -549,7 +563,7 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_rmdir(const char *pat
 
 extern "C" __attribute__ ((visibility("default"))) int sdc_remove(const char *path)
 {
-	return common_one_path(SUDO_CMD_REMOVE, &remove, path, true);	
+	return common_one_path(SUDO_CMD_REMOVE, &remove, path, true);
 }
 
 extern "C" __attribute__ ((visibility("default"))) int sdc_unlink(const char *path)
@@ -560,30 +574,6 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_unlink(const char *pa
 extern "C" __attribute__ ((visibility("default"))) int sdc_chmod(const char *path, mode_t mode)
 {
 	return common_path_and_mode(SUDO_CMD_CHMOD, &chmod, path, mode, true);
-}
-
-extern "C" __attribute__ ((visibility("default"))) int sdc_chown(const char *path, uid_t owner, gid_t group)
-{
-	int saved_errno = errno;
-	ClientReconstructCurDir crcd(path);
-	int r = chown(path, owner, group);
-	if (r==-1 && IsAccessDeniedErrno() && TouchClientConnection(true)) {
-		try {
-			ClientTransaction ct(SUDO_CMD_CHOWN);
-			ct.SendStr(path);
-			ct.SendPOD(owner);
-			ct.SendPOD(group);
-			r = ct.RecvInt();
-			if (r==-1)
-				ct.RecvErrno();
-			else
-				errno = saved_errno;
-		} catch(std::exception &e) {
-			fprintf(stderr, "sudo_client: sdc_chown('%s') - error %s\n", path, e.what());
-			r = -1;
-		}
-	}
-	return r;	
 }
 
 extern "C" __attribute__ ((visibility("default"))) int sdc_utimens(const char *filename, const struct timespec times[2])
@@ -607,7 +597,7 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_utimens(const char *f
 			r = -1;
 		}
 	}
-	return r;	
+	return r;
 }
 
 
@@ -745,7 +735,7 @@ extern "C" __attribute__ ((visibility("default"))) char *sdc_getcwd(char *buf, s
 
 extern "C" __attribute__ ((visibility("default"))) ssize_t sdc_flistxattr(int fd, char *namebuf, size_t size)
 {
-#if defined(__FreeBSD__) || defined(__DragonFly__) || defined(__CYGWIN__)
+#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__) || defined(__CYGWIN__)
 		return -1;
 #elif defined(__APPLE__)
 		return flistxattr(fd, namebuf, size, 0);
@@ -756,7 +746,7 @@ extern "C" __attribute__ ((visibility("default"))) ssize_t sdc_flistxattr(int fd
 
 extern "C" __attribute__ ((visibility("default"))) ssize_t sdc_fgetxattr(int fd, const char *name,void *value, size_t size)
 {
-#if defined(__FreeBSD__) || defined(__DragonFly__) || defined(__CYGWIN__)
+#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__) || defined(__CYGWIN__)
 	return -1;
 #elif defined(__APPLE__)
 	return fgetxattr(fd, name, value, size, 0, 0);
@@ -767,7 +757,7 @@ extern "C" __attribute__ ((visibility("default"))) ssize_t sdc_fgetxattr(int fd,
 
 extern "C" __attribute__ ((visibility("default"))) int sdc_fsetxattr(int fd, const char *name, const void *value, size_t size, int flags)
 {
-#if defined(__FreeBSD__) || defined(__DragonFly__) || defined(__CYGWIN__)
+#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__) || defined(__CYGWIN__)
 	return -1;
 #elif defined(__APPLE__)
 	return fsetxattr(fd, name, value, size, 0, flags);
@@ -786,7 +776,7 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_fsetxattr(int fd, con
 	*flags = 0;
 	return 0;
 
-#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 	struct stat s{};
 	int r = sdc_stat(path, &s);
 	if (r == 0) {
@@ -803,7 +793,7 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_fsetxattr(int fd, con
 	}
 	if (r == 0 || !IsAccessDeniedErrno() || !TouchClientConnection(false))
 		return r;
-	 
+
 	try {
 		ClientTransaction ct(SUDO_CMD_FSFLAGSGET);
 		ct.SendStr(path);
@@ -821,7 +811,7 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_fsetxattr(int fd, con
 	return r;
 #endif
 }
- 
+
 extern "C" __attribute__ ((visibility("default"))) int sdc_fs_flags_set(const char *path, unsigned long flags)
 {
 #if defined(__CYGWIN__) || defined(__HAIKU__)
@@ -831,7 +821,7 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_fs_flags_set(const ch
 #else
 	ClientReconstructCurDir crcd(path);
 	int r;
-# if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)
+# if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 	r = chflags(path, flags);
 # else
 	int fd = r = open(path, O_RDONLY);
@@ -852,12 +842,12 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_fs_flags_set(const ch
 		r = ct.RecvInt();
 		if (r != 0)
 			ct.RecvErrno();
-			
+
 	} catch(std::exception &e) {
 		fprintf(stderr, "sudo_client: sdc_fs_flags_set('%s', 0x%lx) - error %s\n", path, flags, e.what());
 		r = -1;
 	}
-	 
+
 	return r;
 #endif
 }
@@ -914,5 +904,63 @@ extern "C" __attribute__ ((visibility("default"))) int sdc_mknod(const char *pat
 	return r;
 }
 
+template <SudoCommand cmd, typename API>
+	static int common_xchown(API api, const char *path, uid_t owner, gid_t group)
+{
+	int saved_errno = errno;
+	ClientReconstructCurDir crcd(path);
+	int r = api(path, owner, group);
+	if (r==-1 && IsAccessDeniedErrno() && TouchClientConnection(true)) {
+		try {
+			ClientTransaction ct(cmd);
+			ct.SendStr(path);
+			ct.SendPOD(owner);
+			ct.SendPOD(group);
+			r = ct.RecvInt();
+			if (r==-1)
+				ct.RecvErrno();
+			else
+				errno = saved_errno;
+		} catch(std::exception &e) {
+			fprintf(stderr, "sudo_client: %s<%d>('%s') - error %s\n", __FUNCTION__, cmd, path, e.what());
+			r = -1;
+		}
+	}
+	return r;
+}
+
+extern "C" __attribute__ ((visibility("default"))) int sdc_lchown(const char *path, uid_t owner, gid_t group)
+{
+	return common_xchown<SUDO_CMD_LCHOWN>(lchown, path, owner, group);
+}
+
+extern "C" __attribute__ ((visibility("default"))) int sdc_chown(const char *path, uid_t owner, gid_t group)
+{
+	return common_xchown<SUDO_CMD_CHOWN>(chown, path, owner, group);
+}
+
+extern "C" __attribute__ ((visibility("default"))) int sdc_lutimes(const char *filename, const struct timeval times[2])
+{
+	int saved_errno = errno;
+	ClientReconstructCurDir crcd(filename);
+	int r = lutimes(filename, times);
+	if (r == -1 && IsAccessDeniedErrno() && TouchClientConnection(true)) {
+		try {
+			ClientTransaction ct(SUDO_CMD_LUTIMES);
+			ct.SendStr(filename);
+			ct.SendPOD(times[0]);
+			ct.SendPOD(times[1]);
+			r = ct.RecvInt();
+			if (r == -1)
+				ct.RecvErrno();
+			else
+				errno = saved_errno;
+		} catch(std::exception &e) {
+			fprintf(stderr, "sudo_client: sdc_lutimes('%s') - error %s\n", filename, e.what());
+			r = -1;
+		}
+	}
+	return r;
+}
 
 } //namespace Sudo

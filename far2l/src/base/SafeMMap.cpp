@@ -1,4 +1,6 @@
-#define _XOPEN_SOURCE // macos wants it for ucontext
+#ifndef __NetBSD__
+# define _XOPEN_SOURCE // macos wants it for ucontext
+#endif
 
 #include <errno.h>
 #include <signal.h>
@@ -7,7 +9,7 @@
 #include <time.h>
 #include <dlfcn.h>
 
-#if !defined(__FreeBSD__) && !defined(__DragonFly__) && !defined(__MUSL__) && !defined(__UCLIBC__) && !defined(__HAIKU__) && !defined(__ANDROID__) // todo: pass to linker -lexecinfo under BSD and then may remove this ifndef
+#if !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__DragonFly__) && !defined(__MUSL__) && !defined(__UCLIBC__) && !defined(__HAIKU__) && !defined(__ANDROID__) // todo: pass to linker -lexecinfo under BSD and then may remove this ifndef
 # include <execinfo.h>
 # define HAS_BACKTRACE
 #endif
@@ -28,9 +30,11 @@
 #include <atomic>
 
 #include <utils.h>
+#include <LookupDebugSymbol.h>
 #include <windows.h>
 #include "SafeMMap.hpp"
 #include "farversion.h"
+#include <windows.h>
 
 //#define PRINT_FAULTS
 
@@ -63,7 +67,7 @@ public:
 	}
 };
 
-static void SignalSafeLToA(long l, char *str, size_t last_char_ofs)
+static void SignalSafeLToA(unsigned long l, char *str, size_t last_char_ofs)
 {
 	while (l) {
 		char x = (l % 16);
@@ -94,8 +98,8 @@ static void FDWriteSignalInfo(int fd, int num, siginfo_t *info, void *ctx)
 	//                0123456789abcdef0123456789abcdef0123456789abcdef0
 	//             0x0^            0x1^            0x2^            0x3^
 	SignalSafeLToA(num, errmsg, 0x09);
-	SignalSafeLToA((long)info->si_addr, errmsg, 0x1b);
-	SignalSafeLToA((long)time(NULL), errmsg, 0x30);
+	SignalSafeLToA((unsigned long)info->si_addr, errmsg, 0x1b);
+	SignalSafeLToA((unsigned long)time(NULL), errmsg, 0x30);
 	FDWriteStr(fd, errmsg);
 
 	const ucontext_t *uctx = (const ucontext_t *)ctx;
@@ -113,10 +117,27 @@ static void FDWriteSignalInfo(int fd, int num, siginfo_t *info, void *ctx)
 
 		char val[] = "0000000000000000";
 		//            0123456789abcdef
-		SignalSafeLToA(mctx[i], val, 0x0f);
+		SignalSafeLToA((unsigned long)mctx[i], val, 0x0f);
 		FDWriteStr(fd, val);
 	}
 	FDWriteStr(fd, "\n");
+}
+
+static std::string GetSymbolString(const void *lookup_addr)
+{
+	Dl_info dli = {0};
+	if (!dladdr(lookup_addr, &dli) || !dli.dli_fname) {
+		return std::string();
+	}
+
+	std::string out = StrPrintf("%s +0x%06lx", dli.dli_fname, (unsigned long)lookup_addr - (unsigned long)dli.dli_fbase);
+	LookupDebugSymbol lds(dli.dli_fname, dli.dli_fbase, lookup_addr);
+	if (!lds.name.empty()) {
+		out+= StrPrintf(" \t<%s +0x%lx>", lds.name.c_str(), lds.offset);
+	} else if (dli.dli_sname && dli.dli_saddr) {
+		out+= StrPrintf(" \t<%s +0x%lx>", dli.dli_sname, (unsigned long)lookup_addr - (unsigned long)dli.dli_saddr);
+	}
+	return out;
 }
 
 static inline void WriteCrashSigLog(int num, siginfo_t *info, void *ctx)
@@ -124,27 +145,58 @@ static inline void WriteCrashSigLog(int num, siginfo_t *info, void *ctx)
 	FDScope fd(open(s_crash_log.c_str(), O_APPEND | O_CREAT | O_WRONLY, 0600));
 	if (fd.Valid()) {
 		FDWriteSignalInfo(fd, num, info, ctx);
+		fsync(fd);
 #ifdef HAS_BACKTRACE
 		// using backtrace/backtrace_symbols_fd is in general now allowed by signal safety rules
 		// but in general it works and its enough cuz other important info already written in
 		// signal-safe manner by FDWriteSignalInfo
 		void *bt[16];
-		size_t bt_count = sizeof(bt) / sizeof(bt[0]);
+		unsigned bt_count = sizeof(bt) / sizeof(bt[0]);
 		bt_count = backtrace(bt, bt_count);
-		backtrace_symbols_fd(bt, bt_count, fd);
-#endif
+		FDWriteStr(fd, " 👉 RAW BACKTRACE \n");
+		// first write raw addresses in signal-safe manner
+		for (unsigned i = 0; i < bt_count; ++i) {
+			char bt_line[] = "0000000000000000\n";
+			SignalSafeLToA((unsigned long)bt[i], bt_line, 15);
+			FDWriteStr(fd, bt_line);
+		}
+
 		fsync(fd);
-		void **stk = (void **)&ctx;
-		for (unsigned int i = 0; i < 0x1000 && ((uintptr_t(&stk[i]) ^ uintptr_t(stk)) < 0x1000); ++i) {
-			Dl_info dli = {0};
-			if (dladdr(stk[i], &dli) && dli.dli_fname) {
-				FDWriteStr(fd, dli.dli_fname);
-				char tail[32];
-				snprintf(tail, sizeof(tail), " + 0x%x\n", unsigned(uintptr_t(stk[i]) - uintptr_t(dli.dli_fbase)));
-				FDWriteStr(fd, tail);
+
+		// now try collect symbolicated backtrace, note that
+		// this part may stuck in case some libc lock is held
+		FDWriteStr(fd, " 👉 SYMBOLICATED BACKTRACE \n");
+		for (unsigned i = 0; i < bt_count; ++i) {
+			std::string s = GetSymbolString(bt[i]);
+			if (!s.empty()) {
+				s.insert(0, StrPrintf("%02u: ", i));
+				s+= '\n';
+				FDWriteStr(fd, s.c_str());
 			}
 		}
-		fsync(fd);
+#endif // #ifdef HAS_BACKTRACE
+		FDWriteStr(fd, " 👉 SYMBOLICATED STACK PAGE \n");
+		void **stk = (void **)&ctx;
+		for (unsigned int i = 0; i < 0x1000 && ((uintptr_t(&stk[i]) ^ uintptr_t(stk)) < 0x1000); ++i) {
+			std::string s = GetSymbolString(stk[i]);
+			if (!s.empty()) {
+				s.insert(0, StrPrintf("%03x: ", i));
+				s+= '\n';
+				FDWriteStr(fd, s.c_str());
+			}
+		}
+
+		std::vector<char> input_backtrace(4096);
+		for (;;) {
+			const DWORD limit = input_backtrace.size();
+			const DWORD written = WINPORT(ReadConsoleInputBacktrace)(NULL, input_backtrace.data(), limit);
+			input_backtrace.resize(written);
+			if (written < limit) {
+				break;
+			}
+		}
+		FDWriteStr(fd, " 👉 INPUT BACKTRACE \n");
+		FDWriteStr(fd, input_backtrace.data());
 	}
 
 	FDWriteSignalInfo(STDERR_FILENO, num, info, ctx);
@@ -284,7 +336,7 @@ void SafeMMap::Slide(off_t file_offset)
 	// So for that systems use approach looking most optimal: remap same pages to
 	// different region of file. At least this should allow VMM to avoid searching
 	// for free pages as well as reduce syscalls count by avoiding call to munmap().
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
 	void *new_view = mmap(_view, new_len, _prot, _flags | MAP_FIXED, _fd, file_offset);
 #else
 	void *new_view = mmap(nullptr, new_len, _prot, _flags, _fd, file_offset);
@@ -294,7 +346,7 @@ void SafeMMap::Slide(off_t file_offset)
 	}
 
 	if (_view != new_view) {
-#if !defined(__linux__) && !defined(__FreeBSD__) && !defined(__DragonFly__)
+#if !defined(__linux__) && !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__DragonFly__)
 		fprintf(stderr, "SafeMMap::Slide: _view[%p] != new_view[%p]\n", _view, new_view);
 #endif
 		if (munmap(_view, _len) == -1) {

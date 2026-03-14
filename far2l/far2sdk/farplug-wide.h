@@ -141,8 +141,20 @@ typedef struct _CHAR_INFO    CHAR_INFO;
 
 #include "farcommon.h"
 
-enum FARMESSAGEFLAGS
-{
+
+#ifdef __cpp_inline_variables
+#define FAR_INLINE_CONSTANT inline constexpr
+#else
+#define FAR_INLINE_CONSTANT static const
+#endif
+
+typedef uint32_t FARMESSAGEFLAGS;
+typedef GUID UUID;
+
+FAR_INLINE_CONSTANT size_t
+	DLG_ITEM_MAX_CUST_COLORS = 5;
+
+FAR_INLINE_CONSTANT FARMESSAGEFLAGS
 	FMSG_WARNING             = 0x00000001,
 	FMSG_ERRORTYPE           = 0x00000002,
 	FMSG_KEEPBACKGROUND      = 0x00000004,
@@ -160,9 +172,9 @@ enum FARMESSAGEFLAGS
 	FMSG_MB_YESNO            = 0x00040000,
 	FMSG_MB_YESNOCANCEL      = 0x00050000,
 	FMSG_MB_RETRYCANCEL      = 0x00060000,
-};
+	FMSG_NONE                = 0;
 
-typedef int ( *FARAPIMESSAGE)(
+typedef intptr_t ( *FARAPIMESSAGE)(
 	INT_PTR PluginNumber,
 	DWORD Flags,
 	const wchar_t *HelpTopic,
@@ -170,7 +182,6 @@ typedef int ( *FARAPIMESSAGE)(
 	int ItemsNumber,
 	int ButtonsNumber
 );
-
 
 enum DialogItemTypes
 {
@@ -347,11 +358,11 @@ enum FarMessagesProc
 
 //	DM_GETCOLOR,
 //	DM_SETCOLOR,
-	DM_GETDEFAULTCOLOR, // Param1 - Item ID, Param2 - uint64_t * -> uint64_t ItemColors[4]
+	DM_GETDEFAULTCOLOR, // Param1 - Item ID, Param2 - uint64_t * -> uint64_t ItemColors[DLG_ITEM_MAX_CUST_COLORS]
 
-	DM_GETTRUECOLOR,	// Param1 - Item ID, Param2 - uint64_t * -> uint64_t ItemColors[4]
+	DM_GETTRUECOLOR,	// Param1 - Item ID, Param2 - uint64_t * -> uint64_t ItemColors[DLG_ITEM_MAX_CUST_COLORS]
 	DM_GETCOLOR = DM_GETTRUECOLOR,
-	DM_SETTRUECOLOR,	// Param1 - Item ID, Param2 - uint64_t * -> uint64_t ItemColors[4]
+	DM_SETTRUECOLOR,	// Param1 - Item ID, Param2 - uint64_t * -> uint64_t ItemColors[DLG_ITEM_MAX_CUST_COLORS]
 	DM_SETCOLOR = DM_SETTRUECOLOR,
 
 	DM_SETTEXTPTRSILENT,
@@ -377,6 +388,7 @@ enum FarMessagesProc
 	DN_MOUSEEVENT,
 	DN_DRAWDIALOGDONE,
 	DN_LISTHOTKEY,
+	DN_DROPDOWNOPENED,
 
 	DN_GETDIALOGINFO=DM_GETDIALOGINFO,
 
@@ -459,6 +471,7 @@ struct FarListPos
 enum FARLISTFINDFLAGS
 {
 	LIFIND_EXACTMATCH = 0x00000001,
+	LIFIND_KEEPAMPERSAND = 0x00000002,
 };
 
 struct FarListFind
@@ -776,6 +789,9 @@ enum PANELINFOFLAGS
 	PFLAGS_DIRECTORIESFIRST   = 0x00000100,
 	PFLAGS_USECRC32           = 0x00000200,
 	PFLAGS_CASESENSITIVESORT  = 0x00000400,
+	PFLAGS_HL_MARKERS_NOSHOW  = 0x00000800,
+	PFLAGS_HL_MARKERS_NOALIGN = 0x00001000,
+	PFLAGS_EXECUTABLESFIRST   = 0x00002000,
 };
 
 enum PANELINFOTYPE
@@ -827,6 +843,7 @@ struct FarPanelLocation
 #define PANEL_NONE		((HANDLE)(-1))
 #define PANEL_ACTIVE	((HANDLE)(-1))
 #define PANEL_PASSIVE	((HANDLE)(-2))
+#define PANEL_STOP		((HANDLE)(-1))
 
 enum FILE_CONTROL_COMMANDS
 {
@@ -867,6 +884,7 @@ enum FILE_CONTROL_COMMANDS
 	FCTL_SETCASESENSITIVESORT,
 	FCTL_GETPANELPLUGINHANDLE, // Param2 points to value of type HANDLE, sets that value to handle of plugin that renders that panel or INVALID_HANDLE_VALUE
 	FCTL_SETPANELLOCATION, // Param2 points to FarPanelLocation
+	FCTL_SETEXECUTABLESFIRST,
 };
 
 typedef int (WINAPI *FARAPICONTROL)(
@@ -1329,6 +1347,13 @@ struct FarMacroValue
 	} v;
 };
 
+struct OpenMacroInfo
+{
+	size_t StructSize;
+	size_t Count;
+	struct FarMacroValue *Values;
+};
+
 struct FarMacroFunction
 {
 	DWORD Flags;
@@ -1409,14 +1434,14 @@ struct WindowInfo
 	int NameSize;
 };
 
-enum PROGRESSTATE
-{
+typedef uint32_t PROGRESSTATE;
+
+static const PROGRESSTATE
 	PGS_NOPROGRESS   =0x0,
 	PGS_INDETERMINATE=0x1,
 	PGS_NORMAL       =0x2,
 	PGS_ERROR        =0x4,
-	PGS_PAUSED       =0x8,
-};
+	PGS_PAUSED       =0x8;
 
 struct PROGRESSVALUE
 {
@@ -1813,6 +1838,7 @@ typedef int (WINAPI *FARAPIEDITORCONTROL)(
 
 enum INPUTBOXFLAGS
 {
+	FIB_NONE             = 0x00000000,
 	FIB_ENABLEEMPTY      = 0x00000001,
 	FIB_PASSWORD         = 0x00000002,
 	FIB_EXPANDENV        = 0x00000004,
@@ -1834,6 +1860,11 @@ typedef int (WINAPI *FARAPIINPUTBOX)(
 	int   DestLength,
 	const wchar_t *HelpTopic,
 	DWORD Flags
+);
+
+typedef int (WINAPI *FARAPICOLORDIALOG)(
+	int Flags,
+	uint64_t *Color
 );
 
 typedef int (WINAPI *FARAPIPLUGINSCONTROL)(
@@ -1864,6 +1895,7 @@ typedef void (WINAPI *FARSTDQSORT)(void *base, size_t nelem, size_t width, int (
 typedef void (WINAPI *FARSTDQSORTEX)(void *base, size_t nelem, size_t width, int (__cdecl *fcmp)(const void *, const void *,void *userparam),void *userparam);
 typedef void   *(WINAPI *FARSTDBSEARCH)(const void *key, const void *base, size_t nelem, size_t width, int (__cdecl *fcmp)(const void *, const void *));
 typedef int (WINAPI *FARSTDGETFILEOWNER)(const wchar_t *Computer,const wchar_t *Name,wchar_t *Owner,int Size);
+typedef int (WINAPI *FARSTDGETFILEGROUP)(const wchar_t *Computer,const wchar_t *Name,wchar_t *Group,int Size);
 typedef int (WINAPI *FARSTDGETNUMBEROFLINKS)(const wchar_t *Name);
 typedef int (WINAPI *FARSTDATOI)(const wchar_t *s);
 typedef int64_t (WINAPI *FARSTDATOI64)(const wchar_t *s);
@@ -1899,11 +1931,17 @@ typedef int (WINAPI *FARSTDLOCALSTRNCMP)(const wchar_t *s1,const wchar_t *s2,int
 
 enum PROCESSNAME_FLAGS
 {
-	PN_CMPNAME      = 0x00000000UL,
-	PN_CMPNAMELIST  = 0x00010000UL,
-	PN_GENERATENAME = 0x00020000UL,
-	PN_SKIPPATH     = 0x01000000UL,
+	PN_CMPNAME          = 0x00000000UL,
+	PN_CMPNAMELIST      = 0x00010000UL,
+	PN_GENERATENAME     = 0x00020000UL,
+	PN_CHECKMASK        = 0x00030000UL,
+	PN_SKIPPATH         = 0x01000000UL,
+	PN_SHOWERRORMESSAGE = 0x02000000UL,
+	PN_RESERVED1        = 0x04000000UL,
+	PN_CASESENSITIVE    = 0x08000000UL,
+	PN_NONE             = 0
 };
+
 
 typedef int (WINAPI *FARSTDPROCESSNAME)(const wchar_t *param1, wchar_t *param2, DWORD size, DWORD flags);
 
@@ -1931,6 +1969,7 @@ typedef int (WINAPI *FRSUSERFUNC)(
 
 enum FRSMODE
 {
+	FRS_NONE                 = 0x00,
 	FRS_RETUPDIR             = 0x01,
 	FRS_RECUR                = 0x02,
 	FRS_SCANSYMLINK          = 0x04,
@@ -1975,7 +2014,8 @@ enum EXECUTEFLAGS
 	EF_NOTIFY = 0x08,     // notify when command completed (if such notifications enabled in settings)
 	EF_NOCMDPRINT = 0x10, // dont print command in command line nor include it to history
 	EF_OPEN = 0x20,       // use desktop shell (if present) to open command (e.g. URLs, documents..)
-	EF_MAYBGND = 0x40     // allow put command to background mode
+	EF_MAYBGND = 0x40,     // allow put command to background mode
+	EF_EXTERNALTERM = 0x80 // execute command in configured external terminal
 };
 
 typedef int (WINAPI *FAREXECUTE)(const wchar_t *CmdStr, unsigned int ExecFlags);
@@ -1997,6 +2037,37 @@ typedef size_t (WINAPI *FARSTRCELLSCOUNT)(const wchar_t *Str, size_t CharsCount)
 //  Can be larger by one than initial value if RoundUp was set to TRUE and last full-width character
 //  crossed initial value specified in *CellsCount.
 typedef size_t (WINAPI *FARSTRSIZEOFCELLS)(const wchar_t *Str, size_t CharsCount, size_t *CellsCount, BOOL RoundUp);
+
+//int WINAPI farGetFileOwner(const wchar_t *Computer, const wchar_t *Name, wchar_t *Owner, int Size)
+
+typedef int (WINAPI *FARGETFILEOWNER)(const wchar_t *Computer, const wchar_t *Name, wchar_t *Owner, int Size);
+typedef int (WINAPI *FARSETFILEGROUP)(const wchar_t *Computer, const wchar_t *Name, wchar_t *Group, int Size);
+typedef int (WINAPI *FARESETFILEMODE)(const wchar_t *Name, DWORD Mode, int SkipMode);
+typedef int (WINAPI *FARESETFILETIME)(const wchar_t *Name, FILETIME *AccessTime, FILETIME *ModifyTime, DWORD FileAttr, int SkipMode);
+typedef int (WINAPI *FARESETFILEGROUP)(const wchar_t *Name, const wchar_t *Group, int SkipMode);
+typedef int (WINAPI *FARESETFILEOWNER)(const wchar_t *Name, const wchar_t *Owner, int SkipMode);
+typedef const char *(WINAPI *FAROWNERNAMEBYID)(uid_t id);
+typedef const char *(WINAPI *FARGROUPNAMEBYID)(uid_t id);
+typedef size_t (WINAPI *FARREADLINK)(const char *path, char *buf, size_t bufsiz);
+typedef BOOL (WINAPI *FARSDCLSTAT)(const wchar_t *path, void *s);
+typedef int (WINAPI *FARSDCSYMLINK)(const char *path1, const char *path2);
+typedef BOOL (WINAPI *FARGETFINDDATA)(const wchar_t *lpwszFileName, WIN32_FIND_DATAW *FindDataW);
+
+typedef int (WINAPI *FARGETDATEFORMAT)(void);
+typedef wchar_t (WINAPI *FARGETDATESEPARATOR)(void);
+typedef wchar_t (WINAPI *FARGETTIMESEPARATOR)(void);
+typedef wchar_t (WINAPI *FARGETDECIMALSEPARATOR)(void);
+
+
+
+// Exports to file virtual terminal history of given VT console
+//  con_hnd - NULL means active console, otherise - must be one of handles obtained from VTEnumBackground
+//  flags - is a combination of VT_LOGEXPORT_* constants
+//  file - is a file path to be exported, if it points to empty string (i.e. *file = 0) then
+//    it MUST be buffer of size at least MAX_PATH (4096) characters and VT history log will be
+//    exported to file at autogenerated temporary path that will be copied into that buffer
+// Returns TRUE on success
+typedef BOOL (WINAPI *FARAPIVT_LOGEXPORT)(HANDLE con_hnd, DWORD flags, const wchar_t *file);
 
 enum BOX_DEF_SYMBOLS
 {
@@ -2121,6 +2192,24 @@ typedef struct FarStandardFunctions
 
 	FARSTDLOCALSTRICMP         LStrcmp;
 	FARSTDLOCALSTRNICMP        LStrncmp;
+
+	FARAPIVT_ENUM_BACKGROUND   VTEnumBackground;
+	FARAPIVT_LOGEXPORT         VTLogExport;
+
+//	FARSETFILEGROUP			   GetFileOwner;
+	FARSETFILEGROUP			   GetFileGroup;
+	FARESETFILEMODE			   ESetFileMode;
+	FARESETFILETIME			   ESetFileTime;
+	FARESETFILEGROUP		   ESetFileGroup;
+	FARESETFILEOWNER		   ESetFileOwner;
+	FAROWNERNAMEBYID		   OwnerNameByID;
+	FARGROUPNAMEBYID		   GroupNameByID;
+	FARGETFINDDATA			   GetFindData;
+	FARGETDATEFORMAT		   GetDateFormat;
+	FARGETDATESEPARATOR		   GetDateSeparator;
+	FARGETTIMESEPARATOR		   GetTimeSeparator;
+	FARGETDECIMALSEPARATOR	   GetDecimalSeparator;
+
 } FARSTANDARDFUNCTIONS;
 
 struct PluginStartupInfo
@@ -2149,6 +2238,7 @@ struct PluginStartupInfo
 
 	FARAPISHOWHELP         ShowHelp;
 	FARAPIADVCONTROL       AdvControl;
+	FARAPIADVCONTROL       AdvControlAsync;
 	FARAPIINPUTBOX         InputBox;
 	FARAPIDIALOGINIT       DialogInit;
 	FARAPIDIALOGRUN        DialogRun;
@@ -2161,6 +2251,7 @@ struct PluginStartupInfo
 	FARAPIPLUGINSCONTROL   PluginsControl;
 	FARAPIFILEFILTERCONTROL FileFilterControl;
 	FARAPIREGEXPCONTROL    RegExpControl;
+	FARAPICOLORDIALOG      ColorDialog;
 };
 
 
@@ -2226,6 +2317,7 @@ struct PanelMode
 
 enum OPENPLUGININFO_FLAGS
 {
+	OPIF_NONE                    = 0,
 	OPIF_USEFILTER               = 0x00000001,
 	OPIF_USESORTGROUPS           = 0x00000002,
 	OPIF_USEHIGHLIGHTING         = 0x00000004,
@@ -2244,6 +2336,15 @@ enum OPENPLUGININFO_FLAGS
 	OPIF_EXTERNALMKDIR           = 0x00004000,
 	OPIF_USEATTRHIGHLIGHTING     = 0x00008000,
 	OPIF_USECRC32                = 0x00010000,
+	OPIF_HL_MARKERS_NOSHOW       = 0x00020000,
+	OPIF_HL_MARKERS_NOALIGN      = 0x00040000,
+
+	OPIF_USEFREESIZE             = 0x00080000,
+	OPIF_SHORTCUT                = 0x00100000,
+	//
+	OPIF_RECURSIVEPANEL          = 0x00200000,
+	OPIF_DELETEFILEONCLOSE       = 0x00400000,
+	OPIF_DELETEDIRONCLOSE        = 0x00800000,
 };
 
 
@@ -2278,19 +2379,18 @@ struct KeyBarTitles
 	wchar_t *CtrlAltTitles[12];
 };
 
-
-enum OPERATION_MODES
-{
-	OPM_SILENT     =0x0001,
-	OPM_FIND       =0x0002,
-	OPM_VIEW       =0x0004,
-	OPM_EDIT       =0x0008,
-	OPM_TOPLEVEL   =0x0010,
-	OPM_DESCR      =0x0020,
-	OPM_QUICKVIEW  =0x0040,
-	OPM_PGDN       =0x0080,
-	OPM_COMMANDS   =0x0100,
-};
+typedef uint32_t OPERATION_MODES;
+FAR_INLINE_CONSTANT OPERATION_MODES
+	OPM_SILENT     =0x0000000000000001ULL,
+	OPM_FIND       =0x0000000000000002ULL,
+	OPM_VIEW       =0x0000000000000004ULL,
+	OPM_EDIT       =0x0000000000000008ULL,
+	OPM_TOPLEVEL   =0x0000000000000010ULL,
+	OPM_DESCR      =0x0000000000000020ULL,
+	OPM_QUICKVIEW  =0x0000000000000040ULL,
+	OPM_PGDN       =0x0000000000000080ULL,
+	OPM_COMMANDS   =0x0000000000000100ULL,
+	OPM_NONE       =0;
 
 struct OpenPluginInfo
 {
@@ -2311,7 +2411,32 @@ struct OpenPluginInfo
 	int                   StartSortOrder;
 	const struct KeyBarTitles *KeyBar;
 	const wchar_t           *ShortcutData;
+	const wchar_t           *CurURL;
 	long                  Reserved;
+};
+
+struct AnalyseInfo
+{
+	size_t          StructSize;
+	const wchar_t  *FileName;
+	void           *Buffer;
+	size_t          BufferSize;
+	uint32_t     	OpMode;
+	void			*Instance;
+};
+
+struct CloseAnalyseInfo
+{
+	size_t StructSize;
+	HANDLE Handle;
+	void* Instance;
+};
+
+struct OpenAnalyseInfo
+{
+	size_t StructSize;
+	struct AnalyseInfo* Info;
+	HANDLE Handle;
 };
 
 enum OPENPLUGIN_OPENFROM

@@ -71,7 +71,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "constitle.hpp"
 #include "DialogBuilder.hpp"
 #include "setattr.hpp"
-#include "palette.hpp"
+#include "farcolors.hpp"
 #include "panel.hpp"
 #include "drivemix.hpp"
 #include "xlat.hpp"
@@ -129,6 +129,7 @@ Panel::Panel()
 	NumericSort(0),
 	CaseSensitiveSort(0),
 	DirectoriesFirst(1),
+	ExecutablesFirst(0),
 	ModalMode(0),
 	ViewSettings(),
 	ProcessingPluginCommand(0)
@@ -292,15 +293,15 @@ static void ConfigureChangeDriveMode()
 
 	//	BOOL ShowSizeAny = Opt.ChangeDriveMode & (DRIVE_SHOW_SIZE | DRIVE_SHOW_SIZE_FLOAT);
 
-	//	DialogItemEx *ShowSize = Builder.AddCheckbox(Msg::ChangeDriveShowSize, &ShowSizeAny);
-	//	DialogItemEx *ShowSizeFloat = Builder.AddCheckbox(Msg::ChangeDriveShowSizeFloat, &Opt.ChangeDriveMode, DRIVE_SHOW_SIZE_FLOAT);
+	//	auto ShowSize = Builder.AddCheckbox(Msg::ChangeDriveShowSize, &ShowSizeAny);
+	//	auto ShowSizeFloat = Builder.AddCheckbox(Msg::ChangeDriveShowSizeFloat, &Opt.ChangeDriveMode, DRIVE_SHOW_SIZE_FLOAT);
 	//	ShowSizeFloat->Indent(3);
 	//	Builder.LinkFlags(ShowSize, ShowSizeFloat, DIF_DISABLE);
 
-	auto *ShowMountsItem =
+	auto ShowMountsItem =
 			Builder.AddCheckbox(Msg::ChangeDriveShowMounts, &Opt.ChangeDriveMode, DRIVE_SHOW_MOUNTS);
 
-	auto *EditItem = Builder.AddEditField(&Opt.ChangeDriveExceptions, 28);
+	auto EditItem = Builder.AddEditField(&Opt.ChangeDriveExceptions, 28);
 	Builder.LinkFlags(ShowMountsItem, EditItem, DIF_DISABLE);
 	Builder.AddTextBefore(EditItem, Msg::ChangeDriveExceptions);
 
@@ -377,7 +378,7 @@ static void AddBookmarkItems(VMenu &ChDisk, int Pos)
 
 			if (!PluginFile.IsEmpty()) {
 				ShortcutPath+= PluginFile;
-				ShortcutPath+= L"/";
+				ShortcutPath+= WGOOD_SLASH;
 			}
 			ShortcutPath+= Folder;
 			if (ShortcutPath.IsEmpty()) {
@@ -816,7 +817,7 @@ bool Panel::SetLocation_Plugin(bool file_plugin, Plugin *plugin, const wchar_t *
 	if (path) {
 		NewPanel->Update(0);
 		NewPanel->Show();
-		CtrlObject->Plugins.SetDirectory(hPlugin, L"/", 0);
+		CtrlObject->Plugins.SetDirectory(hPlugin, WGOOD_SLASH, 0);
 		if (!CtrlObject->Plugins.SetDirectory(hPlugin, path, 0)) {
 			fprintf(stderr, "SetLocation_Plugin(%d, %p, '%ls', '%ls', %lld) FAILED set directory\n",
 					file_plugin, plugin, path, host_file, (long long)item);
@@ -1332,7 +1333,7 @@ int Panel::GetCurDirPluginAware(FARString &strCurDir)
 
 		if (Info.HostFile && *Info.HostFile) {
 			strCurDir+= Info.HostFile;
-			strCurDir+= L"/";
+			strCurDir+= WGOOD_SLASH;
 		}
 
 		strCurDir+= Info.CurDir;
@@ -1406,7 +1407,7 @@ int Panel::SetCurPath()
 			int Result = TestFolder(strCurDir);
 
 			if (Result == TSTFLD_NOTFOUND) {
-				if (CheckShortcutFolder(&strCurDir, FALSE, TRUE) && FarChDir(strCurDir)) {
+				if (CheckShortcutFolder(strCurDir, false, true) && FarChDir(strCurDir)) {
 					SetCurDir(strCurDir, TRUE);
 					return TRUE;
 				}
@@ -1518,7 +1519,7 @@ void Panel::ShowScreensCount()
 			}
 
 			if (Viewers > 0) {
-				strScreensText.Format(L"%cV%d", Prefix, Viewers);
+				strScreensText.AppendFormat(L"%cV%d", Prefix, Viewers);
 				Prefix = ' ';
 			}
 
@@ -1655,6 +1656,12 @@ int Panel::SetPluginCommand(int Command, int Param1, LONG_PTR Param2)
 			break;
 		}
 
+		case FCTL_SETEXECUTABLESFIRST: {
+			ChangeExecutablesFirst(Param1);
+			Result = TRUE;
+			break;
+		}
+
 		case FCTL_CLOSEPLUGIN:
 			strPluginParam = (const wchar_t *)Param2;
 			Result = TRUE;
@@ -1704,6 +1711,8 @@ int Panel::SetPluginCommand(int Command, int Param1, LONG_PTR Param2)
 				} PFLAGS[] = {
 						{&Opt.ShowHidden, PFLAGS_SHOWHIDDEN},
 						{&Opt.Highlight,  PFLAGS_HIGHLIGHT },
+						{&Opt.ShowFilenameMarks,   PFLAGS_HL_MARKERS_NOSHOW },
+						{&Opt.FilenameMarksAlign,  PFLAGS_HL_MARKERS_NOALIGN },
 				};
 				DWORD Flags = 0;
 
@@ -1717,6 +1726,7 @@ int Panel::SetPluginCommand(int Command, int Param1, LONG_PTR Param2)
 				Flags|= GetDirectoriesFirst() ? PFLAGS_DIRECTORIESFIRST : 0;
 				Flags|= GetNumericSort() ? PFLAGS_NUMERICSORT : 0;
 				Flags|= GetCaseSensitiveSort() ? PFLAGS_CASESENSITIVESORT : 0;
+				Flags|= GetExecutablesFirst() ? PFLAGS_EXECUTABLESFIRST : 0;
 
 				if (CtrlObject->Cp()->LeftPanel == this)
 					Flags|= PFLAGS_PANELLEFT;
@@ -1740,6 +1750,12 @@ int Panel::SetPluginCommand(int Command, int Param1, LONG_PTR Param2)
 
 					if (PInfo.Flags & OPIF_USECRC32)
 						Info->Flags|= PFLAGS_USECRC32;
+
+					if (PInfo.Flags & OPIF_HL_MARKERS_NOSHOW)		// (?) condition added by analogy:
+						Info->Flags|= PFLAGS_HL_MARKERS_NOSHOW;		//  may not be completely correct
+
+					if (PInfo.Flags & OPIF_HL_MARKERS_NOALIGN)		// (?) condition added by analogy:
+						Info->Flags|= PFLAGS_HL_MARKERS_NOALIGN;	//  may not be completely correct
 
 					Reenter--;
 				}
@@ -2006,23 +2022,18 @@ bool Panel::ExecShortcutFolder(int Pos)
 
 		switch (GetType()) {
 			case TREE_PANEL:
-				if (AnotherPanel->GetType() == FILE_PANEL)
-					SrcPanel = AnotherPanel;
-				break;
-
 			case QVIEW_PANEL:
-			case INFO_PANEL: {
+			case INFO_PANEL:
 				if (AnotherPanel->GetType() == FILE_PANEL)
 					SrcPanel = AnotherPanel;
 				break;
-			}
 		}
 
 		int CheckFullScreen = SrcPanel->IsFullScreen();
 
 		if (!strPluginModule.IsEmpty()) {
 			if (!strPluginFile.IsEmpty()) {
-				switch (CheckShortcutFolder(&strPluginFile, TRUE)) {
+				switch (CheckShortcutFolder(strPluginFile, true)) {
 					case 0:
 						// return FALSE;
 					case -1:
@@ -2030,8 +2041,7 @@ bool Panel::ExecShortcutFolder(int Pos)
 				}
 
 				/* Своеобразное решение BugZ#50 */
-				FARString strRealDir;
-				strRealDir = strPluginFile;
+				FARString strRealDir = strPluginFile;
 
 				if (CutToSlash(strRealDir)) {
 					SrcPanel->SetCurDir(strRealDir, TRUE);
@@ -2048,12 +2058,8 @@ bool Panel::ExecShortcutFolder(int Pos)
 
 				SrcPanel->Show();
 			} else {
-				switch (CheckShortcutFolder(nullptr, TRUE)) {
-					case 0:
-						// return FALSE;
-					case -1:
-						return true;
-				}
+				if (CtrlObject->Cp()->ActivePanel->ProcessPluginEvent(FE_CLOSE, nullptr))
+					return true;
 
 				for (int I = 0; I < CtrlObject->Plugins.GetPluginsCount(); I++) {
 					Plugin *pPlugin = CtrlObject->Plugins.GetPlugin(I);
@@ -2088,7 +2094,7 @@ bool Panel::ExecShortcutFolder(int Pos)
 			return true;
 		}
 
-		switch (CheckShortcutFolder(&strShortcutFolder, FALSE)) {
+		switch (CheckShortcutFolder(strShortcutFolder, false)) {
 			case 0:
 				// return FALSE;
 			case -1:
@@ -2127,9 +2133,8 @@ bool Panel::FindPartNameXLat(const wchar_t *Name, int Next, int Direct, int Excl
 	const size_t NameLen = wcslen(Name);
 	StackHeapArray<wchar_t, 0x200> NameXlat(NameLen + 1);
 
-	Xlator xlt(0);
 	for (size_t i = 0; i < NameLen; ++i) {
-		NameXlat[i] = xlt.Transcode(Name[i]);
+		NameXlat[i] = XlatOneChar(Name[i]);
 		NameXlat[i + 1] = 0;
 		if (!FindPartName(NameXlat.Get(), Next, Direct, ExcludeSets)) {
 			NameXlat[i] = Name[i];

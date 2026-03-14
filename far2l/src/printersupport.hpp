@@ -1,10 +1,9 @@
 #pragma once
 
 /*
-FileMasksWithExclude.hpp
+printersupport.hpp
 
-Класс для работы со сложными масками файлов (учитывается наличие масок
-исключения).
+Basic code to worl with wxWidgets printers (easy way)
 */
 /*
 Copyright (c) 1996 Eugene Roshal
@@ -34,26 +33,44 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "FileMasksProcessor.hpp"
+#include <WinCompat.h>
 
-extern const wchar_t EXCLUDEMASKSEPARATOR;
+#include <utils.h>
+#include "FARString.hpp"
+#include <farplug-wide.h>
 
-class FileMasksWithExclude : public BaseFileMask
+// Bridge to backends
+
+class PrinterSupport
 {
-private:
-	void Free();
-	static const wchar_t *FindExcludeChar(const wchar_t *masks);
-
 public:
-	FileMasksWithExclude();
-	virtual ~FileMasksWithExclude() {}
+	PrinterSupport() {}
+	~PrinterSupport() {}
 
-public:
-	virtual bool Set(const wchar_t *Masks, DWORD Flags);
-	virtual bool Compare(const wchar_t *Name, bool ignorecase = true) const;
-	virtual bool IsEmpty() const;
-	static bool IsExcludeMask(const wchar_t *masks);
+	virtual void PrintText(const std::wstring& jobName, const std::wstring& text);
+	virtual void PrintReducedHTML(const std::wstring& jobName, const std::wstring& text);
+	virtual void PrintTextFile(const std::wstring& fileName);
+	virtual void PrintHtmlFile(const std::wstring& fileName);
+
+	virtual void ShowPreviewForText(const std::wstring& jobName, const std::wstring& text);
+	virtual void ShowPreviewForReducedHTML(const std::wstring& jobName, const std::wstring& text);
+	virtual void ShowPreviewForTextFile(const std::wstring& fileName);
+	virtual void ShowPreviewForHtmlFile(const std::wstring& fileName);
+
+	virtual void ShowPrinterSetupDialog();
+
+	virtual bool IsPrintPreviewSupported();
+	virtual bool IsReducedHTMLSupported();
+	virtual bool IsPrinterSetupDialogSupported();
 
 private:
-	FileMasksProcessor Include, Exclude;
+};
+
+class ColorspaceSupport 
+{
+public:
+	ColorspaceSupport(){}
+	~ColorspaceSupport(){}
+
+	FarTrueColor ConvertForPrintLAB(const FarTrueColor& in, const FarTrueColor& bg);
 };
